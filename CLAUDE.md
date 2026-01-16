@@ -1,23 +1,22 @@
-# btop++ Development Guide
+# mbtop Development Guide
 
 ## GitLab Repository
 
 ### Repository Information
-- **URL**: https://gitlab.berger.sx/mac/btop-plusplus
+- **URL**: https://gitlab.berger.sx/mac/mbtop
 - **Group**: MAC
-- **Project Name**: BTOP++
-- **Path**: mac/btop-plusplus
+- **Project Name**: mbtop
+- **Path**: mac/mbtop
 
 ### Git Remotes
 | Remote | URL | Purpose |
 |--------|-----|---------|
-| `gitlab` | https://gitlab.berger.sx/mac/btop-plusplus.git | Primary development |
-| `origin` | https://github.com/emanuelez/btop.git | Upstream fork |
-| `emanuelez` | https://github.com/emanuelez/btop.git | Upstream fork |
+| `gitlab` | https://gitlab.berger.sx/mac/mbtop.git | Primary development |
+| `myfork` | https://github.com/marcoxyz123/btop.git | GitHub mirror |
 
 ### Branches
-- `main` - Main development branch
-- `gpu-apple-silicon-nosudo` - Apple Silicon GPU support (no sudo required)
+- `apple-silicon-comprehensive-monitoring` - Main development branch (default)
+- `main` - Legacy upstream sync
 
 ## GitLab CLI (glab) Setup
 
@@ -45,7 +44,7 @@ GITLAB_HOST=gitlab.berger.sx glab mr list
 GITLAB_HOST=gitlab.berger.sx glab mr create --source-branch feature-branch --title "MR title"
 
 # View project
-GITLAB_HOST=gitlab.berger.sx glab repo view mac/btop-plusplus
+GITLAB_HOST=gitlab.berger.sx glab repo view mac/mbtop
 ```
 
 ### Push/Pull with Credentials
