@@ -86,14 +86,14 @@ using namespace std::literals;
 
 namespace Global {
 	const vector<array<string, 2>> Banner_src = {
-		{"#E62525", "██████╗ ████████╗ ██████╗ ██████╗"},
-		{"#CD2121", "██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗   ██╗    ██╗"},
-		{"#B31D1D", "██████╔╝   ██║   ██║   ██║██████╔╝ ██████╗██████╗"},
-		{"#9A1919", "██╔══██╗   ██║   ██║   ██║██╔═══╝  ╚═██╔═╝╚═██╔═╝"},
-		{"#801414", "██████╔╝   ██║   ╚██████╔╝██║        ╚═╝    ╚═╝"},
-		{"#000000", "╚═════╝    ╚═╝    ╚═════╝ ╚═╝"},
+		{"#E62525", "███╗   ███╗██████╗ ████████╗ ██████╗ ██████╗"},
+		{"#CD2121", "████╗ ████║██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗"},
+		{"#B31D1D", "██╔████╔██║██████╔╝   ██║   ██║   ██║██████╔╝"},
+		{"#9A1919", "██║╚██╔╝██║██╔══██╗   ██║   ██║   ██║██╔═══╝"},
+		{"#801414", "██║ ╚═╝ ██║██████╔╝   ██║   ╚██████╔╝██║"},
+		{"#000000", "╚═╝     ╚═╝╚═════╝    ╚═╝    ╚═════╝ ╚═╝"},
 	};
-	const string Version = "1.4.6";
+	const string Version = "1.0.0";
 
 	int coreCount;
 
@@ -1040,7 +1040,7 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 	if (Global::real_uid != Global::set_uid) {
 		if (seteuid(Global::real_uid) != 0) {
 			Global::real_uid = Global::set_uid;
-			Global::exit_error_msg = "Failed to change effective user ID. Unset btop SUID bit to ensure security on this system. Quitting!";
+			Global::exit_error_msg = "Failed to change effective user ID. Unset mbtop SUID bit to ensure security on this system. Quitting!";
 			clean_quit(1);
 		}
 	}
@@ -1070,7 +1070,7 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 			if (cli.config_file.has_value()) {
 				Config::conf_file = cli.config_file.value();
 			} else {
-				Config::conf_file = Config::conf_dir / "btop.conf";
+				Config::conf_file = Config::conf_dir / "mbtop.conf";
 			}
 
 			auto log_file = Config::get_log_file();
@@ -1116,12 +1116,12 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 	}
 #endif
 	if (std::error_code ec; not Global::self_path.empty()) {
-		Theme::theme_dir = fs::canonical(Global::self_path / "../share/btop/themes", ec);
+		Theme::theme_dir = fs::canonical(Global::self_path / "../share/mbtop/themes", ec);
 		if (ec or not fs::is_directory(Theme::theme_dir) or access(Theme::theme_dir.c_str(), R_OK) == -1) Theme::theme_dir.clear();
 	}
 	//? If relative path failed, check two most common absolute paths
 	if (Theme::theme_dir.empty()) {
-		for (auto theme_path : {"/usr/local/share/btop/themes", "/usr/share/btop/themes"}) {
+		for (auto theme_path : {"/usr/local/share/mbtop/themes", "/usr/share/mbtop/themes"}) {
 			if (fs::is_directory(fs::path(theme_path)) and access(theme_path, R_OK) != -1) {
 				Theme::theme_dir = fs::path(theme_path);
 				break;
@@ -1208,7 +1208,7 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 
 	//? Initialize terminal and set options
 	if (not Term::init()) {
-		Global::exit_error_msg = "No tty detected!\nbtop++ needs an interactive shell to run.";
+		Global::exit_error_msg = "No tty detected!\nmbtop needs an interactive shell to run.";
 		clean_quit(1);
 	}
 

@@ -1,0 +1,21 @@
+Package: mbtop
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.29)
+Maintainer: Marco Berger <marco@berger.sx>
+Homepage: https://github.com/marcoxyz123/mbtop
+Description: Terminal-based system monitor
+ mbtop is a powerful terminal-based resource monitor that shows usage
+ and stats for processor, memory, disks, network and processes.
+ .
+ Fork of btop++ with enhanced Apple Silicon support on macOS.
+ On Linux, provides standard system monitoring capabilities.
+ .
+ Features:
+  - Real-time CPU, memory, disk, and network monitoring
+  - Interactive process management
+  - Multiple color themes
+  - Mouse support
+  - Vim-style keyboard navigation
