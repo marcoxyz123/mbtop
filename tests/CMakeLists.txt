@@ -9,12 +9,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-add_library(libbtop_test)
-target_include_directories(libbtop_test PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libbtop_test libbtop GTest::gtest_main)
+add_library(libmbtop_test)
+target_include_directories(libmbtop_test PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(libmbtop_test libbtop GTest::gtest_main)
 
-add_executable(btop_test tools.cpp)
-target_link_libraries(btop_test libbtop_test)
+add_executable(mbtop_test tools.cpp)
+target_link_libraries(mbtop_test libmbtop_test)
 
 include(GoogleTest)
-gtest_discover_tests(btop_test)
+gtest_discover_tests(mbtop_test)
