@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Img/logo-black.png" alt="mbtop logo" width="400">
+  <img src="Img/logo.png" alt="mbtop logo">
 </p>
 
 <h3 align="center">The Apple Silicon System Monitor</h3>
