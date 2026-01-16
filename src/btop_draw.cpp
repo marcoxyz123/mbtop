@@ -146,7 +146,10 @@ namespace Draw {
 
 					//? Select color based on visual position: MB (warm) or TOP (cool)
 					string fg = (visual_pos < mb_top_split) ? fg_mb : fg_top;
-					b_color = (letter == "█") ? fg : bg;
+					//? Use fg for filled blocks (█) and braille characters (U+2800-U+28FF)
+					bool is_braille = (letter.size() >= 3 && (unsigned char)letter[0] == 0xE2
+						&& ((unsigned char)letter[1] >= 0xA0 && (unsigned char)letter[1] <= 0xA3));
+					b_color = (letter == "█" || is_braille) ? fg : bg;
 					if (b_color != oc) banner += b_color;
 					banner += letter;
 					oc = b_color;

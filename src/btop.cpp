@@ -87,10 +87,10 @@ using namespace std::literals;
 namespace Global {
 	//? Banner colors: {MB_color, TOP_color, content}
 	//? MB uses warm Nordic palette, TOP uses cool Nordic palette
-	//? First two lines are Apple leaf in braille (green) - 2x2 elliptic shape
+	//? First two lines are Apple leaf in braille (green) - starts at top-right of M
 	const vector<array<string, 3>> Banner_src = {
-		{"#A3BE8C", "#A3BE8C", "       ⣀⣴⡄                                  "},
-		{"#A3BE8C", "#A3BE8C", "       ⠈⠙⠁                                  "},
+		{"#A3BE8C", "#A3BE8C", "         ⣀⣶⣿⡇                               "},
+		{"#A3BE8C", "#A3BE8C", "         ⠿⠿⠋                                "},
 		{"#BF616A", "#8FBCBB", "███╗   ███╗██████╗ ████████╗ ██████╗ ██████╗"},
 		{"#D08770", "#88C0D0", "████╗ ████║██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗"},
 		{"#EBCB8B", "#81A1C1", "██╔████╔██║██████╔╝   ██║   ██║   ██║██████╔╝"},

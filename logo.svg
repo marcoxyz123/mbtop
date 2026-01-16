@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 80" width="440" height="80">
+  <defs>
+    <!-- MB gradient (warm Nordic) -->
+    <linearGradient id="mb-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#BF616A"/>
+      <stop offset="25%" style="stop-color:#D08770"/>
+      <stop offset="50%" style="stop-color:#EBCB8B"/>
+      <stop offset="75%" style="stop-color:#A3BE8C"/>
+      <stop offset="100%" style="stop-color:#B48EAD"/>
+    </linearGradient>
+    <!-- TOP gradient (cool Nordic) -->
+    <linearGradient id="top-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8FBCBB"/>
+      <stop offset="25%" style="stop-color:#88C0D0"/>
+      <stop offset="50%" style="stop-color:#81A1C1"/>
+      <stop offset="75%" style="stop-color:#5E81AC"/>
+      <stop offset="100%" style="stop-color:#4C6A94"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Apple leaf -->
+  <ellipse cx="175" cy="12" rx="12" ry="6" fill="#A3BE8C" transform="rotate(45 175 12)"/>
+
+  <!-- MB text -->
+  <text x="10" y="60" font-family="monospace, 'Courier New', Courier" font-size="56" font-weight="bold" fill="url(#mb-gradient)">MB</text>
+
+  <!-- TOP text -->
+  <text x="135" y="60" font-family="monospace, 'Courier New', Courier" font-size="56" font-weight="bold" fill="url(#top-gradient)">TOP</text>
+</svg>

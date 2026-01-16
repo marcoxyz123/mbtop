@@ -1283,9 +1283,9 @@ namespace Menu {
 			bg = Draw::banner_gen(y, 0, true);
 			if (not tty_mode) {
 				colors_selected = {
-					Theme::hex_to_color(Global::Banner_src.at(0).at(1)),  //? Use TOP colors (cool)
-					Theme::hex_to_color(Global::Banner_src.at(2).at(1)),
-					Theme::hex_to_color(Global::Banner_src.at(4).at(1))
+					Theme::hex_to_color(Global::Banner_src.at(2).at(1)),  //? Use TOP colors (cool), skip 2 leaf lines
+					Theme::hex_to_color(Global::Banner_src.at(4).at(1)),
+					Theme::hex_to_color(Global::Banner_src.at(6).at(1))
 				};
 				colors_normal = {
 					Theme::hex_to_color("#CC"),

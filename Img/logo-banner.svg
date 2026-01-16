@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 32" width="264mm" height="32mm">
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'TerminessNerdFontMono';
+        src: url('TerminessNerdFontMono-Regular.ttf') format('truetype');
+      }
+      text { font-family: 'TerminessNerdFontMono', monospace; font-size: 4px; font-weight: bold; }
+    .leaf { fill: #A3BE8C; }
+    .mb1 { fill: #BF616A; }
+    .mb2 { fill: #D08770; }
+    .mb3 { fill: #EBCB8B; }
+    .mb4 { fill: #A3BE8C; }
+    .mb5 { fill: #B48EAD; }
+    .top1 { fill: #8FBCBB; }
+    .top2 { fill: #88C0D0; }
+    .top3 { fill: #81A1C1; }
+    .top4 { fill: #5E81AC; }
+    .top5 { fill: #4C6A94; }
+    .shadow { fill: #3B4252; }
+  </style>
+  </defs>
+
+  <!-- Leaf line 1 -->
+  <text x="0" y="4" class="leaf">         ⣀⣶⣿⡇</text>
+
+  <!-- Leaf line 2 -->
+  <text x="0" y="8" class="leaf">         ⠿⠿⠋</text>
+
+  <!-- MBTOP Row 1 -->
+  <text x="0" y="12"><tspan class="mb1">███╗   ███╗██████╗ </tspan><tspan class="top1">████████╗ ██████╗ ██████╗</tspan></text>
+
+  <!-- MBTOP Row 2 -->
+  <text x="0" y="16"><tspan class="mb2">████╗ ████║██╔══██╗</tspan><tspan class="top2">╚══██╔══╝██╔═══██╗██╔══██╗</tspan></text>
+
+  <!-- MBTOP Row 3 -->
+  <text x="0" y="20"><tspan class="mb3">██╔████╔██║██████╔╝</tspan><tspan class="top3">   ██║   ██║   ██║██████╔╝</tspan></text>
+
+  <!-- MBTOP Row 4 -->
+  <text x="0" y="24"><tspan class="mb4">██║╚██╔╝██║██╔══██╗</tspan><tspan class="top4">   ██║   ██║   ██║██╔═══╝</tspan></text>
+
+  <!-- MBTOP Row 5 -->
+  <text x="0" y="28"><tspan class="mb5">██║ ╚═╝ ██║██████╔╝</tspan><tspan class="top5">   ██║   ╚██████╔╝██║</tspan></text>
+
+  <!-- MBTOP Row 6 (shadow) -->
+  <text x="0" y="32" class="shadow">╚═╝     ╚═╝╚═════╝    ╚═╝    ╚═════╝ ╚═╝</text>
+</svg>
