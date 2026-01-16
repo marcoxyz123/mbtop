@@ -95,6 +95,7 @@ cat > "${BUILD_DIR}/welcome.html" << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 20px; }
         h1 { color: #E62525; }
@@ -125,11 +126,12 @@ cat > "${BUILD_DIR}/conclusion.html" << 'EOF'
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 20px; }
         h1 { color: #22c55e; }
-        code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
-        .terminal { background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; margin: 15px 0; }
+        .cmd { font-family: Menlo, Monaco, monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; }
+        .terminal { font-family: Menlo, Monaco, monospace; background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 8px; margin: 15px 0; }
     </style>
 </head>
 <body>
@@ -141,10 +143,10 @@ cat > "${BUILD_DIR}/conclusion.html" << 'EOF'
     <div class="terminal">$ mbtop</div>
 
     <h3>Configuration:</h3>
-    <p>Config file location: <code>~/.config/mbtop/mbtop.conf</code></p>
+    <p>Config file: <span class="cmd">~/.config/mbtop/mbtop.conf</span></p>
 
     <h3>Keyboard Shortcuts:</h3>
-    <p>Press <code>?</code> or <code>F1</code> in mbtop to see all shortcuts.</p>
+    <p>Press <b>?</b> or <b>F1</b> in mbtop to see all shortcuts.</p>
 
     <p>Enjoy monitoring your Apple Silicon Mac!</p>
 </body>
