@@ -1341,6 +1341,10 @@ namespace Menu {
 					out += Mv::to(cy++, Term::width/2 - menu_width[i]/2) + (tty_mode ? "" : colors[ic++]) + line;
 				}
 			}
+			//? Add version below QUIT
+			auto version_str = "v" + Global::Version;
+			out += Mv::to(cy + 1, Term::width/2 - (int)version_str.size()/2)
+				+ Theme::c("main_fg") + Fx::b + Fx::i + version_str;
 			out += Fx::reset;
 		}
 
