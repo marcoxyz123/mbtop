@@ -118,34 +118,41 @@ namespace Draw {
 		static size_t width = 0;
 		if (redraw) banner.clear();
 		if (banner.empty()) {
-			string b_color, bg, fg, oc, letter;
+			string b_color, bg, fg_mb, fg_top, oc, letter;
 			auto lowcolor = Config::getB("lowcolor");
 			auto tty_mode = Config::getB("tty_mode");
+			constexpr int mb_top_split = 19;  //? Visual position where TOP starts (after MB + space)
 			for (size_t z = 0; const auto& line : Global::Banner_src) {
-				if (const auto w = ulen(line[1]); w > width) width = w;
+				if (const auto w = ulen(line[2]); w > width) width = w;
 				if (tty_mode) {
-					fg = (z > 2) ? "\x1b[31m" : "\x1b[91m";
+					fg_mb = (z > 2) ? "\x1b[31m" : "\x1b[91m";
+					fg_top = (z > 2) ? "\x1b[34m" : "\x1b[94m";
 					bg = (z > 2) ? "\x1b[90m" : "\x1b[37m";
 				}
 				else {
-					fg = Theme::hex_to_color(line[0], lowcolor);
+					fg_mb = Theme::hex_to_color(line[0], lowcolor);   //? MB color (warm)
+					fg_top = Theme::hex_to_color(line[1], lowcolor);  //? TOP color (cool)
 					int bg_i = 120 - z * 12;
 					bg = Theme::dec_to_color(bg_i, bg_i, bg_i, lowcolor);
 				}
-				for (size_t i = 0; i < line[1].size(); i += 3) {
-					if (line[1][i] == ' ') {
+				int visual_pos = 0;  //? Track visual character position
+				for (size_t i = 0; i < line[2].size(); i += 3) {
+					if (line[2][i] == ' ') {
 						letter = Mv::r(1);
 						i -= 2;
 					}
 					else
-						letter = line[1].substr(i, 3);
+						letter = line[2].substr(i, 3);
 
+					//? Select color based on visual position: MB (warm) or TOP (cool)
+					string fg = (visual_pos < mb_top_split) ? fg_mb : fg_top;
 					b_color = (letter == "█") ? fg : bg;
 					if (b_color != oc) banner += b_color;
 					banner += letter;
 					oc = b_color;
+					visual_pos++;
 				}
-				if (++z < Global::Banner_src.size()) banner += Mv::l(ulen(line[1])) + Mv::d(1);
+				if (++z < Global::Banner_src.size()) banner += Mv::l(ulen(line[2])) + Mv::d(1);
 			}
 			banner += Mv::r(18 - Global::Version.size())
 					+ Theme::c("main_fg") + Fx::b + Fx::i + "v" + Global::Version + Fx::reset;

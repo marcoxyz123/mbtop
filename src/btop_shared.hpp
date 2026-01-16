@@ -59,7 +59,7 @@ void banner_gen();
 extern void clean_quit(int sig);
 
 namespace Global {
-	extern const vector<array<string, 2>> Banner_src;
+	extern const vector<array<string, 3>> Banner_src;  //? {MB_color, TOP_color, content}
 	extern const string Version;
 	extern atomic<bool> quitting;
 	extern string exit_error_msg;
