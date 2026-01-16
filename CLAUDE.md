@@ -12,7 +12,7 @@
 | Remote | URL | Purpose |
 |--------|-----|---------|
 | `gitlab` | https://gitlab.berger.sx/mac/mbtop.git | Primary development |
-| `myfork` | https://github.com/marcoxyz123/btop.git | GitHub mirror |
+| `myfork` | https://github.com/marcoxyz123/mbtop.git | GitHub mirror |
 
 ### Branches
 - `apple-silicon-comprehensive-monitoring` - Main development branch (default)
