@@ -276,9 +276,40 @@ package:macos-pkg:
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == "main"
-      when: manual
     - if: $CI_COMMIT_BRANCH == "apple-silicon-comprehensive-monitoring"
-      when: manual
+
+publish:macos-pkg:
+  <<: *macos_template
+  stage: publish
+  needs:
+    - job: package:macos-pkg
+      artifacts: true
+  script:
+    - |
+      # Set version
+      if [ -n "${CI_COMMIT_TAG}" ]; then
+        VERSION="${CI_COMMIT_TAG}"
+      else
+        VERSION="${CI_COMMIT_SHORT_SHA}"
+      fi
+      echo "Publishing macOS .pkg version: ${VERSION}"
+
+      # Upload .pkg to package registry
+      for file in dist/*.pkg; do
+        if [ -f "$file" ]; then
+          FILENAME=$(basename "$file")
+          echo "Uploading $FILENAME to package registry..."
+          curl --fail --show-error \
+               --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+               --upload-file "$file" \
+               "${PACKAGE_REGISTRY_URL}/${VERSION}/${FILENAME}"
+          echo " -> Upload complete: ${PACKAGE_REGISTRY_URL}/${VERSION}/${FILENAME}"
+        fi
+      done
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "apple-silicon-comprehensive-monitoring"
 
 # =============================================================================
 # Publish Stage - Push binaries to GitLab Package Registry
