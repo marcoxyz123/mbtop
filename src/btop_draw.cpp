@@ -1648,6 +1648,13 @@ namespace Mem {
 	bool horizontal_mem_layout = false;  //? Horizontal graph layout when disks hidden
 	int mem_item_width = 0;  //? Per-item width in horizontal layout
 	int mem_item_width_remainder = 0;  //? Remainder for width distribution
+	bool compact_mem_title = false;  //? Use abbreviated title "T: S: V:" when narrow
+	//? Force-hide items when horizontal layout is too narrow (override config)
+	bool force_hide_mem_available = false;
+	bool force_hide_mem_cached = false;
+	bool force_hide_mem_free = false;
+	bool force_hide_swap_free = false;
+	bool force_hide_vram_free = false;
 	int disk_start = 0, disk_selected = 0, disk_select_max = 0, num_disks = 0;
 	int mem_start = 0, mem_selected = 0, mem_select_max = 0, num_mem_items = 0;
 	int mem_toggle_mode = 0, swap_toggle_mode = 0, vram_toggle_mode = 0;
@@ -1828,24 +1835,25 @@ namespace Mem {
 		}
 
 		//? Build visible memory item names (no longer includes VRAM - VRAM is separate section)
+		//? In horizontal layout, respect force-hide flags for narrow widths
 		vector<string> visible_mem_names;
 		if (show_mem_used) visible_mem_names.push_back("used");
-		if (show_mem_available) visible_mem_names.push_back("available");
-		if (show_mem_cached) visible_mem_names.push_back("cached");
-		if (show_mem_free) visible_mem_names.push_back("free");
+		if (show_mem_available and not (horizontal_mem_layout and force_hide_mem_available)) visible_mem_names.push_back("available");
+		if (show_mem_cached and not (horizontal_mem_layout and force_hide_mem_cached)) visible_mem_names.push_back("cached");
+		if (show_mem_free and not (horizontal_mem_layout and force_hide_mem_free)) visible_mem_names.push_back("free");
 
 		//? Build visible swap item names
 		vector<string> visible_swap_names;
 		if (show_swap and has_swap and not swap_disk) {
 			if (show_swap_used) visible_swap_names.push_back("swap_used");
-			if (show_swap_free) visible_swap_names.push_back("swap_free");
+			if (show_swap_free and not (horizontal_mem_layout and force_hide_swap_free)) visible_swap_names.push_back("swap_free");
 		}
 
 		//? Build visible VRAM item names (new separate section)
 		vector<string> visible_vram_names;
 		if (has_vram) {
 			if (show_vram_used) visible_vram_names.push_back("vram_used");
-			if (show_vram_free) visible_vram_names.push_back("vram_free");
+			if (show_vram_free and not (horizontal_mem_layout and force_hide_vram_free)) visible_vram_names.push_back("vram_free");
 		}
 
 		//? For backwards compatibility, create dynamic_mem_names (memory items only, no VRAM)
@@ -2039,24 +2047,54 @@ namespace Mem {
 
 		if (horizontal_mem_layout) {
 			//? Horizontal layout: Combined title "Total: XX GiB  Swap: XX GiB  Vram: XX GiB"
+			//? Compact format when narrow: "T:XXG S:XXG V:XXG"
 			//? With highlighted first letters for Shift+T/S/V toggles
 			int title_col = x + 2;
-			out += Mv::to(y + 1, title_col) + Theme::c("hi_fg") + Fx::b + "T" + Theme::c("title") + "otal:"
-				+ rjust(floating_humanizer(totalMem), 9);
-			Input::mouse_mappings["T"] = {y + 1, title_col, 1, 1};
-			title_col += 16;  //? "Total:" + 9 digits + spacing
 
-			if (not visible_swap_names.empty()) {
-				out += "  " + Theme::c("hi_fg") + "S" + Theme::c("title") + "wap:"
-					+ rjust(floating_humanizer(safeVal(mem.stats, "swap_total"s)), 7);
-				Input::mouse_mappings["S"] = {y + 1, title_col + 2, 1, 1};
-				title_col += 14;  //? "  Swap:" + 7 digits
-			}
-			if (not visible_vram_names.empty()) {
-				uint64_t vram_total = Shared::gpuMemTotal.load(std::memory_order_acquire);
-				out += "  " + Theme::c("hi_fg") + "V" + Theme::c("title") + "ram:"
-					+ rjust(floating_humanizer(vram_total), 7);
-				Input::mouse_mappings["V"] = {y + 1, title_col + 2, 1, 1};
+			if (compact_mem_title) {
+				//? Compact title format for narrow widths
+				auto compact_size = [](uint64_t bytes) -> string {
+					if (bytes >= 1024ULL * 1024 * 1024 * 1024) return to_string(bytes / (1024ULL * 1024 * 1024 * 1024)) + "T";
+					if (bytes >= 1024ULL * 1024 * 1024) return to_string(bytes / (1024ULL * 1024 * 1024)) + "G";
+					if (bytes >= 1024ULL * 1024) return to_string(bytes / (1024ULL * 1024)) + "M";
+					return to_string(bytes / 1024ULL) + "K";
+				};
+				out += Mv::to(y + 1, title_col) + Theme::c("hi_fg") + Fx::b + "T" + Theme::c("title") + ":"
+					+ compact_size(totalMem);
+				Input::mouse_mappings["T"] = {y + 1, title_col, 1, 1};
+				title_col += 6;
+
+				if (not visible_swap_names.empty()) {
+					out += " " + Theme::c("hi_fg") + "S" + Theme::c("title") + ":"
+						+ compact_size(safeVal(mem.stats, "swap_total"s));
+					Input::mouse_mappings["S"] = {y + 1, title_col + 1, 1, 1};
+					title_col += 6;
+				}
+				if (not visible_vram_names.empty()) {
+					uint64_t vram_total = Shared::gpuMemTotal.load(std::memory_order_acquire);
+					out += " " + Theme::c("hi_fg") + "V" + Theme::c("title") + ":"
+						+ compact_size(vram_total);
+					Input::mouse_mappings["V"] = {y + 1, title_col + 1, 1, 1};
+				}
+			} else {
+				//? Full title format
+				out += Mv::to(y + 1, title_col) + Theme::c("hi_fg") + Fx::b + "T" + Theme::c("title") + "otal:"
+					+ rjust(floating_humanizer(totalMem), 9);
+				Input::mouse_mappings["T"] = {y + 1, title_col, 1, 1};
+				title_col += 16;  //? "Total:" + 9 digits + spacing
+
+				if (not visible_swap_names.empty()) {
+					out += "  " + Theme::c("hi_fg") + "S" + Theme::c("title") + "wap:"
+						+ rjust(floating_humanizer(safeVal(mem.stats, "swap_total"s)), 8);
+					Input::mouse_mappings["S"] = {y + 1, title_col + 2, 1, 1};
+					title_col += 15;  //? "  Swap:" + 8 digits
+				}
+				if (not visible_vram_names.empty()) {
+					uint64_t vram_total = Shared::gpuMemTotal.load(std::memory_order_acquire);
+					out += "  " + Theme::c("hi_fg") + "V" + Theme::c("title") + "ram:"
+						+ rjust(floating_humanizer(vram_total), 8);
+					Input::mouse_mappings["V"] = {y + 1, title_col + 2, 1, 1};
+				}
 			}
 			out += Fx::ub + Theme::c("main_fg");
 			cy = 2;  //? Start content on line 2 (after title)
@@ -2082,20 +2120,27 @@ namespace Mem {
 					this_item_width = base_item_width + ((item_index >= width_extra_threshold and width_remainder > 0) ? 1 : 0);
 				}
 
-				//? Full titles for horizontal layout (truncate to fit column if needed)
+				//? Full titles for horizontal layout with smart abbreviation when narrow
 				string title;
-				if (name == "swap_used") title = "Swap Used";
-				else if (name == "swap_free") title = "Swap Free";
-				else if (name == "vram_used") title = "Vram Used";
-				else if (name == "vram_free") title = "Vram Free";
-				else if (name == "used") title = "Used";
-				else if (name == "available") title = "Available";
-				else if (name == "cached") title = "Cached";
-				else if (name == "free") title = "Free";
-				else title = capitalize(name);
-				//? Truncate title if wider than column
-				if ((int)title.size() > this_item_width)
-					title = title.substr(0, this_item_width);
+				string short_title;  //? Abbreviated form for narrow columns
+				if (name == "swap_used") { title = "Swap Used"; short_title = "S Used"; }
+				else if (name == "swap_free") { title = "Swap Free"; short_title = "S Free"; }
+				else if (name == "swap_available") { title = "Swap Avail"; short_title = "S Avail"; }
+				else if (name == "vram_used") { title = "Vram Used"; short_title = "V Used"; }
+				else if (name == "vram_free") { title = "Vram Free"; short_title = "V Free"; }
+				else if (name == "vram_available") { title = "Vram Avail"; short_title = "V Avail"; }
+				else if (name == "used") { title = "Used"; short_title = "Used"; }
+				else if (name == "available") { title = "Available"; short_title = "Avail"; }
+				else if (name == "cached") { title = "Cached"; short_title = "Cache"; }
+				else if (name == "free") { title = "Free"; short_title = "Free"; }
+				else { title = capitalize(name); short_title = title; }
+				//? Use abbreviated title if full title doesn't fit
+				if ((int)title.size() > this_item_width) {
+					title = short_title;
+					//? Final truncation if still too wide
+					if ((int)title.size() > this_item_width)
+						title = title.substr(0, this_item_width);
+				}
 
 				//? Get memory value
 				const string humanized = floating_humanizer(safeVal(mem.stats, name), true);
@@ -2951,15 +2996,49 @@ namespace Proc {
 				fixed_cols += 4;  // Box borders + scrollbar area
 
 				int remaining = width - fixed_cols;
+
+				//? Progressive column hiding when space is insufficient
+				//? Hide least important columns first to make room for Program (min 10)
+				constexpr int PROG_MIN = 10;
+				if (remaining < PROG_MIN) {
+					//? Not enough space - progressively hide optional columns
+					//? Priority (hide first to last): GpuT, CpuT, Virt, Runtime, IO, Ports
+					if (gpu_time_size > 0 and remaining < PROG_MIN) {
+						remaining += gpu_time_size + 2;
+						gpu_time_size = 0;
+					}
+					if (cpu_time_size > 0 and remaining < PROG_MIN) {
+						remaining += cpu_time_size + 2;
+						cpu_time_size = 0;
+					}
+					if (virt_size > 0 and remaining < PROG_MIN) {
+						remaining += virt_size + 2;
+						virt_size = 0;
+					}
+					if (runtime_size > 0 and remaining < PROG_MIN) {
+						remaining += runtime_size + 2;
+						runtime_size = 0;
+					}
+					if (io_read_size > 0 and remaining < PROG_MIN) {
+						remaining += io_read_size + 2 + io_write_size + 2;
+						io_read_size = 0;
+						io_write_size = 0;
+					}
+					if (ports_size > 0 and remaining < PROG_MIN) {
+						remaining += ports_size + 2;
+						ports_size = 0;
+					}
+				}
+
 				if (show_cmd) {
 					//? Split remaining space between Program and Command
 					//? Give Program ~25% minimum, rest to Command
-					prog_size = max(10, min(18, remaining / 4));
+					prog_size = max(PROG_MIN, min(18, remaining / 4));
 					cmd_size = max(1, remaining - prog_size - 1);
 				} else {
-					//? Command hidden: data columns already sized comfortably, rest to Program
+					//? Command hidden: all remaining space to Program
 					cmd_size = -1;
-					prog_size = max(10, remaining);
+					prog_size = max(PROG_MIN, remaining);
 				}
 			}
 			else {
@@ -4283,12 +4362,52 @@ namespace Draw {
 				//? Use horizontal layout when config option enabled (toggle with '2' key)
 				//? Allow horizontal layout at compact_min_height (no disks = can use 10 lines)
 				horizontal_mem_layout = Config::getB("mem_horizontal") and (height >= compact_min_height);
+
+				//? Reset force-hide flags
+				force_hide_mem_available = false;
+				force_hide_mem_cached = false;
+				force_hide_mem_free = false;
+				force_hide_swap_free = false;
+				force_hide_vram_free = false;
+				compact_mem_title = false;
+
 				if (horizontal_mem_layout) {
 					//? Calculate per-item width for horizontal layout
 					//? Content area = mem_width - 1 (left border at position 0, content from 1 to mem_width-1)
 					int available_width = mem_width - 1;
-					mem_item_width = available_width / mem_item_count;
-					mem_item_width_remainder = available_width % mem_item_count;
+					constexpr int MIN_ITEM_WIDTH = 8;  //? Minimum width per item for readability
+					int effective_count = mem_item_count;
+
+					//? Progressive hiding when items would be too narrow
+					//? Priority: hide free → cached → available → swap_free (keep used, swap_used, vram_used)
+					while (effective_count > 0 and (available_width / effective_count) < MIN_ITEM_WIDTH) {
+						//? Hide in priority order (least important first)
+						if (Config::getB("mem_show_free") and not force_hide_mem_free) {
+							force_hide_mem_free = true;
+							effective_count--;
+						} else if (Config::getB("mem_show_cached") and not force_hide_mem_cached) {
+							force_hide_mem_cached = true;
+							effective_count--;
+						} else if (Config::getB("mem_show_available") and not force_hide_mem_available) {
+							force_hide_mem_available = true;
+							effective_count--;
+						} else if (has_swap and not swap_disk and Config::getB("swap_show_free") and not force_hide_swap_free) {
+							force_hide_swap_free = true;
+							effective_count--;
+						} else if (has_vram and Config::getB("vram_show_free") and not force_hide_vram_free) {
+							force_hide_vram_free = true;
+							effective_count--;
+						} else {
+							break;  //? Can't hide more - essential items only
+						}
+					}
+
+					//? Use compact title when very narrow (less than ~50 chars per title section)
+					compact_mem_title = (mem_width < 50);
+
+					if (effective_count < 1) effective_count = 1;
+					mem_item_width = available_width / effective_count;
+					mem_item_width_remainder = available_width % effective_count;
 				}
 				else {
 					mem_item_width = 0;

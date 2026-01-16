@@ -252,8 +252,15 @@ namespace Tools {
 			if (w_str[i] < 0x20)
 				w_str[i] = replacement;
 		}
-		str.resize(w_str.size());
-		std::wcstombs(&str[0], &w_str[0], w_str.size());
+		//? Calculate required buffer size for UTF-8 output (wcstombs returns bytes needed)
+		size_t mb_len = std::wcstombs(nullptr, &w_str[0], 0);
+		if (mb_len == static_cast<size_t>(-1)) {
+			//? Conversion error, fall back to simple replacement
+			std::ranges::for_each(str, [&replacement](char& c) { if (c < 0x20) c = replacement; });
+			return str;
+		}
+		str.resize(mb_len);
+		std::wcstombs(&str[0], &w_str[0], mb_len);
 
 		return str;
 	}
@@ -300,11 +307,21 @@ namespace Tools {
 			vector<wchar_t> w_str(w_len);
 			std::mbstowcs(&w_str[0], str_data, w_len);
 
-			while (wide_ulen(w_str) > len) w_str.pop_back();
+			//? Pop characters until display width fits, but preserve null terminator
+			while (w_str.size() > 1 and wide_ulen(w_str) > len) {
+				w_str.pop_back();
+				w_str.back() = L'\0';  //? Ensure null terminator at end
+			}
 
+			//? Calculate required buffer size for UTF-8 output (wcstombs returns bytes needed)
+			size_t mb_len = std::wcstombs(nullptr, &w_str[0], 0);
+			if (mb_len == static_cast<size_t>(-1)) {
+				//? Conversion error, fall back to non-wide resize
+				return uresize(str, len, false);
+			}
 			string n_str;
-			n_str.resize(w_str.size());
-			std::wcstombs(&n_str[0], &w_str[0], w_str.size());
+			n_str.resize(mb_len);
+			std::wcstombs(&n_str[0], &w_str[0], mb_len);
 
 			return n_str;
 
