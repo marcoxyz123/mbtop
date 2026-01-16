@@ -87,7 +87,9 @@ using namespace std::literals;
 namespace Global {
 	//? Banner colors: {MB_color, TOP_color, content}
 	//? MB uses warm Nordic palette, TOP uses cool Nordic palette
+	//? First line is Apple leaf in braille (green) centered above MB
 	const vector<array<string, 3>> Banner_src = {
+		{"#A3BE8C", "#A3BE8C", "        ⣠⣴⠟                                 "},
 		{"#BF616A", "#8FBCBB", "███╗   ███╗██████╗ ████████╗ ██████╗ ██████╗"},
 		{"#D08770", "#88C0D0", "████╗ ████║██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗"},
 		{"#EBCB8B", "#81A1C1", "██╔████╔██║██████╔╝   ██║   ██║   ██║██████╔╝"},
