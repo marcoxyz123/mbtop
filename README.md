@@ -187,18 +187,58 @@ Custom themes can be placed in `~/.config/mbtop/themes/`
 
 ## Comparison with Other Tools
 
+### System Monitoring
+
 | Feature | mbtop | htop | btop | mactop |
 |---------|-------|------|------|--------|
 | Apple Silicon GPU | ✅ | ❌ | ❌ | ✅ |
-| Power Monitoring | ✅ | ❌ | ❌ | ❌ |
+| GPU Power (Watts) | ✅ | ❌ | ❌ | ❌ |
+| CPU Power (Watts) | ✅ | ❌ | ❌ | ❌ |
 | ANE Monitoring | ✅ | ❌ | ❌ | ❌ |
 | VRAM Tracking | ✅ | ❌ | ❌ | ❌ |
-| Full Process List | ✅ | ✅ | ✅ | Limited |
+| Per-Core CPU | ✅ | ✅ | ✅ | ✅ |
+| CPU Temperature | ✅ | ❌ | ✅ | ✅ |
+| Memory Details | ✅ | ✅ | ✅ | Basic |
+| Swap Usage | ✅ | ✅ | ✅ | ❌ |
 | Network I/O | ✅ | ❌ | ✅ | ❌ |
 | Disk I/O | ✅ | ❌ | ✅ | ❌ |
+
+### Process Management
+
+| Feature | mbtop | htop | btop | mactop |
+|---------|-------|------|------|--------|
+| Full Process List | ✅ | ✅ | ✅ | Limited |
+| Process Tree View | ✅ | ✅ | ✅ | ❌ |
+| Process I/O Stats | ✅ | ✅ | ✅ | ❌ |
+| Process Memory Details | ✅ | ✅ | ✅ | Basic |
+| Process Filtering | ✅ | ✅ | ✅ | ❌ |
+| Process Kill/Signal | ✅ | ✅ | ✅ | ❌ |
+| Process Nice/Priority | ✅ | ✅ | ✅ | ❌ |
+| Per-Process GPU | ✅ | ❌ | ❌ | ❌ |
+| Custom Sort Fields | ✅ | ✅ | ✅ | ❌ |
+| Process User Filter | ✅ | ✅ | ✅ | ❌ |
+
+### User Interface
+
+| Feature | mbtop | htop | btop | mactop |
+|---------|-------|------|------|--------|
 | Themes | ✅ | ❌ | ✅ | ❌ |
+| Custom Themes | ✅ | ❌ | ✅ | ❌ |
 | Mouse Support | ✅ | ✅ | ✅ | ❌ |
-| Linux Support | ✅ | ✅ | ✅ | ❌ |
+| Vim Keybindings | ✅ | ❌ | ✅ | ❌ |
+| Responsive Layout | ✅ | ✅ | ✅ | ❌ |
+| Unicode Graphs | ✅ | ❌ | ✅ | ❌ |
+| Box Customization | ✅ | ✅ | ✅ | ❌ |
+
+### Platform Support
+
+| Feature | mbtop | htop | btop | mactop |
+|---------|-------|------|------|--------|
+| macOS (Apple Silicon) | ✅ | ✅ | ✅ | ✅ |
+| macOS (Intel) | ✅ | ✅ | ✅ | ❌ |
+| Linux | ✅ | ✅ | ✅ | ❌ |
+| FreeBSD | ✅ | ✅ | ✅ | ❌ |
+| NetBSD/OpenBSD | ✅ | ✅ | ✅ | ❌ |
 
 ---
 
