@@ -95,7 +95,7 @@ namespace Config {
 
 		{"graph_symbol_proc", 	"# Graph symbol to use for graphs in cpu box, \"default\", \"braille\", \"block\" or \"tty\"."},
 
-		{"shown_boxes", 		"#* Manually set which boxes to show. Available values are \"cpu mem net proc\" and \"gpu0\" through \"gpu5\", separate values with whitespace."},
+		{"shown_boxes", 		"#* Manually set which boxes to show. Available values are \"cpu pwr mem net proc\" and \"gpu0\" through \"gpu5\", separate values with whitespace."},
 
 		{"update_ms", 			"#* Update time in milliseconds, recommended 2000 ms or above for better sample times for graphs."},
 
@@ -274,9 +274,9 @@ namespace Config {
 
 	std::unordered_map<std::string_view, string> strings = {
 		{"color_theme", "Default"},
-		{"shown_boxes", "cpu mem net proc"},
+		{"shown_boxes", "cpu pwr mem net"},
 		{"graph_symbol", "braille"},
-		{"presets", "cpu:1:default,proc:0:default cpu:0:default,mem:0:default,net:0:default cpu:0:block,net:0:tty"},
+		{"presets", "cpu:1:default,pwr:0:default cpu:0:default,pwr:0:default,mem:0:default,net:0:default cpu:0:braille,mem:0:braille,net:0:braille"},
 		{"graph_symbol_cpu", "default"},
 		{"graph_symbol_gpu", "default"},
 		{"graph_symbol_pwr", "default"},

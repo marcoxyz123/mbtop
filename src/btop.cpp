@@ -1246,8 +1246,8 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 	}
 
 	if (not Config::set_boxes(Config::getS("shown_boxes"))) {
-		Config::set_boxes("cpu mem net proc");
-		Config::set("shown_boxes", "cpu mem net proc"s);
+		Config::set_boxes("cpu pwr mem net");
+		Config::set("shown_boxes", "cpu pwr mem net"s);
 	}
 
 	//? Update list of available themes and generate the selected theme

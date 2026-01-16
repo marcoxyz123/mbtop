@@ -298,7 +298,7 @@ namespace Menu {
 			{"shown_boxes",
 				"Manually set which boxes to show.",
 				"",
-				"Available values are \"cpu mem net proc\".",
+				"Available values are \"cpu pwr mem net proc\".",
 			#ifdef GPU_SUPPORT
 				"Or \"gpu0\" through \"gpu5\" for GPU boxes.",
 			#endif
