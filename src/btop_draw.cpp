@@ -734,15 +734,15 @@ namespace Cpu {
 				}
 			}
 
-			//? ANE meter for Apple Silicon - 4 chars longer than CPU/GPU bars (room for C/s values)
+			//? ANE meter for Apple Silicon - extended +3 chars to match VRAM bar length
 			if (Shared::aneCoreCount > 0 and b_columns > 1) {
-				ane_meter = Draw::Meter{brief_meter_width, "cpu"};
+				ane_meter = Draw::Meter{brief_meter_width + 3, "cpu"};
 			}
 
 			//? VRAM meter for GPU memory usage (Apple Silicon unified memory or discrete VRAM)
-			//? Make bar 2 chars shorter than others to leave room for "XX.X GB Max" text
+			//? Extended +5 chars (from -2) to match ANE bar length
 			if (Shared::gpuMemTotal.load(std::memory_order_acquire) > 0 and b_columns > 1) {
-				vram_meter = Draw::Meter{brief_meter_width - 2, "used"};  //? "used" gradient: red-based for memory
+				vram_meter = Draw::Meter{brief_meter_width + 3, "used"};  //? "used" gradient: red-based for memory
 			}
 			#endif
 
