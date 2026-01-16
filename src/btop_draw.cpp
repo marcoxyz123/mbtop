@@ -1478,9 +1478,10 @@ namespace Pwr {
 		//? Calculate subpanel width (3 equal columns)
 		sub_width = (width - 4) / 3;
 
-		//? Fixed 2-line graph height for compact layout
-		//? Layout: header(1) + graph_with_labels(2) + values(1) + border(1) = 5 lines minimum
-		graph_height = 2;
+		//? Dynamic graph height based on available panel space
+		//? Layout: top_border(1) + header(1) + graph(N) + values(1) + bottom_border(1)
+		//? When only top panels shown (CPU+GPU+PWR), graphs expand to fill space
+		graph_height = max(2, height - 4);
 
 		//? Graph width: sub_width minus label(4) minus temp(5) minus padding(2)
 		//? Layout per column: "CPU " + [graph] + " 45°C"
@@ -4494,7 +4495,7 @@ namespace Draw {
 				}
 			}
 			else if (proc_full_width and Mem::shown and not Net::shown) {
-				//? Mem+Proc stacking: proc full width below mem
+				//? Mem+Proc stacking: proc full width below mem (no net)
 				width = Term::width;
 				x = 1;
 			#ifdef GPU_SUPPORT
@@ -4505,7 +4506,7 @@ namespace Draw {
 				y = Mem::y + Mem::height;
 			}
 			else {
-				//? Original stacked layout
+				//? Stacked layout (net under mem): Proc beside Mem+Net stack
 				width = Term::width - (Mem::shown ? Mem::width : (Net::shown ? Net::width : 0));
 			#ifdef GPU_SUPPORT
 				height = Term::height - Cpu::height - Gpu::total_height - pwr_offset;

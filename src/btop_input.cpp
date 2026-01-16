@@ -284,6 +284,8 @@ namespace Input {
 						if (not net_shown) {
 							//? Net hidden -> show net in stacked mode
 							Config::set("net_beside_mem", false);
+							//? Auto-switch proc to small beside view (full-width doesn't work in stacked layout)
+							if (Proc::shown) Config::set("proc_full_width", false);
 							if (not Config::toggle_box("net")) {
 								Menu::show(Menu::Menus::SizeError);
 								return;
@@ -296,6 +298,8 @@ namespace Input {
 						else {
 							//? Net shown beside -> hide net and reset to stacked
 							Config::set("net_beside_mem", false);
+							//? Auto-switch proc to small beside view (full-width doesn't work in stacked layout)
+							if (Proc::shown) Config::set("proc_full_width", false);
 							if (not Config::toggle_box("net")) {
 								Menu::show(Menu::Menus::SizeError);
 								return;
