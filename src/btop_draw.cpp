@@ -545,6 +545,7 @@ namespace Cpu {
 	int graph_up_width, graph_low_width;
 	int gpu_meter_width;
 	bool shown = true, redraw = true, mid_line = false;
+	int last_width = 0, last_height = 0;  //? Track dimensions for change detection
 	string box;
 	vector<Draw::Graph> graphs_upper;
 	vector<Draw::Graph> graphs_lower;
@@ -562,6 +563,14 @@ namespace Cpu {
 		//? Defensive check: skip drawing if dimensions are invalid (terminal too small or resizing)
 		if (Cpu::width < 10 or Cpu::height < 5) return "";
 		if (force_redraw) redraw = true;
+
+		//? Force redraw if dimensions have changed since last draw (prevents scrambled text)
+		if (width != last_width or Cpu::height != last_height) {
+			redraw = true;
+			last_width = width;
+			last_height = Cpu::height;
+		}
+
 		bool show_temps = (Config::getB("check_temp") and got_sensors);
 		bool show_watts = (Config::getB("show_cpu_watts") and supports_watts);
 		auto single_graph = Config::getB("cpu_single_graph");
@@ -1645,6 +1654,7 @@ namespace Mem {
 	int disks_io_h = 0;
 	int disks_io_half = 0;
 	bool shown = true, redraw = true;
+	int last_width = 0, last_height = 0;  //? Track dimensions for change detection
 	bool horizontal_mem_layout = false;  //? Horizontal graph layout when disks hidden
 	int mem_item_width = 0;  //? Per-item width in horizontal layout
 	int mem_item_width_remainder = 0;  //? Remainder for width distribution
@@ -1780,6 +1790,14 @@ namespace Mem {
 		//? Defensive check: skip drawing if dimensions are invalid (terminal too small or resizing)
 		if (Mem::width < 10 or Mem::height < 5) return "";
 		if (force_redraw) redraw = true;
+
+		//? Force redraw if dimensions have changed since last draw (prevents scrambled text)
+		if (width != last_width or Mem::height != last_height) {
+			redraw = true;
+			last_width = width;
+			last_height = Mem::height;
+		}
+
 		auto show_swap = Config::getB("show_swap");
 		auto swap_disk = Config::getB("swap_disk");
 		auto show_disks = Config::getB("show_disks");
@@ -2616,6 +2634,7 @@ namespace Net {
 	int x = 1, y, width = 20, height;
 	int b_x, b_y, b_width, b_height, d_graph_height, u_graph_height;
 	bool shown = true, redraw = true;
+	int last_width = 0, last_height = 0;  //? Track dimensions for change detection
 	const int MAX_IFNAMSIZ = 15;
 	string old_ip;
 	std::unordered_map<string, Draw::Graph> graphs;
@@ -2626,6 +2645,14 @@ namespace Net {
 		//? Defensive check: skip drawing if dimensions are invalid (terminal too small or resizing)
 		if (Net::width < 10 or Net::height < 5) return "";
 		if (force_redraw) redraw = true;
+
+		//? Force redraw if dimensions have changed since last draw (prevents scrambled text)
+		if (width != last_width or Net::height != last_height) {
+			redraw = true;
+			last_width = width;
+			last_height = Net::height;
+		}
+
 		auto net_sync = Config::getB("net_sync");
 		auto net_auto = Config::getB("net_auto");
 		auto tty_mode = Config::getB("tty_mode");
@@ -2733,6 +2760,7 @@ namespace Proc {
 	int x, y, width = 20, height;
 	int start, selected, select_max;
 	bool shown = true, redraw = true;
+	int last_width = 0, last_height = 0;  //? Track dimensions for change detection
 	bool is_last_process_in_list = false;
 	int selected_pid = 0, selected_depth = 0;
 	int scroll_pos;
@@ -2870,6 +2898,14 @@ namespace Proc {
 		auto totalMem = std::max(uint64_t{1}, Mem::get_totalMem());  //? Guard against division by zero
 		int numpids = Proc::numpids;
 		if (force_redraw) redraw = true;
+
+		//? Force redraw if dimensions have changed since last draw (prevents scrambled text)
+		if (width != last_width or Proc::height != last_height) {
+			redraw = true;
+			last_width = width;
+			last_height = Proc::height;
+		}
+
 		string out;
 		out.reserve(width * height);
 
@@ -3800,7 +3836,7 @@ namespace Proc {
 					+ cpu_heat + rjust(cpu_str, 5) + "  " + end
 					+ (show_gpu ? gpu_heat + rjust(gpu_str, 5) + "  " + end : "")
 					+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) : "")
-					+ end;
+					+ Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
 			}
 			else {
 				//? Side layout or tree view: original column order
@@ -3814,7 +3850,7 @@ namespace Proc {
 					+ (show_gpu ? " " + (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_gpu_graphs ? graph_bg * 5 : "")
 						+ (show_gpu_graphs and p_gpu_graphs.contains(p.pid) ? Mv::l(5) + gp_color + p_gpu_graphs.at(p.pid)({scale_to_graph(p.gpu_p)}, data_same) : "") + end + ' '
 						+ gp_color + rjust(gpu_str, 4) : "")
-					+ "  " + end;
+					+ "  " + Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
 			}
 			if (lc++ > height - 5) break;
 			else if (lc > height - 5 and proc_banner_shown) break;
