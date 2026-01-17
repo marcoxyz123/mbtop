@@ -67,4 +67,8 @@ namespace Theme {
 	//* Return array of red, green and blue in decimal for color <name>
 	inline const std::array<int, 3>& dec(const string& name) { return rgbs.at(name); }
 
+	//* Preview theme colors without applying - returns colored block string "█████"
+	//* Shows: main_bg, cpu_box, mem_box, net_box, proc_box
+	string previewColors(const string& theme_path);
+
 }

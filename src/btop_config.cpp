@@ -172,8 +172,21 @@ namespace Config {
 	#ifdef __linux__
 		{"freq_mode",				"#* How to calculate CPU frequency, available values: \"first\", \"range\", \"lowest\", \"highest\" and \"average\"."},
 	#endif
-		{"clock_format", 		"#* Draw a clock at top of screen, formatting according to strftime, empty string to disable.\n"
-								"#* Special formatting: /host = hostname | /user = username | /uptime = system uptime"},
+		{"clock_format", 		"#* Clock format using strftime syntax. Empty string to disable clock.\n"
+								"#* Examples: \"%H:%M:%S\" (24h), \"%I:%M:%S %p\" (12h with AM/PM), \"%X\" (locale default)"},
+
+		{"clock_12h",			"#* Use 12-hour clock format (HH:MM:SS AM/PM) instead of 24-hour format.\n"
+								"#* This overrides clock_format with a 12-hour format."},
+
+		{"show_hostname",		"#* Show hostname in the CPU box header (centered position).\n"
+								"#* Strips \".local\" suffix but keeps full FQDN (e.g., host.domain.com)."},
+
+		{"show_uptime_header",	"#* Show system uptime in the CPU box header (left side, after preset)."},
+
+		{"show_username_header","#* Show current username in the CPU box header (left side, after uptime)."},
+
+		{"preset_names",		"#* Custom names for presets 1-9, separated by whitespace. Empty to use default numbers.\n"
+								"#* Example: \"Standard LLM Processes Power CPU/MEM\" for presets 1-5."},
 
 		{"background_update", 	"#* Update main ui in background when menus are showing, set this to false if the menus is flickering too much for comfort."},
 
@@ -294,6 +307,7 @@ namespace Config {
 		{"freq_mode", "first"},
 	#endif
 		{"clock_format", "%X"},
+		{"preset_names", "Standard LLM Processes Power CPU/MEM"},
 		{"custom_cpu_name", ""},
 		{"disks_filter", ""},
 		{"io_graph_speeds", ""},
@@ -341,6 +355,10 @@ namespace Config {
 		{"check_temp", true},
 		{"show_coretemp", true},
 		{"show_cpu_freq", true},
+		{"clock_12h", false},
+		{"show_hostname", true},
+		{"show_uptime_header", false},
+		{"show_username_header", false},
 		{"background_update", true},
 		{"mem_graphs", true},
 		{"mem_bar_mode", true},

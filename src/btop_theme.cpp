@@ -464,4 +464,72 @@ namespace Theme {
 		Fx::reset = Fx::reset_base + Term::fg + Term::bg;
 	}
 
+	string previewColors(const string& theme_path) {
+		//? Load theme without applying it
+		std::unordered_map<string, string> preview_theme;
+
+		if (theme_path == "Default" or theme_path.empty()) {
+			preview_theme = Default_theme;
+		}
+		else if (theme_path == "TTY") {
+			//? TTY mode uses basic ANSI - show simple representation with 2 chars per color
+			return "\x1b[31m██\x1b[0m \x1b[32m██\x1b[0m \x1b[33m██\x1b[0m \x1b[34m██\x1b[0m \x1b[35m██\x1b[0m \x1b[36m██\x1b[0m \x1b[91m██\x1b[0m \x1b[94m██\x1b[0m";
+		}
+		else {
+			preview_theme = loadFile(theme_path);
+		}
+
+		//? 8 key colors to preview (2 chars each with space = 23 chars total)
+		const vector<string> preview_keys = {
+			"main_bg", "main_fg", "cpu_box", "mem_box",
+			"net_box", "proc_box", "hi_fg", "selected_bg"
+		};
+		string result;
+		bool t_to_256 = Config::getB("lowcolor");
+		bool first = true;
+
+		for (const auto& key : preview_keys) {
+			string color_val;
+			if (preview_theme.contains(key) and not preview_theme.at(key).empty()) {
+				color_val = preview_theme.at(key);
+			}
+			else if (Default_theme.contains(key)) {
+				color_val = Default_theme.at(key);
+			}
+			else {
+				if (not first) result += " ";
+				result += "██";  // No color, just plain blocks
+				first = false;
+				continue;
+			}
+
+			if (not first) result += " ";
+			first = false;
+
+			//? Convert to ANSI foreground color and add 2 block characters
+			if (color_val.starts_with('#')) {
+				result += hex_to_color(color_val, t_to_256, "fg") + "██";
+			}
+			else if (not color_val.empty()) {
+				//? RGB format "R G B"
+				auto t_rgb = ssplit(color_val, ' ');
+				if (t_rgb.size() == 3) {
+					int r = stoi_safe(t_rgb[0], 0);
+					int g = stoi_safe(t_rgb[1], 0);
+					int b = stoi_safe(t_rgb[2], 0);
+					result += dec_to_color(r, g, b, t_to_256, "fg") + "██";
+				}
+				else {
+					result += "██";
+				}
+			}
+			else {
+				result += "██";
+			}
+		}
+
+		result += Fx::reset;
+		return result;
+	}
+
 }

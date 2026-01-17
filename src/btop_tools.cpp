@@ -669,6 +669,22 @@ namespace Tools {
 		return string{host};
 	}
 
+	string display_hostname() {
+		string host = hostname();
+		// Strip ".local" suffix (common on macOS) but keep full FQDN
+		// FQDN has multiple dots (e.g., "host.domain.com"), .local has only one
+		const string local_suffix = ".local";
+		if (host.ends_with(local_suffix)) {
+			// Check if it's just "hostname.local" (not a real FQDN)
+			string without_suffix = host.substr(0, host.size() - local_suffix.size());
+			if (without_suffix.find('.') == string::npos) {
+				// No other dots, so strip .local
+				return without_suffix;
+			}
+		}
+		return host;
+	}
+
 	string username() {
 		auto user = getenv("LOGNAME");
 		if (user == nullptr or strlen(user) == 0) user = getenv("USER");

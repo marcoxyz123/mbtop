@@ -365,6 +365,7 @@ namespace Tools {
 	string strf_time(const string& strf);
 
 	string hostname();
+	string display_hostname();  //* hostname with ".local" stripped (keeps FQDN)
 	string username();
 
 	//* Copy text to system clipboard (macOS: pbcopy, Linux: xclip/xsel)

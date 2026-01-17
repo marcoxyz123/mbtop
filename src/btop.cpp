@@ -104,6 +104,7 @@ namespace Global {
 
 	string overlay;
 	string clock;
+	string hostname_str;
 
 	string bg_black = "\x1b[0;40m";
 	string fg_white = "\x1b[1;97m";
@@ -507,6 +508,7 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 		bool background_update;
 		string overlay;
 		string clock;
+		string hostname_str;
 	};
 
 	struct runner_conf current_conf;
@@ -800,7 +802,7 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 				redraw = false;
 			}
 
-			if (not pause_output) output += conf.clock;
+			if (not pause_output) output += conf.clock + conf.hostname_str;
 			if (not conf.overlay.empty() and not conf.background_update) pause_output = true;
 			if (output.empty() and not pause_output) {
 				if (empty_bg.empty()) {
@@ -971,7 +973,8 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 				no_update, force_redraw,
 				(not Config::getB("tty_mode") and Config::getB("background_update")),
 				Global::overlay,
-				Global::clock
+				Global::clock,
+				Global::hostname_str
 			};
 
 			if (Menu::active and not current_conf.background_update) Global::overlay.clear();
@@ -1349,14 +1352,17 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 			if (Global::resized) {
 				Draw::calcSizes();
 				Draw::update_clock(true);
+				Draw::update_hostname(true);
 				Global::resized = false;
 				if (Menu::active) Menu::process();
 				else Runner::run("all", true, true);
 				atomic_wait_for(Runner::active, true, 1000);
 			}
 
-			//? Update clock if needed
-			if (Draw::update_clock() and not Menu::active) {
+			//? Update clock and hostname if needed
+			bool clock_updated = Draw::update_clock();
+			bool hostname_updated = Draw::update_hostname();
+			if ((clock_updated or hostname_updated) and not Menu::active) {
 				Runner::run("clock");
 			}
 

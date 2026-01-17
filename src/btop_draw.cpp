@@ -323,18 +323,14 @@ namespace Draw {
 		return out + Fx::reset + Mv::to(y + 1, x + 1);
 	}
 
+	//* Update clock display - positioned LEFT of update interval
 	bool update_clock(bool force) {
 		const auto& clock_format = Config::getS("clock_format");
+
 		if (not Cpu::shown or clock_format.empty()) {
 			if (clock_format.empty() and not Global::clock.empty()) Global::clock.clear();
 			return false;
 		}
-
-		static const std::unordered_map<string, string> clock_custom_format = {
-			{"/user", Tools::username()},
-			{"/host", Tools::hostname()},
-			{"/uptime", ""}
-		};
 
 		static time_t c_time{};
 		static size_t clock_len{};
@@ -344,6 +340,7 @@ namespace Draw {
 			return false;
 		else {
 			c_time = n_time;
+			// Use clock_format directly - dropdown already has 12h/24h options
 			const auto new_clock = Tools::strf_time(clock_format);
 			if (not force and new_clock == clock_str) return false;
 			clock_str = new_clock;
@@ -357,32 +354,65 @@ namespace Draw {
 		const auto& title_left = (cpu_bottom ? Symbols::title_left_down : Symbols::title_left);
 		const auto& title_right = (cpu_bottom ? Symbols::title_right_down : Symbols::title_right);
 
+		// Calculate position: LEFT of update interval controls
+		const string update_str = to_string(Config::getI("update_ms")) + "ms";
+		const int update_pos = x + width - update_str.size() - 8;
+		const int clock_pos = update_pos - clock_str.size() - 4;  // 4 for spacing and borders
 
-		for (const auto& [c_format, replacement] : clock_custom_format) {
-			if (clock_str.contains(c_format)) {
-				if (c_format == "/uptime") {
-					string upstr = sec_to_dhms(system_uptime());
-					if (upstr.size() > 8) upstr.resize(upstr.size() - 3);
-					clock_str = s_replace(clock_str, c_format, upstr);
-				}
-				else {
-					clock_str = s_replace(clock_str, c_format, replacement);
-				}
-			}
-
-		}
-
-		clock_str = uresize(clock_str, std::max(10, width - 66 - (Term::width >= 100 and Config::getB("show_battery") and Cpu::has_battery ? 22 : 0)));
+		clock_str = uresize(clock_str, std::max(8, clock_pos - x - 30));  // Limit length to fit
 		out.clear();
 
 		if (clock_str.size() != clock_len) {
 			if (not Global::resized and clock_len > 0)
-				out = Mv::to(y, x+(width / 2)-(clock_len / 2)) + Fx::ub + Theme::c("cpu_box") + Symbols::h_line * clock_len;
+				out = Mv::to(y, clock_pos) + Fx::ub + Theme::c("cpu_box") + Symbols::h_line * (clock_len + 2);
 			clock_len = clock_str.size();
 		}
 
-		out += Mv::to(y, x+(width / 2)-(clock_len / 2)) + Fx::ub + Theme::c("cpu_box") + title_left
+		// Position clock to the LEFT of update interval
+		const int final_clock_pos = update_pos - clock_len - 4;
+		out += Mv::to(y, final_clock_pos) + Fx::ub + Theme::c("cpu_box") + title_left
 			+ Theme::c("title") + Fx::b + clock_str + Theme::c("cpu_box") + Fx::ub + title_right;
+
+		return true;
+	}
+
+	//* Update hostname display - positioned CENTER of CPU box header
+	bool update_hostname(bool force) {
+		if (not Cpu::shown or not Config::getB("show_hostname")) {
+			if (not Global::hostname_str.empty()) Global::hostname_str.clear();
+			return false;
+		}
+
+		static string cached_hostname;
+		static size_t hostname_len{};
+
+		// Get display hostname (strips .local, keeps FQDN)
+		if (cached_hostname.empty() or force) {
+			cached_hostname = Tools::display_hostname();
+		}
+
+		auto& out = Global::hostname_str;
+		auto cpu_bottom = Config::getB("cpu_bottom");
+		const auto& x = Cpu::x;
+		const auto y = (cpu_bottom ? Cpu::y + Cpu::height - 1 : Cpu::y);
+		const auto& width = Cpu::width;
+		const auto& title_left = (cpu_bottom ? Symbols::title_left_down : Symbols::title_left);
+		const auto& title_right = (cpu_bottom ? Symbols::title_right_down : Symbols::title_right);
+
+		// Limit hostname length to fit
+		string display_host = uresize(cached_hostname, std::max(10, width / 3));
+
+		out.clear();
+
+		if (display_host.size() != hostname_len) {
+			if (not Global::resized and hostname_len > 0)
+				out = Mv::to(y, x + (width / 2) - (hostname_len / 2)) + Fx::ub + Theme::c("cpu_box") + Symbols::h_line * (hostname_len + 2);
+			hostname_len = display_host.size();
+		}
+
+		// Position hostname at CENTER
+		out += Mv::to(y, x + (width / 2) - (hostname_len / 2)) + Fx::ub + Theme::c("cpu_box") + title_left
+			+ Theme::c("title") + Fx::b + display_host + Theme::c("cpu_box") + Fx::ub + title_right;
 
 		return true;
 	}
@@ -632,19 +662,60 @@ namespace Cpu {
 			//? Buttons on title
 			out += Mv::to(button_y, x + 10) + title_left + Theme::c("hi_fg") + Fx::b + 'm' + Theme::c("title") + "enu" + Fx::ub + title_right;
 			Input::mouse_mappings["m"] = {button_y, x + 11, 1, 4};
+
+			//? Preset button with name
+			string preset_display;
+			if (Config::current_preset < 0) {
+				preset_display = "*";
+			} else {
+				preset_display = to_string(Config::current_preset);
+				// Get preset name from config
+				const auto& preset_names_str = Config::getS("preset_names");
+				if (not preset_names_str.empty() and Config::current_preset > 0) {
+					auto preset_names = ssplit(preset_names_str);
+					int name_idx = Config::current_preset - 1;  // preset 1 = first name, etc.
+					if (name_idx >= 0 and name_idx < (int)preset_names.size()) {
+						preset_display += " " + string(preset_names[name_idx]);
+					}
+				}
+			}
+			const int preset_btn_len = 7 + preset_display.size();  // "preset " + display
 			out += Mv::to(button_y, x + 16) + title_left + Theme::c("hi_fg") + Fx::b + 'p' + Theme::c("title") + "reset "
-				+ (Config::current_preset < 0 ? "*" : to_string(Config::current_preset)) + Fx::ub + title_right;
-			Input::mouse_mappings["p"] = {button_y, x + 17, 1, 8};
+				+ preset_display + Fx::ub + title_right;
+			Input::mouse_mappings["p"] = {button_y, x + 17, 1, (int)preset_btn_len};
+
+			//? Optional header elements: uptime and username
+			int next_header_pos = x + 18 + preset_btn_len;
+
+			// Draw container engine name if present
+			if (Cpu::container_engine.has_value()) {
+				const auto& container = Cpu::container_engine.value();
+				out += Mv::to(button_y, next_header_pos) + title_left + Theme::c("title") + container + title_right;
+				next_header_pos += container.size() + 4;
+			}
+
+			// Show uptime in header if enabled
+			if (Config::getB("show_uptime_header")) {
+				string upstr = sec_to_dhms(system_uptime());
+				if (upstr.size() > 8) upstr.resize(upstr.size() - 3);
+				out += Mv::to(button_y, next_header_pos) + title_left + Theme::c("title") + "up:" + upstr + title_right;
+				next_header_pos += upstr.size() + 7;  // "up:" + upstr + borders
+			}
+
+			// Show username in header if enabled
+			if (Config::getB("show_username_header")) {
+				string user = Tools::username();
+				if (not user.empty()) {
+					out += Mv::to(button_y, next_header_pos) + title_left + Theme::c("title") + user + title_right;
+					next_header_pos += user.size() + 4;
+				}
+			}
+
 			const string update = to_string(Config::getI("update_ms")) + "ms";
 			out += Mv::to(button_y, x + width - update.size() - 8) + title_left + Fx::b + Theme::c("hi_fg") + "- " + Theme::c("title") + update
 				+ Theme::c("hi_fg") + " +" + Fx::ub + title_right;
 			Input::mouse_mappings["-"] = {button_y, x + width - (int)update.size() - 7, 1, 2};
 			Input::mouse_mappings["+"] = {button_y, x + width - 5, 1, 2};
-
-			// Draw container engine name
-			if (Cpu::container_engine.has_value()) {
-				fmt::format_to(std::back_inserter(out), "{}{}{}{}{}", Mv::to(button_y, x + 28), title_left, Theme::c("title"), Cpu::container_engine.value(), title_right);
-			}
 
 			//? Graphs & meters
 			const int graph_default_width = x + width - b_width - 3;

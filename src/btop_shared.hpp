@@ -70,6 +70,7 @@ namespace Global {
 	extern atomic<bool> init_conf;
 	extern string overlay;
 	extern string clock;
+	extern string hostname_str;  //* Hostname display string
 }
 
 namespace Runner {

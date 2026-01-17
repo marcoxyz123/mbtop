@@ -137,9 +137,9 @@ namespace Menu {
 
    const array<array<string, 3>, 3> menu_normal = {
 		array<string, 3>{
-			"┌─┐┌─┐┌┬┐┬┌─┐┌┐┌┌─┐",
-			"│ │├─┘ │ ││ ││││└─┐",
-			"└─┘┴   ┴ ┴└─┘┘└┘└─┘"
+			"┌─┐┌─┐┌┬┐┌┬┐┬┌┐┌┌─┐┌─┐",
+			"└─┐├┤  │  │ │││││ ┬└─┐",
+			"└─┘└─┘ ┴  ┴ ┴┘└┘└─┘└─┘"
 		},
 		{
 			"┬ ┬┌─┐┬  ┌─┐",
@@ -155,9 +155,9 @@ namespace Menu {
 
 	const array<array<string, 3>, 3> menu_selected = {
 		array<string, 3>{
-			"╔═╗╔═╗╔╦╗╦╔═╗╔╗╔╔═╗",
-			"║ ║╠═╝ ║ ║║ ║║║║╚═╗",
-			"╚═╝╩   ╩ ╩╚═╝╝╚╝╚═╝"
+			"╔═╗╔═╗╔╦╗╔╦╗╦╔╗╔╔═╗╔═╗",
+			"╚═╗╠╣  ║  ║ ║║║║║ ╦╚═╗",
+			"╚═╝╚═╝ ╩  ╩ ╩╝╚╝╚═╝╚═╝"
 		},
 		{
 			"╦ ╦╔═╗╦  ╔═╗",
@@ -171,7 +171,7 @@ namespace Menu {
 		}
 	};
 
-	const array<int, 3> menu_width = {19, 12, 12};
+	const array<int, 3> menu_width = {22, 12, 12};
 
 	const vector<array<string, 2>> help_text = {
 		{"Mouse 1", "Clicks buttons and selects in process list."},
@@ -344,22 +344,55 @@ namespace Menu {
 				"resolution of the other two,",
 				"so will show a shorter historical view."},
 			{"clock_format",
-				"Draw a clock at top of screen.",
-				"(Only visible if cpu box is enabled!)",
+				"Clock format using strftime syntax.",
+				"(Displayed left of update interval)",
 				"",
-				"Formatting according to strftime, empty",
-				"string to disable.",
-				"",
-				"Custom formatting options:",
-				"\"/host\" = hostname",
-				"\"/user\" = username",
-				"\"/uptime\" = system uptime",
+				"Empty string to disable clock.",
 				"",
 				"Examples of strftime formats:",
 				"\"%X\" = locale HH:MM:SS",
-				"\"%H\" = 24h hour, \"%I\" = 12h hour",
-				"\"%M\" = minute, \"%S\" = second",
+				"\"%H:%M:%S\" = 24h format",
+				"\"%I:%M:%S %p\" = 12h with AM/PM",
 				"\"%d\" = day, \"%m\" = month, \"%y\" = year"},
+			{"clock_12h",
+				"Use 12-hour clock format.",
+				"",
+				"Shows time as HH:MM:SS AM/PM",
+				"instead of 24-hour format.",
+				"",
+				"Overrides clock_format when enabled.",
+				"",
+				"True or False."},
+			{"show_hostname",
+				"Show hostname in CPU box header.",
+				"(Displayed in center position)",
+				"",
+				"Strips \".local\" suffix but keeps",
+				"full FQDN (e.g., host.domain.com).",
+				"",
+				"True or False."},
+			{"show_uptime_header",
+				"Show system uptime in header.",
+				"(Displayed after preset button)",
+				"",
+				"Shows uptime in d:h:m:s format.",
+				"",
+				"True or False."},
+			{"show_username_header",
+				"Show current username in header.",
+				"(Displayed after uptime)",
+				"",
+				"True or False."},
+			{"preset_names",
+				"Custom names for presets 1-9.",
+				"",
+				"Names separated by whitespace.",
+				"Displayed after preset number.",
+				"",
+				"Example:",
+				"\"Standard LLM Processes Power\"",
+				"",
+				"Leave empty to use default numbers."},
 			{"base_10_sizes",
 				"Use base 10 for bits and bytes sizes.",
 				"",
@@ -1331,7 +1364,7 @@ namespace Menu {
 		if (retval == Changed) {
 			auto& out = Global::overlay;
 			out = bg + Fx::reset + Fx::b;
-			auto cy = y + 7;
+			auto cy = y + 8;  // One line spacing after banner
 			for (const auto& i : iota(0, 3)) {
 				if (tty_mode) out += (i == selected ? Theme::c("hi_fg") : Theme::c("main_fg"));
 				const auto& menu = (not tty_mode and i == selected ? menu_selected[i] : menu_normal[i]);
@@ -1449,6 +1482,9 @@ static int optionsMenu(const string& key) {
 					}
 					else if (option == "clock_format") {
 						Draw::update_clock(true);
+						screen_redraw = true;
+					}
+					else if (option == "preset_names") {
 						screen_redraw = true;
 					}
 					else if (option == "cpu_core_map") {
@@ -1577,6 +1613,15 @@ static int optionsMenu(const string& key) {
 				else if (option == "disable_mouse") {
 					const auto is_mouse_enabled = !Config::getB("disable_mouse");
 					std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
+				}
+				else if (option == "clock_12h") {
+					Draw::update_clock(true);
+				}
+				else if (option == "show_hostname") {
+					Draw::update_hostname(true);
+				}
+				else if (is_in(option, "show_uptime_header", "show_username_header")) {
+					// These trigger a full redraw which is already set above
 				}
 			}
 			else if (selPred.test(isBrowsable)) {
@@ -2006,13 +2051,30 @@ static int optionsMenu(const string& key) {
 	}
 #endif
 
+	//* Wrapper to call the new MenuV2 options menu
+	//? Set to 1 to use the new MenuV2 options menu instead of the old one
+	#define USE_MENUV2_OPTIONS 1
+
+	#ifdef USE_MENUV2_OPTIONS
+	//? Forward declaration for MenuV2::optionsMenuV2 (defined later in this file)
+	int optionsMenuV2_wrapper(const string& key);
+	#endif
+
+	static int optionsMenuWrapper(const string& key) {
+		#ifdef USE_MENUV2_OPTIONS
+		return optionsMenuV2_wrapper(key);
+		#else
+		return optionsMenu(key);
+		#endif
+	}
+
 	//* Add menus here and update enum Menus in header
 	const auto menuFunc = vector{
 		ref(sizeError),
 		ref(signalChoose),
 		ref(signalSend),
 		ref(signalReturn),
-		ref(optionsMenu),
+		ref(optionsMenuWrapper),
 		ref(helpMenu),
 		ref(reniceMenu),
 		ref(vramAllocMenu),
@@ -2029,7 +2091,21 @@ static int optionsMenu(const string& key) {
 			bg.clear();
 			bg.shrink_to_fit();
 			currentMenu = -1;
-			Runner::run("all", true, true);
+			// If theme or boxes changed during menu session, apply changes and trigger full refresh
+			// Aggressive clear to prevent display corruption from cached colors
+			if (MenuV2::theme_changed_pending or MenuV2::boxes_changed_pending) {
+				std::cout << Term::clear << std::flush;  // Clear screen completely first
+				if (MenuV2::theme_changed_pending) {
+					Theme::setTheme();         // Load the new theme colors
+				}
+				Draw::calcSizes();             // Recalculate all box sizes and clear caches
+				Global::resized = true;        // Trigger full refresh in main loop
+				MenuV2::theme_changed_pending = false;
+				MenuV2::boxes_changed_pending = false;
+			}
+			else {
+				Runner::run("all", true, true);
+			}
 			mouse_mappings.clear();
 			return;
 		}
@@ -2077,5 +2153,1788 @@ static int optionsMenu(const string& key) {
 		menuMask.set(menu);
 		signalToSend = signal;
 		process();
+	}
+}
+
+//? ====================== MenuV2 Implementation ======================
+namespace MenuV2 {
+	using namespace Tools;
+	using namespace std;
+
+	//? Flag to track theme change during menu session - triggers full refresh on exit
+	bool theme_changed_pending = false;
+
+	//? Flag to track box layout change during menu session - triggers full refresh on exit
+	bool boxes_changed_pending = false;
+
+	//? ==================== Clock Format Display Helper ====================
+	//? Translates strftime codes to human-readable examples
+	string clockFormatToReadable(const string& fmt) {
+		static const std::unordered_map<string, string> clock_display = {
+			{"%X", "14:30:45 (locale)"},
+			{"%H:%M", "14:30"},
+			{"%H:%M:%S", "14:30:45"},
+			{"%I:%M %p", "2:30 PM"},
+			{"%I:%M:%S %p", "2:30:45 PM"},
+			{"", "(disabled)"}
+		};
+		auto it = clock_display.find(fmt);
+		return (it != clock_display.end()) ? it->second : fmt;
+	}
+
+	//? ==================== Box Toggle Helpers ====================
+	//? Maps pseudo-config keys to box names in shown_boxes
+	static const std::unordered_map<string, string> box_key_to_name = {
+		{"box_show_cpu", "cpu"},
+		{"box_show_gpu", "gpu0"},
+		{"box_show_pwr", "pwr"},
+		{"box_show_mem", "mem"},
+		{"box_show_net", "net"},
+		{"box_show_proc", "proc"}
+	};
+
+	//? Check if a box is enabled in shown_boxes
+	bool isBoxEnabled(const string& key) {
+		auto it = box_key_to_name.find(key);
+		if (it == box_key_to_name.end()) return false;
+		const string& box_name = it->second;
+		const string& shown = Config::getS("shown_boxes");
+		return shown.find(box_name) != string::npos;
+	}
+
+	//? Toggle a box in shown_boxes
+	void toggleBox(const string& key) {
+		auto it = box_key_to_name.find(key);
+		if (it == box_key_to_name.end()) return;
+		const string& box_name = it->second;
+		string shown = Config::getS("shown_boxes");
+
+		size_t pos = shown.find(box_name);
+		if (pos != string::npos) {
+			// Remove the box - handle leading/trailing spaces
+			size_t end = pos + box_name.length();
+			// Remove trailing space if exists
+			if (end < shown.length() && shown[end] == ' ') end++;
+			// Or remove leading space if at end
+			else if (pos > 0 && shown[pos-1] == ' ') pos--;
+			shown.erase(pos, end - pos);
+		} else {
+			// Add the box at appropriate position (maintain order: cpu pwr gpu0 mem net proc)
+			const vector<string> order = {"cpu", "pwr", "gpu0", "mem", "net", "proc"};
+			vector<string> current_boxes;
+			for (const auto& b : ssplit(shown)) {
+				current_boxes.push_back(b);
+			}
+			current_boxes.push_back(box_name);
+			// Sort by order
+			std::sort(current_boxes.begin(), current_boxes.end(), [&order](const string& a, const string& b) {
+				auto pos_a = std::find(order.begin(), order.end(), a);
+				auto pos_b = std::find(order.begin(), order.end(), b);
+				return pos_a < pos_b;
+			});
+			shown.clear();
+			for (size_t i = 0; i < current_boxes.size(); i++) {
+				if (i > 0) shown += " ";
+				shown += current_boxes[i];
+			}
+		}
+		Config::set("shown_boxes", shown);
+		boxes_changed_pending = true;
+		Config::current_preset = -1;
+	}
+
+	//? Check if key is a box toggle pseudo-config
+	bool isBoxToggleKey(const string& key) {
+		return box_key_to_name.find(key) != box_key_to_name.end();
+	}
+
+	//? ==================== UI Component Renderers ====================
+
+	string drawToggle(bool value, bool selected, bool tty_mode) {
+		const string on_char = tty_mode ? "[x]" : "[" + Theme::c("proc_misc") + "●" + Theme::c("main_fg") + "]";
+		const string off_char = tty_mode ? "[ ]" : "[" + Theme::c("inactive_fg") + " " + Theme::c("main_fg") + "]";
+
+		string result;
+		if (selected) {
+			result = Theme::c("selected_bg") + Theme::c("selected_fg");
+		}
+		result += (value ? on_char : off_char);
+		if (selected) {
+			result += Fx::reset;
+		}
+		return result;
+	}
+
+	string drawRadio(const vector<string>& options, int current_idx, bool selected, bool tty_mode) {
+		string result;
+		const string sel_char = tty_mode ? "(*)" : Theme::c("proc_misc") + "●" + Theme::c("main_fg");
+		const string unsel_char = tty_mode ? "( )" : Theme::c("inactive_fg") + "○" + Theme::c("main_fg");
+
+		for (size_t i = 0; i < options.size(); i++) {
+			if (i > 0) result += "  ";
+			bool is_current = (static_cast<int>(i) == current_idx);
+
+			if (selected and is_current) {
+				result += Theme::c("selected_bg") + Theme::c("selected_fg");
+			}
+			result += (is_current ? sel_char : unsel_char) + " " + options[i];
+			if (selected and is_current) {
+				result += Fx::reset;
+			}
+		}
+		return result;
+	}
+
+	string drawSlider(int min_val, int max_val, int current, int width, bool selected, bool tty_mode) {
+		if (width < 10) width = 10;
+
+		float ratio = static_cast<float>(current - min_val) / static_cast<float>(max_val - min_val);
+		int pos = static_cast<int>(ratio * (width - 2));
+		if (pos < 0) pos = 0;
+		if (pos > width - 2) pos = width - 2;
+
+		string bar;
+		const string track_char = tty_mode ? "-" : "─";
+		const string handle_char = tty_mode ? "O" : "●";
+
+		bar += "[";
+		for (int i = 0; i < width - 2; i++) {
+			if (i == pos) {
+				bar += Theme::c("proc_misc") + handle_char + Theme::c("main_fg");
+			} else if (i < pos) {
+				bar += Theme::c("proc_misc") + track_char + Theme::c("main_fg");
+			} else {
+				bar += Theme::c("inactive_fg") + track_char + Theme::c("main_fg");
+			}
+		}
+		bar += "]";
+
+		string result;
+		if (selected) {
+			result = Theme::c("selected_bg") + Theme::c("selected_fg");
+		}
+		result += bar + " " + to_string(current);
+		if (selected) {
+			result += Fx::reset;
+		}
+		return result;
+	}
+
+	string drawSelect(const string& value, int width, bool selected, bool open) {
+		string result;
+		string display_val = value;
+		if (static_cast<int>(display_val.size()) > width - 4) {
+			display_val = display_val.substr(0, width - 7) + "...";
+		}
+
+		if (selected) {
+			result = Theme::c("selected_bg") + Theme::c("selected_fg");
+		}
+
+		result += "[ " + ljust(display_val, width - 4) + (open ? "▲" : "▼") + "]";
+
+		if (selected) {
+			result += Fx::reset;
+		}
+		return result;
+	}
+
+	//? ==================== Preset Preview Renderer ====================
+
+	string drawPresetPreview(const PresetDef& preset, int width, int height) {
+		if (width < 20 or height < 8) return "Preview too small";
+
+		vector<string> lines(height, string(width, ' '));
+
+		auto drawBox = [&](int x, int y, int w, int h, const string& label) {
+			if (y < 0 or y >= height or x < 0 or x >= width) return;
+			// Top border
+			if (y < height) {
+				for (int i = x; i < x + w and i < width; i++) {
+					lines[y][i] = (i == x) ? '+' : (i == x + w - 1) ? '+' : '-';
+				}
+			}
+			// Bottom border
+			if (y + h - 1 < height) {
+				for (int i = x; i < x + w and i < width; i++) {
+					lines[y + h - 1][i] = (i == x) ? '+' : (i == x + w - 1) ? '+' : '-';
+				}
+			}
+			// Sides and content
+			for (int row = y + 1; row < y + h - 1 and row < height; row++) {
+				if (x < width) lines[row][x] = '|';
+				if (x + w - 1 < width) lines[row][x + w - 1] = '|';
+			}
+			// Center label
+			if (y + h / 2 < height and not label.empty()) {
+				int label_start = x + (w - static_cast<int>(label.size())) / 2;
+				for (size_t i = 0; i < label.size() and label_start + static_cast<int>(i) < width; i++) {
+					if (label_start + static_cast<int>(i) >= 0) {
+						lines[y + h / 2][label_start + i] = label[i];
+					}
+				}
+			}
+		};
+
+		int y_pos = 0;
+
+		// CPU always at top if enabled
+		if (preset.cpu_enabled) {
+			drawBox(0, y_pos, width, 3, "CPU");
+			y_pos += 3;
+		}
+
+		// GPU under CPU
+		if (preset.gpu_enabled) {
+			drawBox(0, y_pos, width, 3, "GPU");
+			y_pos += 3;
+		}
+
+		// PWR under GPU
+		if (preset.pwr_enabled) {
+			drawBox(0, y_pos, width, 3, "PWR");
+			y_pos += 3;
+		}
+
+		int remaining_height = height - y_pos;
+		if (remaining_height < 4) remaining_height = 4;
+
+		// Memory, Network, Processes layout
+		bool has_mem = (preset.mem_layout != MemLayout::Hidden);
+		bool has_net = (preset.net_layout != NetLayout::Hidden);
+		bool has_proc = (preset.proc_layout != ProcLayout::Hidden);
+
+		if (preset.mem_layout == MemLayout::Horizontal and preset.net_layout == NetLayout::Horizontal) {
+			// MEM H | NET H side by side, PROC H below
+			int mem_net_height = has_proc ? remaining_height / 2 : remaining_height;
+			int half_width = width / 2;
+
+			if (has_mem) {
+				string mem_label = (preset.disk_mode == DiskMode::Hidden) ? "MEM H" : "MEM+DSK";
+				drawBox(0, y_pos, half_width, mem_net_height, mem_label);
+			}
+			if (has_net) {
+				drawBox(half_width, y_pos, width - half_width, mem_net_height, "NET H");
+			}
+
+			if (has_proc and preset.proc_layout == ProcLayout::Horizontal) {
+				drawBox(0, y_pos + mem_net_height, width, remaining_height - mem_net_height, "PROC H");
+			}
+		}
+		else if (preset.mem_layout == MemLayout::Vertical) {
+			// Vertical layout: MEM V on left, potentially NET V + PROC V on right
+			int left_width = width / 3;
+			int right_width = width - left_width;
+
+			string mem_label = (preset.disk_mode == DiskMode::Hidden) ? "MEM V" : "MEM V+D";
+			drawBox(0, y_pos, left_width, remaining_height, mem_label);
+
+			if (preset.net_layout == NetLayout::Vertical and preset.proc_layout == ProcLayout::Vertical) {
+				int net_height = remaining_height / 2;
+				drawBox(left_width, y_pos, right_width, net_height, "NET V");
+				drawBox(left_width, y_pos + net_height, right_width, remaining_height - net_height, "PROC V");
+			}
+			else if (preset.proc_layout == ProcLayout::Vertical) {
+				drawBox(left_width, y_pos, right_width, remaining_height, "PROC V");
+			}
+			else if (preset.proc_layout == ProcLayout::Horizontal) {
+				int proc_height = remaining_height / 3;
+				drawBox(left_width, y_pos, right_width, remaining_height - proc_height, has_net ? "NET" : "");
+				drawBox(0, y_pos + remaining_height - proc_height, width, proc_height, "PROC H");
+			}
+		}
+		else {
+			// Simple fallback
+			if (has_proc) {
+				drawBox(0, y_pos, width, remaining_height, "PROC");
+			}
+		}
+
+		// Join lines
+		string result;
+		for (const auto& line : lines) {
+			result += line + "\n";
+		}
+		if (not result.empty()) result.pop_back(); // Remove trailing newline
+		return result;
+	}
+
+	//? ==================== Category Definitions ====================
+
+	const vector<Category>& getCategories() {
+		static vector<Category> cats;
+
+		if (cats.empty()) {
+			// Category 1: System
+			cats.push_back({
+				"System", "",
+				{
+					{"Update", {
+						{"update_ms", "Update Interval", "Update time in milliseconds (100-86400000)", ControlType::Slider, {}, "", 100, 10000, 100},
+						{"background_update", "Background Update", "Update UI when menus are showing", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"terminal_sync", "Terminal Sync", "Use synchronized output to reduce flickering", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Input", {
+						{"vim_keys", "Vim Keys (hjkl)", "Enable h,j,k,l for directional control", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"disable_mouse", "Disable Mouse", "Disable all mouse events", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Units", {
+						{"base_10_sizes", "Base 10 Sizes", "Use KB=1000 instead of KiB=1024", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"base_10_bitrate", "Bitrate Units", "How to display network bitrates", ControlType::Radio, {"Auto", "True", "False"}, "", 0, 0, 0},
+					}},
+					{"Logging", {
+						{"log_level", "Log Level", "Logging verbosity for error.log", ControlType::Radio, {"DISABLED", "ERROR", "WARNING", "INFO", "DEBUG"}, "", 0, 0, 0},
+					}},
+					{"Config", {
+						{"save_config_on_exit", "Save on Exit", "Auto-save settings when exiting", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Advanced", {
+						{"cpu_core_map", "CPU Core Map", "Override CPU core detection (comma-separated)", ControlType::Text, {}, "", 0, 0, 0},
+					#ifdef __linux__
+						{"freq_mode", "Frequency Mode", "CPU frequency display mode", ControlType::Radio, {"first", "range", "lowest", "highest", "average"}, "", 0, 0, 0},
+					#endif
+					}},
+					{"Compatibility", {
+						{"lowcolor", "Low Color Mode", "Use 256-color mode instead of truecolor", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"tty_mode", "TTY Mode", "Force TTY compatible output (16 colors)", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+				},
+				false, {}
+			});
+
+			// Category 2: Appearance
+			cats.push_back({
+				"Appearance", "",
+				{
+					{"Theme", {
+						{"color_theme", "Color Theme", "Select color theme from themes folder", ControlType::Select, {}, "color_theme", 0, 0, 0},
+						{"theme_background", "Theme Background", "Show theme background color", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Colors", {
+						{"truecolor", "True Color (24-bit)", "Use 24-bit colors (disable for 256-color terminals)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"force_tty", "Force TTY Mode", "Force 16-color TTY mode", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Borders", {
+						{"rounded_corners", "Rounded Corners", "Use rounded corners on boxes", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Graph Style", {
+						{"graph_symbol", "Default Graph Symbol", "Symbol style for all graphs", ControlType::Radio, {"braille", "block", "tty"}, "", 0, 0, 0},
+					}},
+					{"Title Bar", {
+						{"clock_format", "Clock Format", "Time display style in header", ControlType::Select, {}, "clock_format", 0, 0, 0},
+						{"show_hostname", "Show Hostname", "Display hostname in header (centered)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_uptime_header", "Show Uptime", "Display uptime in header", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_username_header", "Show Username", "Display username in header", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Battery", {
+						{"show_battery", "Show Battery", "Display battery status if present", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"selected_battery", "Battery", "Which battery to monitor", ControlType::Select, {}, "selected_battery", 0, 0, 0},
+						{"show_battery_watts", "Show Battery Power", "Display charge/discharge power", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Layout", {
+						{"box_show_cpu", "CPU", "Show CPU panel", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"box_show_gpu", "GPU", "Show GPU panel", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"box_show_pwr", "PWR", "Show Power panel", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"box_show_mem", "MEM", "Show Memory panel", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"box_show_net", "NET", "Show Network panel", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"box_show_proc", "PROC", "Show Processes panel", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+				},
+				false, {}
+			});
+
+			// Category 3: Panels (with sub-tabs)
+			cats.push_back({
+				"Panels", "",
+				{
+					//? ==================== CPU Sub-tab ====================
+					{"CPU | Display", {
+						{"cpu_bottom", "CPU at Bottom", "Show CPU box at bottom of screen", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_uptime", "Show Uptime", "Display uptime in CPU box", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_cpu_freq", "Show Frequency", "Display CPU frequency", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_cpu_watts", "Show Power", "Display CPU power consumption", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"custom_cpu_name", "Custom CPU Name", "Override CPU model name (empty to disable)", ControlType::Text, {}, "", 0, 0, 0},
+					}},
+					{"CPU | Temperature", {
+						{"check_temp", "Show Temperature", "Enable CPU temperature display", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_coretemp", "Show Core Temps", "Display per-core temperatures", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"temp_scale", "Temperature Scale", "Temperature unit", ControlType::Radio, {"celsius", "fahrenheit", "kelvin", "rankine"}, "", 0, 0, 0},
+						{"cpu_sensor", "Temperature Sensor", "Select CPU temperature sensor", ControlType::Select, {}, "cpu_sensor", 0, 0, 0},
+					}},
+					{"CPU | Graphs", {
+						{"graph_symbol_cpu", "Graph Symbol", "Symbol for CPU graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
+						{"cpu_graph_upper", "Upper Graph", "Stat for upper half of CPU graph", ControlType::Select, {}, "cpu_graph_upper", 0, 0, 0},
+						{"cpu_graph_lower", "Lower Graph", "Stat for lower half of CPU graph", ControlType::Select, {}, "cpu_graph_lower", 0, 0, 0},
+						{"cpu_single_graph", "Single Graph", "Disable lower graph (upper only)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"cpu_invert_lower", "Invert Lower", "Flip orientation of lower graph", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+				#ifdef GPU_SUPPORT
+					{"CPU | GPU Info", {
+						{"show_gpu_info", "Show GPU Info", "Display GPU stats in CPU box", ControlType::Radio, {"Auto", "On", "Off"}, "", 0, 0, 0},
+					}},
+
+					//? ==================== GPU Sub-tab ====================
+					{"GPU | Display", {
+						{"gpu_mirror_graph", "Mirror Graph", "Mirror GPU graph horizontally", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"nvml_measure_pcie_speeds", "Measure PCIe Speeds", "Enable PCIe bandwidth measurement (NVIDIA)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"shown_gpus", "Shown GPUs", "Which GPU vendors to show (nvidia amd intel)", ControlType::Text, {}, "", 0, 0, 0},
+					}},
+					{"GPU | Graphs", {
+						{"graph_symbol_gpu", "Graph Symbol", "Symbol for GPU graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
+					}},
+				#endif
+
+					//? ==================== Memory Sub-tab ====================
+					{"Mem | Display", {
+						{"mem_below_net", "Memory Below Net", "Place memory box below network box", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"net_beside_mem", "Net Beside Mem", "Show network box beside memory box", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"mem_graphs", "Show Mem Graphs", "Display memory usage graphs", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"mem_horizontal", "Horizontal Layout", "Show memory graphs side by side", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"mem_bar_mode", "Bar Mode", "Use meter bars instead of graphs", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_swap", "Show Swap", "Display swap memory info", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"swap_disk", "Swap as Disk", "Show swap as disk entry", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Mem | Items", {
+						{"mem_show_used", "Show Used", "Display used memory", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"mem_show_available", "Show Available", "Display available memory", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"mem_show_cached", "Show Cached", "Display cached memory", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"mem_show_free", "Show Free", "Display free memory", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"swap_show_used", "Swap Used", "Display swap used", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"swap_show_free", "Swap Free", "Display swap free", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"vram_show_used", "VRAM Used", "Display VRAM used", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"vram_show_free", "VRAM Free", "Display VRAM free", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Mem | Graphs", {
+						{"graph_symbol_mem", "Graph Symbol", "Symbol for memory graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
+					}},
+					{"Mem | ZFS", {
+						{"zfs_arc_cached", "ZFS ARC as Cache", "Count ZFS ARC as cached memory", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"zfs_hide_datasets", "Hide ZFS Datasets", "Hide individual ZFS datasets from disk list", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+
+					//? ==================== Disk Sub-tab ====================
+					{"Disk | Display", {
+						{"show_disks", "Show Disks", "Enable disk usage display", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"only_physical", "Only Physical", "Hide virtual/loop devices", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_network_drives", "Network Drives", "Show NFS/SMB/AFP network drives", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"use_fstab", "Use fstab", "Use fstab for disk detection", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"disk_free_priv", "Free as Privileged", "Calculate free space as privileged user", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"disks_filter", "Disks Filter", "Select disk to show (empty=all)", ControlType::Select, {}, "disks_filter", 0, 0, 0},
+					}},
+					{"Disk | I/O", {
+						{"show_io_stat", "Show I/O Stats", "Display disk I/O statistics", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"io_mode", "I/O Mode", "Toggle detailed I/O display mode", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"io_graph_combined", "Combined I/O Graph", "Combine read/write into single graph", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"io_graph_speeds", "Graph Speeds", "I/O graph speed reference (comma-separated)", ControlType::Text, {}, "", 0, 0, 0},
+					}},
+
+					//? ==================== Network Sub-tab ====================
+					{"Net | Display", {
+						{"net_auto", "Auto Select", "Auto-select primary network interface", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"net_iface", "Interface", "Select network interface to display", ControlType::Select, {}, "net_iface", 0, 0, 0},
+						{"net_sync", "Sync Scales", "Synchronize upload/download graph scales", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"swap_upload_download", "Swap Up/Down", "Swap upload and download positions", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Net | Reference", {
+						{"net_download", "Download Ref", "Download speed reference value (Mebibits)", ControlType::Slider, {}, "", 1, 10000, 10},
+						{"net_upload", "Upload Ref", "Upload speed reference value (Mebibits)", ControlType::Slider, {}, "", 1, 10000, 10},
+					}},
+					{"Net | Graphs", {
+						{"graph_symbol_net", "Graph Symbol", "Symbol for network graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
+					}},
+
+					//? ==================== Processes Sub-tab ====================
+					{"Proc | Display", {
+						{"proc_left", "Processes Left", "Place processes box on left side", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_full_width", "Full Width", "Show proc panel full width (with net_beside_mem)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_tree", "Tree View", "Show process tree hierarchy", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_colors", "Enable Colors", "Enable colored process info", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_gradient", "Gradient", "Enable gradient colors in process list", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_per_core", "Per Core", "Show per-core CPU usage", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_mem_bytes", "Memory as Bytes", "Show memory usage in bytes", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_show_cmd", "Show Command", "Show command column", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Proc | Behavior", {
+						{"proc_aggregate", "Aggregate", "Aggregate child process stats in tree view", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_info_smaps", "Use smaps", "Use smaps for accurate memory (slower)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_filter_kernel", "Filter Kernel", "Filter out kernel processes (Linux)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_follow_detailed", "Follow Detailed", "Follow selected process in detailed view", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"keep_dead_proc_usage", "Keep Dead Usage", "Preserve CPU/mem usage for dead processes", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Proc | Sorting", {
+						{"proc_sorting", "Default Sort", "Default process sorting column", ControlType::Select, {}, "proc_sorting", 0, 0, 0},
+						{"proc_reversed", "Reverse Sort", "Reverse sort order", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
+					{"Proc | Graphs", {
+						{"proc_cpu_graphs", "CPU Graphs", "Show mini CPU graphs in process list", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_gpu", "GPU Column", "Show GPU usage column (Apple Silicon)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_gpu_graphs", "GPU Graphs", "Show mini GPU graphs in process list", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"graph_symbol_proc", "Graph Symbol", "Symbol for process graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
+					}},
+				},
+				true, {"CPU", "GPU", "PWR", "Memory", "Network", "Processes"}
+			});
+
+			// Category 4: Presets
+			cats.push_back({
+				"Presets", "",
+				{
+					{"Presets", {
+						// Presets use special handling - not regular options
+					}},
+				},
+				false, {}
+			});
+		}
+
+		return cats;
+	}
+
+	//? ==================== Preset Conversion ====================
+
+	string PresetDef::toConfigString() const {
+		string result;
+
+		// Build shown_boxes style string based on layout
+		vector<string> boxes;
+		if (cpu_enabled) boxes.push_back("cpu:0:" + graph_symbol);
+		if (gpu_enabled) boxes.push_back("gpu0:0:" + graph_symbol);
+		if (pwr_enabled) boxes.push_back("pwr:0:" + graph_symbol);
+
+		if (mem_layout != MemLayout::Hidden) {
+			int pos = (mem_layout == MemLayout::Vertical) ? 0 : 0;
+			boxes.push_back("mem:" + to_string(pos) + ":" + graph_symbol);
+		}
+		if (net_layout != NetLayout::Hidden) {
+			int pos = (net_layout == NetLayout::Vertical) ? 0 : 0;
+			boxes.push_back("net:" + to_string(pos) + ":" + graph_symbol);
+		}
+		if (proc_layout != ProcLayout::Hidden) {
+			int pos = (proc_layout == ProcLayout::Vertical) ? 1 : 0;
+			boxes.push_back("proc:" + to_string(pos) + ":" + graph_symbol);
+		}
+
+		for (size_t i = 0; i < boxes.size(); i++) {
+			if (i > 0) result += ",";
+			result += boxes[i];
+		}
+
+		return result;
+	}
+
+	PresetDef PresetDef::fromConfigString(const string& config, const string& preset_name) {
+		PresetDef preset;
+		preset.name = preset_name;
+		preset.cpu_enabled = false;
+		preset.gpu_enabled = false;
+		preset.pwr_enabled = false;
+		preset.mem_layout = MemLayout::Hidden;
+		preset.net_layout = NetLayout::Hidden;
+		preset.proc_layout = ProcLayout::Hidden;
+
+		auto parts = ssplit(config, ',');
+		for (const auto& part : parts) {
+			auto box_parts = ssplit(part, ':');
+			if (box_parts.empty()) continue;
+
+			string box_name = box_parts[0];
+			int position = (box_parts.size() > 1) ? stoi_safe(box_parts[1], 0) : 0;
+			string symbol = (box_parts.size() > 2) ? string(box_parts[2]) : "default";
+
+			if (preset.graph_symbol == "default" and symbol != "default") {
+				preset.graph_symbol = symbol;
+			}
+
+			if (box_name == "cpu") {
+				preset.cpu_enabled = true;
+			}
+			else if (box_name.starts_with("gpu")) {
+				preset.gpu_enabled = true;
+			}
+			else if (box_name == "pwr") {
+				preset.pwr_enabled = true;
+			}
+			else if (box_name == "mem") {
+				preset.mem_layout = (position == 1) ? MemLayout::Vertical : MemLayout::Horizontal;
+			}
+			else if (box_name == "net") {
+				preset.net_layout = (position == 1) ? NetLayout::Vertical : NetLayout::Horizontal;
+			}
+			else if (box_name == "proc") {
+				preset.proc_layout = (position == 1) ? ProcLayout::Vertical : ProcLayout::Horizontal;
+			}
+		}
+
+		return preset;
+	}
+
+	vector<PresetDef> getPresets() {
+		vector<PresetDef> presets;
+		presets.resize(9); // Presets 1-9
+
+		// Get preset names
+		auto preset_names_str = Config::getS("preset_names");
+		auto names = ssplit(preset_names_str);
+
+		// Get presets config string
+		auto presets_str = Config::getS("presets");
+		auto preset_configs = ssplit(presets_str);
+
+		for (int i = 0; i < 9; i++) {
+			string name = (i < static_cast<int>(names.size())) ? string(names[i]) : "";
+			string config = (i < static_cast<int>(preset_configs.size())) ? string(preset_configs[i]) : "";
+
+			if (config.empty()) {
+				presets[i].name = name;
+			} else {
+				presets[i] = PresetDef::fromConfigString(config, name);
+			}
+		}
+
+		return presets;
+	}
+
+	void savePresets(const vector<PresetDef>& presets) {
+		string names_str;
+		string configs_str;
+
+		for (size_t i = 0; i < presets.size() and i < 9; i++) {
+			if (i > 0) {
+				names_str += " ";
+				configs_str += " ";
+			}
+			names_str += presets[i].name.empty() ? ("Preset" + to_string(i + 1)) : presets[i].name;
+			configs_str += presets[i].toConfigString();
+		}
+
+		Config::set("preset_names", names_str);
+		Config::set("presets", configs_str);
+	}
+
+	//? ==================== Dynamic Choices Helper ====================
+
+	//? Get dynamic choices for Select controls based on choices_ref
+	vector<string> getDynamicChoices(const string& choices_ref) {
+		vector<string> choices;
+
+		if (choices_ref == "net_iface") {
+			// Return available network interfaces
+			choices.push_back("");  // Empty = auto-select
+			for (const auto& iface : Net::interfaces) {
+				choices.push_back(iface);
+			}
+		}
+		else if (choices_ref == "disks_filter") {
+			// Return available disk mountpoints for filtering
+			// Get the last collected memory data to access disks
+			choices.push_back("");  // Empty = show all disks
+			auto mem = Mem::collect(true);  // no_update = true to get cached data
+			for (const auto& mount : mem.disks_order) {
+				choices.push_back(mount);
+			}
+		}
+		else if (choices_ref == "color_theme") {
+			// Return available themes - Theme::themes is a vector<string>
+			for (const auto& theme : Theme::themes) {
+				choices.push_back(theme);
+			}
+		}
+		else if (choices_ref == "proc_sorting") {
+			// Fixed choices for process sorting
+			choices = {"pid", "program", "arguments", "threads", "user", "memory", "cpu lazy", "cpu direct"};
+		}
+		else if (choices_ref == "cpu_sensor") {
+			// Return available CPU temperature sensors
+			choices.push_back("");  // Empty = auto-select
+			for (const auto& sensor : Cpu::available_sensors) {
+				choices.push_back(sensor);
+			}
+		}
+		else if (choices_ref == "cpu_graph_upper" or choices_ref == "cpu_graph_lower") {
+			// Fixed choices for CPU graph stats
+			choices = {"total", "user", "system", "iowait", "irq", "steal", "guest"};
+		}
+		else if (choices_ref == "selected_battery") {
+			// Return available batteries
+			choices.push_back("Auto");
+			// Add detected batteries if available
+		}
+		else if (choices_ref == "clock_format") {
+			// Common clock format choices
+			choices = {"%X", "%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p", ""};
+		}
+
+		return choices;
+	}
+
+	//? ==================== Main Options Menu V2 ====================
+
+	int optionsMenuV2(const string& key) {
+		// This is a placeholder - full implementation requires substantial UI work
+		// For now, redirect to the classic menu
+		// TODO: Implement full V2 menu with tabs, proper controls, preset editor
+
+		// Static state variables
+		static int selected_cat = 0;
+		static int selected_subcat = 0;
+		static int selected_option = 0;
+		static int scroll_offset = 0;
+		static bool editing = false;
+		static Draw::TextEdit editor;
+		static bool dropdown_open = false;
+		static int dropdown_selection = 0;
+		static vector<string> dropdown_choices;
+		static string dropdown_key;            //? Track which option key opened the dropdown
+		static bool theme_refresh = false;
+
+		const auto& cats = getCategories();
+		auto tty_mode = Config::getB("tty_mode");
+		auto vim_keys = Config::getB("vim_keys");
+
+		// Dialog dimensions - responsive height (min 30, max 60), always centered
+		const int dialog_width = 76;
+		const int min_dialog_height = 30;
+		const int max_dialog_height = 60;
+		const int banner_height = 9;      // MBTOP banner is 9 rows
+		const int settings_height = 3;    // SETTINGS text is 3 rows
+		const int banner_spacing = 0;     // Space between banner and SETTINGS
+		const int dialog_spacing = 0;     // Space between SETTINGS and dialog
+
+		// Calculate what we can show based on available space
+		// Priority: Dialog (min 30) > SETTINGS text > MBTOP banner
+		const int total_with_all = banner_height + banner_spacing + settings_height + dialog_spacing + min_dialog_height + 2;
+		const int total_with_banner_only = banner_height + dialog_spacing + min_dialog_height + 2;
+
+		bool show_banner = (Term::height >= total_with_banner_only);
+		bool show_settings_text = (Term::height >= total_with_all);
+
+		// Calculate dialog height based on available space
+		int available_for_dialog;
+		if (show_settings_text) {
+			available_for_dialog = Term::height - banner_height - banner_spacing - settings_height - dialog_spacing - 2;
+		} else if (show_banner) {
+			available_for_dialog = Term::height - banner_height - dialog_spacing - 2;
+		} else {
+			available_for_dialog = Term::height - 4;
+		}
+		const int dialog_height = max(min_dialog_height, min(available_for_dialog, max_dialog_height));
+
+		// Calculate positions - everything centered
+		const int x = (Term::width - dialog_width) / 2;
+		int y;
+		if (show_settings_text) {
+			// Banner at top, SETTINGS below, dialog below that
+			y = banner_height + banner_spacing + settings_height + dialog_spacing + 1;
+		} else if (show_banner) {
+			// Banner at top, dialog below
+			y = banner_height + dialog_spacing + 1;
+		} else {
+			// Just dialog, centered
+			y = max(1, (Term::height - dialog_height) / 2);
+		}
+
+		auto& out = Global::overlay;
+		int retval = Menu::Changed;
+
+		// Lambda to rebuild Menu::bg with current theme colors
+		// This is called on initial draw AND after theme changes
+		auto rebuildMenuBg = [&]() {
+			Menu::mouse_mappings.clear();
+			Menu::bg.clear();
+
+			// Draw MBTOP banner if there's room
+			if (show_banner) {
+				Menu::bg = Draw::banner_gen(1, 0, true);
+			}
+
+			// Draw SETTINGS text if there's room
+			if (show_settings_text) {
+				const array<string, 3> settings_text = {
+					"╔═╗╔═╗╔╦╗╔╦╗╦╔╗╔╔═╗╔═╗",
+					"╚═╗╠╣  ║  ║ ║║║║║ ╦╚═╗",
+					"╚═╝╚═╝ ╩  ╩ ╩╝╚╝╚═╝╚═╝"
+				};
+				const int settings_width = 22;
+				int settings_y = banner_height + banner_spacing;
+				int settings_x = Term::width / 2 - settings_width / 2;
+
+				// Draw blank mask around SETTINGS text
+				int settings_mask_x = max(1, settings_x - 1);
+				int settings_mask_y = max(1, settings_y - 1);
+				int settings_mask_w = min(settings_width + 2, Term::width - settings_mask_x + 1);
+				int settings_mask_h = settings_height + 2;
+				string settings_blank(settings_mask_w, ' ');
+				for (int row = 0; row < settings_mask_h; row++) {
+					Menu::bg += Mv::to(settings_mask_y + row, settings_mask_x) + Theme::c("main_bg") + settings_blank;
+				}
+
+				// Use gradient colors from banner
+				vector<string> colors = {
+					Theme::hex_to_color(Global::Banner_src.at(2).at(1)),
+					Theme::hex_to_color(Global::Banner_src.at(4).at(1)),
+					Theme::hex_to_color(Global::Banner_src.at(6).at(1))
+				};
+				for (int i = 0; i < 3; i++) {
+					Menu::bg += Mv::to(settings_y + i, settings_x) + Fx::b + colors[i] + settings_text[i];
+				}
+				Menu::bg += Fx::ub;
+			}
+
+			// Draw blank mask around the dialog box (1 char padding)
+			const int mask_padding = 1;
+			int mask_x = max(1, x - mask_padding);
+			int mask_y = max(1, y - mask_padding);
+			int mask_width = min(dialog_width + mask_padding * 2, Term::width - mask_x + 1);
+			int mask_height = min(dialog_height + mask_padding * 2, Term::height - mask_y + 1);
+			string blank_line(mask_width, ' ');
+			for (int row = 0; row < mask_height; row++) {
+				Menu::bg += Mv::to(mask_y + row, mask_x) + Theme::c("main_bg") + blank_line;
+			}
+
+			// Draw dialog background
+			Menu::bg += Draw::createBox(x, y, dialog_width, dialog_height, Theme::c("hi_fg"), true, "MBTOP Settings");
+
+			// Mouse mappings for tabs (visual drawing is done dynamically)
+			for (size_t i = 0; i < cats.size(); i++) {
+				Menu::mouse_mappings["tab_" + to_string(i)] = {
+					y + 1, x + 2 + static_cast<int>(i) * 14, 3, 13
+				};
+			}
+
+			// Double-line separator under categories
+			const string double_h_line = "═";
+			Menu::bg += Mv::to(y + 3, x) + Theme::c("hi_fg") + "╞"
+				+ Theme::c("div_line");
+			for (int i = 0; i < dialog_width - 2; i++) Menu::bg += double_h_line;
+			Menu::bg += Theme::c("hi_fg") + "╡";
+		};
+
+		// Handle theme change - DON'T apply during menu, only mark for full app refresh on exit
+		if (theme_refresh) {
+			theme_refresh = false;
+			theme_changed_pending = true;         // Mark for full refresh when menu closes
+		}
+
+		if (Menu::redraw) {
+			rebuildMenuBg();
+		}
+		else if (dropdown_open) {
+			// Handle dropdown selection modal
+			if (is_in(key, "escape", "q", "backspace")) {
+				dropdown_open = false;
+				dropdown_choices.clear();
+			}
+			else if (key == "enter" or key == "space") {
+				// Apply selection
+				const auto& cat = cats[selected_cat];
+				if (selected_subcat < static_cast<int>(cat.subcats.size())) {
+					const auto& subcat = cat.subcats[selected_subcat];
+					if (selected_option < static_cast<int>(subcat.options.size())) {
+						const auto& opt = subcat.options[selected_option];
+						if (dropdown_selection < static_cast<int>(dropdown_choices.size())) {
+							Config::set(opt.key, dropdown_choices[dropdown_selection]);
+							// Trigger theme refresh for theme-related options
+							if (opt.key == "color_theme") {
+								theme_refresh = true;
+							}
+							// Sync clock_12h config when clock_format changes
+							else if (opt.key == "clock_format") {
+								const string& fmt = dropdown_choices[dropdown_selection];
+								// 12-hour formats contain %I (hour) or %p (AM/PM)
+								bool is_12h = (fmt.find("%I") != string::npos or fmt.find("%p") != string::npos);
+								Config::set("clock_12h", is_12h);
+							}
+							Menu::redraw = true;  // Redraw to show new selection
+						}
+					}
+				}
+				dropdown_open = false;
+				dropdown_choices.clear();
+			}
+			else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
+				if (dropdown_selection < static_cast<int>(dropdown_choices.size()) - 1) {
+					dropdown_selection++;
+					Menu::redraw = true;
+				}
+			}
+			else if (is_in(key, "up", "k") or (vim_keys and key == "k")) {
+				if (dropdown_selection > 0) {
+					dropdown_selection--;
+					Menu::redraw = true;
+				}
+			}
+			else {
+				retval = Menu::NoChange;
+			}
+		}
+		else if (editing) {
+			// Handle text editing
+			if (is_in(key, "escape", "mouse_click")) {
+				editor.clear();
+				editing = false;
+			}
+			else if (key == "enter") {
+				// Apply edited value
+				const auto& cat = cats[selected_cat];
+				if (selected_subcat < static_cast<int>(cat.subcats.size())) {
+					const auto& subcat = cat.subcats[selected_subcat];
+					if (selected_option < static_cast<int>(subcat.options.size())) {
+						const auto& opt = subcat.options[selected_option];
+						if (opt.control == ControlType::Text or opt.control == ControlType::Slider) {
+							if (Config::stringValid(opt.key, editor.text)) {
+								Config::set(opt.key, editor.text);
+							}
+						}
+					}
+				}
+				editor.clear();
+				editing = false;
+			}
+			else if (not editor.command(key)) {
+				retval = Menu::NoChange;
+			}
+		}
+		else {
+			// Helper lambda to get current option
+			auto getCurrentOption = [&]() -> const OptionDef* {
+				const auto& cat = cats[selected_cat];
+				if (selected_subcat < static_cast<int>(cat.subcats.size())) {
+					const auto& subcat = cat.subcats[selected_subcat];
+					if (selected_option < static_cast<int>(subcat.options.size())) {
+						return &subcat.options[selected_option];
+					}
+				}
+				return nullptr;
+			};
+
+			// Navigation handling
+			if (is_in(key, "escape", "q", "backspace")) {
+				// Just return - full app theme refresh happens when entire menu system closes
+				return Menu::Closed;
+			}
+			else if (key == "tab") {
+				selected_cat = (selected_cat + 1) % static_cast<int>(cats.size());
+				selected_subcat = 0;
+				selected_option = 0;
+				scroll_offset = 0;
+				Menu::redraw = true;
+			}
+			else if (key == "shift_tab") {
+				selected_cat = (selected_cat - 1 + static_cast<int>(cats.size())) % static_cast<int>(cats.size());
+				selected_subcat = 0;
+				selected_option = 0;
+				scroll_offset = 0;
+				Menu::redraw = true;
+			}
+			else if (is_in(key, "right", "l") or (vim_keys and key == "l")) {
+				// Right arrow: change Radio/Select/Slider value or switch tab if no option selected
+				const auto* opt = getCurrentOption();
+				if (opt) {
+					if (opt->control == ControlType::Radio and not opt->choices.empty()) {
+						// Find current value index and cycle to next
+						string current = Config::getAsString(opt->key);
+						int idx = 0;
+						for (size_t i = 0; i < opt->choices.size(); i++) {
+							if (opt->choices[i] == current) {
+								idx = static_cast<int>(i);
+								break;
+							}
+						}
+						idx = (idx + 1) % static_cast<int>(opt->choices.size());
+						Config::set(opt->key, opt->choices[idx]);
+					}
+					else if (opt->control == ControlType::Select and not opt->choices_ref.empty()) {
+						// Get dynamic choices and cycle to next
+						auto choices = getDynamicChoices(opt->choices_ref);
+						if (not choices.empty()) {
+							string current = Config::getAsString(opt->key);
+							int idx = 0;
+							for (size_t i = 0; i < choices.size(); i++) {
+								if (choices[i] == current) {
+									idx = static_cast<int>(i);
+									break;
+								}
+							}
+							idx = (idx + 1) % static_cast<int>(choices.size());
+							Config::set(opt->key, choices[idx]);
+							// Trigger theme refresh for color_theme
+							if (opt->key == "color_theme") {
+								theme_refresh = true;
+							}
+						}
+					}
+					else if (opt->control == ControlType::Slider) {
+						int current = Config::getI(opt->key);
+						int new_val = min(current + opt->step, opt->max_val);
+						Config::set(opt->key, new_val);
+					}
+					else if (opt->control == ControlType::Toggle) {
+						if (isBoxToggleKey(opt->key)) {
+							toggleBox(opt->key);
+						} else {
+							Config::flip(opt->key);
+							// Trigger theme refresh for theme-related options
+							if (is_in(opt->key, "truecolor", "force_tty", "theme_background", "rounded_corners")) {
+								theme_refresh = true;
+								if (opt->key == "truecolor") Config::flip("lowcolor");
+								else if (opt->key == "force_tty") Config::flip("tty_mode");
+							}
+						}
+					}
+				}
+			}
+			else if (is_in(key, "left", "h") or (vim_keys and key == "h")) {
+				// Left arrow: change Radio/Select/Slider value or switch tab if no option selected
+				const auto* opt = getCurrentOption();
+				if (opt) {
+					if (opt->control == ControlType::Radio and not opt->choices.empty()) {
+						// Find current value index and cycle to previous
+						string current = Config::getAsString(opt->key);
+						int idx = 0;
+						for (size_t i = 0; i < opt->choices.size(); i++) {
+							if (opt->choices[i] == current) {
+								idx = static_cast<int>(i);
+								break;
+							}
+						}
+						idx = (idx - 1 + static_cast<int>(opt->choices.size())) % static_cast<int>(opt->choices.size());
+						Config::set(opt->key, opt->choices[idx]);
+					}
+					else if (opt->control == ControlType::Select and not opt->choices_ref.empty()) {
+						// Get dynamic choices and cycle to previous
+						auto choices = getDynamicChoices(opt->choices_ref);
+						if (not choices.empty()) {
+							string current = Config::getAsString(opt->key);
+							int idx = 0;
+							for (size_t i = 0; i < choices.size(); i++) {
+								if (choices[i] == current) {
+									idx = static_cast<int>(i);
+									break;
+								}
+							}
+							idx = (idx - 1 + static_cast<int>(choices.size())) % static_cast<int>(choices.size());
+							Config::set(opt->key, choices[idx]);
+							// Trigger theme refresh for color_theme
+							if (opt->key == "color_theme") {
+								theme_refresh = true;
+							}
+						}
+					}
+					else if (opt->control == ControlType::Slider) {
+						int current = Config::getI(opt->key);
+						int new_val = max(current - opt->step, opt->min_val);
+						Config::set(opt->key, new_val);
+					}
+					else if (opt->control == ControlType::Toggle) {
+						if (isBoxToggleKey(opt->key)) {
+							toggleBox(opt->key);
+						} else {
+							Config::flip(opt->key);
+							// Trigger theme refresh for theme-related options
+							if (is_in(opt->key, "truecolor", "force_tty", "theme_background", "rounded_corners")) {
+								theme_refresh = true;
+								if (opt->key == "truecolor") Config::flip("lowcolor");
+								else if (opt->key == "force_tty") Config::flip("tty_mode");
+							}
+						}
+					}
+				}
+			}
+			else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
+				const auto& cat = cats[selected_cat];
+				if (not cat.subcats.empty()) {
+					int total_options = 0;
+					for (const auto& sc : cat.subcats) {
+						total_options += static_cast<int>(sc.options.size());
+					}
+					if (total_options > 0) {
+						// Move to next option, wrapping subcategories
+						selected_option++;
+						const auto& subcat = cat.subcats[selected_subcat];
+						if (selected_option >= static_cast<int>(subcat.options.size())) {
+							selected_option = 0;
+							selected_subcat = (selected_subcat + 1) % static_cast<int>(cat.subcats.size());
+						}
+					}
+				}
+			}
+			else if (is_in(key, "up", "k") or (vim_keys and key == "k")) {
+				const auto& cat = cats[selected_cat];
+				if (not cat.subcats.empty()) {
+					selected_option--;
+					if (selected_option < 0) {
+						selected_subcat = (selected_subcat - 1 + static_cast<int>(cat.subcats.size())) % static_cast<int>(cat.subcats.size());
+						const auto& subcat = cat.subcats[selected_subcat];
+						selected_option = max(0, static_cast<int>(subcat.options.size()) - 1);
+					}
+				}
+			}
+			else if (is_in(key, "enter", "space")) {
+				const auto* opt = getCurrentOption();
+				if (opt) {
+					if (opt->control == ControlType::Toggle) {
+						if (isBoxToggleKey(opt->key)) {
+							toggleBox(opt->key);
+						} else {
+							Config::flip(opt->key);
+							// Trigger theme refresh for theme-related options
+							if (is_in(opt->key, "truecolor", "force_tty", "theme_background", "rounded_corners")) {
+								theme_refresh = true;
+								if (opt->key == "truecolor") Config::flip("lowcolor");
+								else if (opt->key == "force_tty") Config::flip("tty_mode");
+							}
+						}
+					}
+					else if (opt->control == ControlType::Text) {
+						editor = Draw::TextEdit{Config::getAsString(opt->key), false};
+						editing = true;
+					}
+					else if (opt->control == ControlType::Radio and not opt->choices.empty()) {
+						// Cycle to next option on enter
+						string current = Config::getAsString(opt->key);
+						int idx = 0;
+						for (size_t i = 0; i < opt->choices.size(); i++) {
+							if (opt->choices[i] == current) {
+								idx = static_cast<int>(i);
+								break;
+							}
+						}
+						idx = (idx + 1) % static_cast<int>(opt->choices.size());
+						Config::set(opt->key, opt->choices[idx]);
+					}
+					else if (opt->control == ControlType::Select and not opt->choices_ref.empty()) {
+						// Open dropdown modal for Select
+						dropdown_choices = getDynamicChoices(opt->choices_ref);
+						if (not dropdown_choices.empty()) {
+							string current = Config::getAsString(opt->key);
+							dropdown_selection = 0;
+							for (size_t i = 0; i < dropdown_choices.size(); i++) {
+								if (dropdown_choices[i] == current) {
+									dropdown_selection = static_cast<int>(i);
+									break;
+								}
+							}
+							dropdown_key = opt->key;  //? Track which option opened the dropdown
+							dropdown_open = true;
+						}
+					}
+				}
+			}
+			else if (key.starts_with("tab_")) {
+				int tab_idx = key.back() - '0';
+				if (tab_idx >= 0 and tab_idx < static_cast<int>(cats.size())) {
+					selected_cat = tab_idx;
+					selected_subcat = 0;
+					selected_option = 0;
+					scroll_offset = 0;
+					Menu::redraw = true;
+				}
+			}
+			else {
+				retval = Menu::NoChange;
+			}
+		}
+
+		// Check theme_refresh AGAIN after key handling (in case user just changed theme)
+		// DON'T apply during menu - only mark for full app refresh on exit
+		if (theme_refresh) {
+			theme_refresh = false;
+			theme_changed_pending = true;         // Mark for full refresh when menu closes
+		}
+
+		// Draw content
+		if (retval == Menu::Changed or Menu::redraw) {
+			out = Menu::bg;
+
+			// Draw tab bar dynamically (so highlighting updates on category change)
+			out += Mv::to(y + 2, x + 2);
+			for (size_t i = 0; i < cats.size(); i++) {
+				bool is_sel = (static_cast<int>(i) == selected_cat);
+				string tab_text = cats[i].icon.empty() ? cats[i].name : cats[i].icon + " " + cats[i].name;
+				out += (is_sel ? Theme::c("hi_fg") + Fx::b + "[" + Theme::c("title") : Theme::c("inactive_fg") + " ")
+					+ tab_text
+					+ (is_sel ? Theme::c("hi_fg") + "]" + Fx::ub : " ");
+				out += "  ";
+			}
+
+			const auto& cat = cats[selected_cat];
+			int content_y = y + 5;  // One line space after category tabs separator
+			int content_x = x + 2;
+			int content_width = dialog_width - 4;
+			int max_lines = dialog_height - 10;  // Reserve space for help section at bottom
+
+			// First pass: calculate total lines and find selected item's line position
+			int total_lines = 0;
+			int selected_line = 0;
+			int selected_header_line = 0;  // Track header line for selected subcategory
+			for (size_t sc_idx = 0; sc_idx < cat.subcats.size(); sc_idx++) {
+				const auto& subcat = cat.subcats[sc_idx];
+
+				// Track header line for selected subcategory
+				if (static_cast<int>(sc_idx) == selected_subcat) {
+					selected_header_line = total_lines;
+				}
+
+				total_lines++;  // Subcategory header
+				total_lines++;  // Spacing after header
+
+				for (size_t opt_idx = 0; opt_idx < subcat.options.size(); opt_idx++) {
+					if (static_cast<int>(sc_idx) == selected_subcat and
+						static_cast<int>(opt_idx) == selected_option) {
+						selected_line = total_lines;
+					}
+					total_lines++;
+				}
+				total_lines++;  // Spacing between subcategories
+			}
+
+			// Adjust scroll_offset to keep selection visible (including its header)
+			if (selected_header_line < scroll_offset) {
+				// Scroll up to show header when selected item's header is above view
+				scroll_offset = selected_header_line;
+			}
+			else if (selected_line >= scroll_offset + max_lines) {
+				scroll_offset = selected_line - max_lines + 1;
+			}
+			// Clamp scroll_offset to valid range
+			scroll_offset = max(0, min(scroll_offset, max(0, total_lines - max_lines)));
+
+			bool can_scroll_up = scroll_offset > 0;
+			bool can_scroll_down = (scroll_offset + max_lines) < total_lines;
+
+			int current_line = 0;
+			int visible_line = 0;
+
+			// Render subcategories and options (with scroll offset)
+			for (size_t sc_idx = 0; sc_idx < cat.subcats.size() and visible_line < max_lines; sc_idx++) {
+				const auto& subcat = cat.subcats[sc_idx];
+
+				// Subcategory header
+				if (current_line >= scroll_offset and visible_line < max_lines) {
+					string line_fill;
+					int fill_len = max(0, content_width - static_cast<int>(subcat.name.size()) - 4);
+					for (int i = 0; i < fill_len; i++) line_fill += Symbols::h_line;
+					out += Mv::to(content_y + visible_line, content_x)
+						+ Theme::c("title") + Fx::b + Symbols::h_line + " " + subcat.name + " "
+						+ line_fill
+						+ Fx::ub;
+					visible_line++;
+				}
+				current_line++;
+
+				// Spacing after subcategory header
+				if (current_line >= scroll_offset and visible_line < max_lines) {
+					visible_line++;
+				}
+				current_line++;
+
+				// Options in subcategory
+				for (size_t opt_idx = 0; opt_idx < subcat.options.size() and visible_line < max_lines; opt_idx++) {
+					if (current_line >= scroll_offset and visible_line < max_lines) {
+						const auto& opt = subcat.options[opt_idx];
+						bool is_selected = (static_cast<int>(sc_idx) == selected_subcat and
+											static_cast<int>(opt_idx) == selected_option);
+
+						string line;
+						if (is_selected) {
+							line += Theme::c("selected_bg") + Theme::c("selected_fg");
+						} else {
+							line += Theme::c("main_fg");
+						}
+
+						// Option label (left side)
+						string label = ljust(opt.label, 25);
+
+						// Option value (right side)
+						string value_str;
+						switch (opt.control) {
+							case ControlType::Toggle: {
+								bool val = isBoxToggleKey(opt.key) ? isBoxEnabled(opt.key) : Config::getB(opt.key);
+								value_str = drawToggle(val, is_selected, tty_mode);
+								break;
+							}
+							case ControlType::Radio: {
+								int current_idx = 0;
+								string current_val = Config::getS(opt.key);
+								for (size_t i = 0; i < opt.choices.size(); i++) {
+									if (opt.choices[i] == current_val) {
+										current_idx = static_cast<int>(i);
+										break;
+									}
+								}
+								value_str = drawRadio(opt.choices, current_idx, is_selected, tty_mode);
+								break;
+							}
+							case ControlType::Slider: {
+								int current_val = Config::getI(opt.key);
+								value_str = drawSlider(opt.min_val, opt.max_val, current_val, 20, is_selected, tty_mode);
+								break;
+							}
+							case ControlType::Select: {
+								string full_val = Config::getS(opt.key);
+								string display_val = full_val;
+								// For color_theme, show just the theme name without path
+								if (opt.key == "color_theme") {
+									display_val = fs::path(display_val).stem().string();
+								}
+								// For clock_format, show human-readable example
+								else if (opt.key == "clock_format") {
+									display_val = clockFormatToReadable(full_val);
+								}
+								// For empty values, show placeholder
+								if (display_val.empty()) {
+									display_val = "(auto)";
+								}
+								value_str = drawSelect(display_val, 16, is_selected, dropdown_open and is_selected);
+								// Add color preview for theme selection
+								if (opt.key == "color_theme") {
+									value_str += " " + Theme::previewColors(full_val);
+								}
+								break;
+							}
+							case ControlType::Text:
+								if (editing and is_selected) {
+									value_str = "[" + editor(18) + "]";
+								} else {
+									string text_val = Config::getS(opt.key);
+									if (text_val.empty()) text_val = "(empty)";
+									value_str = "[" + ljust(text_val, 18) + "]";
+								}
+								break;
+							default:
+								value_str = Config::getAsString(opt.key);
+								break;
+						}
+
+						line += label + value_str;
+						if (is_selected) {
+							line += Fx::reset;
+						}
+
+						out += Mv::to(content_y + visible_line, content_x) + line;
+						visible_line++;
+					}
+					current_line++;
+				}
+
+				// Spacing between subcategories
+				if (current_line >= scroll_offset and visible_line < max_lines) {
+					visible_line++;
+				}
+				current_line++;
+			}
+
+			// Separator line above help section with scroll indicators
+			out += Mv::to(y + dialog_height - 5, x) + Theme::c("hi_fg") + Symbols::div_left
+				+ Theme::c("div_line");
+			for (int i = 0; i < dialog_width - 2; i++) out += Symbols::h_line;
+			out += Theme::c("hi_fg") + Symbols::div_right;
+
+			// Add scroll indicators on the right side of the separator
+			if (can_scroll_up or can_scroll_down) {
+				string scroll_indicator;
+				if (can_scroll_up) scroll_indicator += "↑";
+				if (can_scroll_down) scroll_indicator += "↓";
+				int indicator_x = x + dialog_width - 3 - static_cast<int>(scroll_indicator.size());
+				out += Mv::to(y + dialog_height - 5, indicator_x) + Theme::c("hi_fg") + scroll_indicator;
+			}
+
+			// Help text (centered) with spacing above and below
+			if (selected_subcat < static_cast<int>(cat.subcats.size())) {
+				const auto& subcat = cat.subcats[selected_subcat];
+				if (selected_option < static_cast<int>(subcat.options.size())) {
+					const auto& opt = subcat.options[selected_option];
+					string help_text = opt.help;
+					// Truncate if too long for dialog width
+					int max_help_len = content_width;
+					if (static_cast<int>(help_text.size()) > max_help_len) {
+						help_text = help_text.substr(0, max_help_len - 3) + "...";
+					}
+					// Center the help text
+					int help_x = x + (dialog_width - static_cast<int>(help_text.size())) / 2;
+					out += Mv::to(y + dialog_height - 3, help_x)
+						+ Theme::c("inactive_fg") + help_text;
+				}
+			}
+
+			// Navigation hints at very bottom
+			out += Mv::to(y + dialog_height - 1, x + 2)
+				+ Theme::c("hi_fg") + "Tab" + Theme::c("main_fg") + ":Category  "
+				+ Theme::c("hi_fg") + "↑↓" + Theme::c("main_fg") + ":Navigate  "
+				+ Theme::c("hi_fg") + "Enter" + Theme::c("main_fg") + ":Toggle/Edit  "
+				+ Theme::c("hi_fg") + "Esc" + Theme::c("main_fg") + ":Close";
+
+			// Draw dropdown modal if open
+			if (dropdown_open and not dropdown_choices.empty()) {
+				const int dropdown_max_height = min(15, static_cast<int>(dropdown_choices.size()) + 2);
+				const bool is_theme_dropdown = (dropdown_key == "color_theme");
+				//? Wider dropdown for themes: name (25) + preview (23) + padding (6) = 54
+				const int dropdown_width = is_theme_dropdown ? 58 : 40;
+				const int dropdown_x = x + (dialog_width - dropdown_width) / 2;
+				const int dropdown_y = y + (dialog_height - dropdown_max_height) / 2;
+
+				// Draw dropdown background box
+				out += Draw::createBox(dropdown_x, dropdown_y, dropdown_width, dropdown_max_height,
+					Theme::c("hi_fg"), true, is_theme_dropdown ? "Select Theme" : "Select Option");
+
+				// Calculate visible range for scrolling - keep cursor centered
+				const int visible_items = dropdown_max_height - 2;
+				const int total_items = static_cast<int>(dropdown_choices.size());
+				const int half_visible = visible_items / 2;
+				int scroll_start = 0;
+
+				// Center-focused scrolling: selection stays in middle of visible area
+				if (dropdown_selection > half_visible) {
+					scroll_start = dropdown_selection - half_visible;
+				}
+				// Don't scroll past the end - cursor moves down when near end of list
+				if (scroll_start + visible_items > total_items) {
+					scroll_start = std::max(0, total_items - visible_items);
+				}
+
+				// Draw dropdown items
+				const bool is_clock_dropdown = (dropdown_key == "clock_format");
+				for (int i = 0; i < visible_items and (scroll_start + i) < static_cast<int>(dropdown_choices.size()); i++) {
+					int item_idx = scroll_start + i;
+					string item_full_path = dropdown_choices[item_idx];  //? Keep full path for theme preview
+					string item_display = item_full_path;
+
+					// For color_theme, show just the theme name
+					if (item_display.find('/') != string::npos) {
+						item_display = fs::path(item_display).stem().string();
+					}
+					// For clock_format, show human-readable examples
+					else if (is_clock_dropdown) {
+						item_display = clockFormatToReadable(item_full_path);
+					}
+
+					// Empty value shows as "(auto)" or "(none)"
+					if (item_display.empty()) {
+						item_display = "(auto)";
+					}
+
+					// For theme dropdown, reserve space for color preview (8×2 chars + 7 spaces + 1 leading = 24)
+					const int preview_width = is_theme_dropdown ? 24 : 0;
+					const int max_name_width = dropdown_width - 6 - preview_width;
+
+					// Truncate if too long
+					if (static_cast<int>(item_display.size()) > max_name_width) {
+						item_display = item_display.substr(0, max_name_width - 3) + "...";
+					}
+
+					bool is_selected_item = (item_idx == dropdown_selection);
+					out += Mv::to(dropdown_y + 1 + i, dropdown_x + 2);
+
+					if (is_selected_item) {
+						out += Theme::c("hi_fg") + Fx::b + "> " + ljust(item_display, max_name_width);
+					} else {
+						out += Theme::c("main_fg") + "  " + ljust(item_display, max_name_width);
+					}
+
+					// Add color preview for theme dropdown
+					if (is_theme_dropdown) {
+						out += " " + Theme::previewColors(item_full_path);
+					}
+
+					if (is_selected_item) {
+						out += Fx::ub;
+					}
+				}
+
+				// Show scroll indicators if needed
+				if (scroll_start > 0) {
+					out += Mv::to(dropdown_y, dropdown_x + dropdown_width - 4) + Theme::c("hi_fg") + "↑";
+				}
+				if (scroll_start + visible_items < static_cast<int>(dropdown_choices.size())) {
+					out += Mv::to(dropdown_y + dropdown_max_height - 1, dropdown_x + dropdown_width - 4) + Theme::c("hi_fg") + "↓";
+				}
+			}
+
+			out += Fx::reset;
+		}
+
+		return (Menu::redraw ? Menu::Changed : retval);
+	}
+
+	//? ==================== Preset Editor ====================
+
+	int presetEditor(const string& key, int preset_idx) {
+		// Static state for the editor
+		static PresetDef current_preset;
+		static int selected_field = 0;
+		static bool initialized = false;
+		static Draw::TextEdit name_editor;
+		static bool editing_name = false;
+
+		auto tty_mode = Config::getB("tty_mode");
+
+		// Initialize preset from config on first call
+		if (not initialized) {
+			auto presets = getPresets();
+			if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
+				current_preset = presets[preset_idx];
+			} else {
+				// New preset with defaults
+				current_preset = PresetDef{};
+				current_preset.name = "New Preset";
+			}
+			initialized = true;
+			Menu::redraw = true;
+		}
+
+		// Dialog dimensions
+		const int dialog_width = 70;
+		const int dialog_height = 22;
+		const int x = (Term::width - dialog_width) / 2;
+		const int y = (Term::height - dialog_height) / 2;
+
+		auto& out = Global::overlay;
+		int retval = Menu::Changed;
+
+		// Field definitions for navigation
+		enum Fields { Name, CPU, GPU, PWR, MEM_Layout, MEM_Disk, NET, PROC, GraphSymbol, Save, Cancel };
+		const int total_fields = 11;
+
+		// Key handling
+		if (editing_name) {
+			if (is_in(key, "escape", "enter")) {
+				if (key == "enter") {
+					current_preset.name = name_editor.text;
+				}
+				name_editor.clear();
+				editing_name = false;
+			}
+			else {
+				name_editor.command(key);
+			}
+		}
+		else {
+			if (is_in(key, "escape", "q")) {
+				initialized = false;
+				return Menu::Closed;
+			}
+			else if (is_in(key, "down", "j", "tab")) {
+				selected_field = (selected_field + 1) % total_fields;
+			}
+			else if (is_in(key, "up", "k", "shift_tab")) {
+				selected_field = (selected_field - 1 + total_fields) % total_fields;
+			}
+			else if (is_in(key, "enter", "space")) {
+				switch (selected_field) {
+					case Name:
+						name_editor = Draw::TextEdit{current_preset.name, false};
+						editing_name = true;
+						break;
+					case CPU: current_preset.cpu_enabled = not current_preset.cpu_enabled; break;
+					case GPU: current_preset.gpu_enabled = not current_preset.gpu_enabled; break;
+					case PWR: current_preset.pwr_enabled = not current_preset.pwr_enabled; break;
+					case MEM_Layout:
+						current_preset.mem_layout = static_cast<MemLayout>(
+							(static_cast<int>(current_preset.mem_layout) + 1) % 3);
+						break;
+					case MEM_Disk:
+						current_preset.disk_mode = static_cast<DiskMode>(
+							(static_cast<int>(current_preset.disk_mode) + 1) % 3);
+						break;
+					case NET:
+						current_preset.net_layout = static_cast<NetLayout>(
+							(static_cast<int>(current_preset.net_layout) + 1) % 3);
+						break;
+					case PROC:
+						current_preset.proc_layout = static_cast<ProcLayout>(
+							(static_cast<int>(current_preset.proc_layout) + 1) % 3);
+						break;
+					case GraphSymbol: {
+						vector<string> symbols = {"default", "braille", "block", "tty"};
+						int idx = 0;
+						for (size_t i = 0; i < symbols.size(); i++) {
+							if (symbols[i] == current_preset.graph_symbol) {
+								idx = static_cast<int>(i);
+								break;
+							}
+						}
+						idx = (idx + 1) % static_cast<int>(symbols.size());
+						current_preset.graph_symbol = symbols[idx];
+						break;
+					}
+					case Save: {
+						// Save the preset
+						auto presets = getPresets();
+						if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
+							presets[preset_idx] = current_preset;
+						} else {
+							presets.push_back(current_preset);
+						}
+						savePresets(presets);
+						initialized = false;
+						return Menu::Closed;
+					}
+					case Cancel:
+						initialized = false;
+						return Menu::Closed;
+				}
+			}
+			else if (is_in(key, "left", "h")) {
+				// Cycle backward for applicable fields
+				switch (selected_field) {
+					case MEM_Layout:
+						current_preset.mem_layout = static_cast<MemLayout>(
+							(static_cast<int>(current_preset.mem_layout) + 2) % 3);
+						break;
+					case MEM_Disk:
+						current_preset.disk_mode = static_cast<DiskMode>(
+							(static_cast<int>(current_preset.disk_mode) + 2) % 3);
+						break;
+					case NET:
+						current_preset.net_layout = static_cast<NetLayout>(
+							(static_cast<int>(current_preset.net_layout) + 2) % 3);
+						break;
+					case PROC:
+						current_preset.proc_layout = static_cast<ProcLayout>(
+							(static_cast<int>(current_preset.proc_layout) + 2) % 3);
+						break;
+				}
+			}
+			else if (is_in(key, "right", "l")) {
+				// Cycle forward for applicable fields (same as enter/space)
+				switch (selected_field) {
+					case CPU: current_preset.cpu_enabled = not current_preset.cpu_enabled; break;
+					case GPU: current_preset.gpu_enabled = not current_preset.gpu_enabled; break;
+					case PWR: current_preset.pwr_enabled = not current_preset.pwr_enabled; break;
+					case MEM_Layout:
+						current_preset.mem_layout = static_cast<MemLayout>(
+							(static_cast<int>(current_preset.mem_layout) + 1) % 3);
+						break;
+					case MEM_Disk:
+						current_preset.disk_mode = static_cast<DiskMode>(
+							(static_cast<int>(current_preset.disk_mode) + 1) % 3);
+						break;
+					case NET:
+						current_preset.net_layout = static_cast<NetLayout>(
+							(static_cast<int>(current_preset.net_layout) + 1) % 3);
+						break;
+					case PROC:
+						current_preset.proc_layout = static_cast<ProcLayout>(
+							(static_cast<int>(current_preset.proc_layout) + 1) % 3);
+						break;
+				}
+			}
+			else {
+				retval = Menu::NoChange;
+			}
+		}
+
+		// Draw the dialog
+		if (retval == Menu::Changed or Menu::redraw) {
+			// Create dialog box
+			out = Draw::createBox(x, y, dialog_width, dialog_height, Theme::c("hi_fg"), true, "Preset Editor");
+
+			int row = y + 2;
+			const int label_x = x + 3;
+			const int value_x = x + 20;
+
+			// Helper for rendering a field
+			auto renderField = [&](int field_id, const string& label, const string& value) {
+				bool is_sel = (selected_field == field_id);
+				out += Mv::to(row, label_x) + Theme::c("main_fg") + label + ":";
+				out += Mv::to(row, value_x);
+				if (is_sel) out += Theme::c("selected_bg") + Theme::c("selected_fg");
+				out += value;
+				if (is_sel) out += Fx::reset;
+				row++;
+			};
+
+			// Name field
+			if (editing_name) {
+				out += Mv::to(row, label_x) + Theme::c("main_fg") + "Name:";
+				out += Mv::to(row, value_x) + Theme::c("selected_bg") + name_editor(20) + Fx::reset;
+			} else {
+				renderField(Name, "Name", current_preset.name);
+			}
+			row++;
+
+			// Panel toggles
+			out += Mv::to(row, label_x) + Theme::c("title") + Fx::b + "─ Panels " + string(20, '-') + Fx::ub;
+			row++;
+			renderField(CPU, "CPU", drawToggle(current_preset.cpu_enabled, selected_field == CPU, tty_mode));
+			renderField(GPU, "GPU", drawToggle(current_preset.gpu_enabled, selected_field == GPU, tty_mode));
+			renderField(PWR, "Power", drawToggle(current_preset.pwr_enabled, selected_field == PWR, tty_mode));
+			row++;
+
+			// Memory layout
+			vector<string> mem_opts = {"Hidden", "Horizontal", "Vertical"};
+			renderField(MEM_Layout, "Memory", drawRadio(mem_opts, static_cast<int>(current_preset.mem_layout), selected_field == MEM_Layout, tty_mode));
+
+			// Disk mode
+			vector<string> disk_opts = {"Hidden", "Bar/Meter", "Graph"};
+			renderField(MEM_Disk, "  Disk Mode", drawRadio(disk_opts, static_cast<int>(current_preset.disk_mode), selected_field == MEM_Disk, tty_mode));
+			row++;
+
+			// Network layout
+			vector<string> net_opts = {"Hidden", "Horizontal", "Vertical"};
+			renderField(NET, "Network", drawRadio(net_opts, static_cast<int>(current_preset.net_layout), selected_field == NET, tty_mode));
+
+			// Process layout
+			vector<string> proc_opts = {"Hidden", "Horizontal", "Vertical"};
+			renderField(PROC, "Processes", drawRadio(proc_opts, static_cast<int>(current_preset.proc_layout), selected_field == PROC, tty_mode));
+			row++;
+
+			// Graph symbol
+			vector<string> sym_opts = {"default", "braille", "block", "tty"};
+			int sym_idx = 0;
+			for (size_t i = 0; i < sym_opts.size(); i++) {
+				if (sym_opts[i] == current_preset.graph_symbol) {
+					sym_idx = static_cast<int>(i);
+					break;
+				}
+			}
+			renderField(GraphSymbol, "Graph Symbol", drawRadio(sym_opts, sym_idx, selected_field == GraphSymbol, tty_mode));
+			row += 2;
+
+			// Buttons
+			out += Mv::to(row, label_x);
+			bool save_sel = (selected_field == Save);
+			bool cancel_sel = (selected_field == Cancel);
+			out += (save_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
+				+ "[ Save ]" + Fx::reset + "   "
+				+ (cancel_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("inactive_fg"))
+				+ "[ Cancel ]" + Fx::reset;
+
+			// Draw preview on the right side
+			const int preview_x = x + 40;
+			const int preview_y = y + 3;
+			const int preview_w = 26;
+			const int preview_h = 15;
+
+			out += Mv::to(preview_y - 1, preview_x) + Theme::c("title") + "Preview:";
+			out += drawPresetPreview(current_preset, preview_w, preview_h);
+
+			// Position the preview
+			string preview = drawPresetPreview(current_preset, preview_w, preview_h);
+			// Split preview into lines and position them
+			int py = preview_y;
+			string line;
+			for (char c : preview) {
+				if (c == '\n') {
+					out += Mv::to(py++, preview_x) + line;
+					line.clear();
+				} else {
+					line += c;
+				}
+			}
+			if (not line.empty()) {
+				out += Mv::to(py, preview_x) + line;
+			}
+		}
+
+		return (Menu::redraw ? Menu::Changed : retval);
+	}
+
+} // namespace MenuV2
+
+//? Wrapper function in Menu namespace to call MenuV2::optionsMenuV2
+namespace Menu {
+	int optionsMenuV2_wrapper(const string& key) {
+		return MenuV2::optionsMenuV2(key);
 	}
 }
