@@ -2962,6 +2962,7 @@ namespace MenuV2 {
 					{"Net | Display", {
 						{"net_auto", "Auto Select", "Auto-select primary network interface", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"net_iface", "Interface", "Select network interface to display", ControlType::Select, {}, "net_iface", 0, 0, 0},
+						{"net_iface_filter", "Interfaces to Show", "Select interfaces for cycling (empty = show all)", ControlType::Select, {}, "net_iface_filter", 0, 0, 0},
 						{"net_sync", "Sync Scales", "Synchronize upload/download graph scales", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"swap_upload_download", "Swap Up/Down", "Swap upload and download positions", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
@@ -3260,6 +3261,13 @@ namespace MenuV2 {
 				choices.push_back(iface);
 			}
 		}
+		else if (choices_ref == "net_iface_filter") {
+			// Return available network interfaces for filtering (multi-select)
+			choices.push_back("");  // Empty = show all interfaces
+			for (const auto& iface : Net::interfaces) {
+				choices.push_back(iface);
+			}
+		}
 		else if (choices_ref == "disks_filter") {
 			// Return available disk mountpoints for filtering
 			// Query system directly for mounted disks (don't rely on Mem::collect which may be filtered)
@@ -3385,6 +3393,7 @@ namespace MenuV2 {
 		static string dropdown_key;            //? Track which option key opened the dropdown
 		static bool theme_refresh = false;
 		static std::set<string> disk_filter_selections;  //? Track selected disks to show (multi-select)
+		static std::set<string> net_iface_filter_selections;  //? Track selected interfaces to show (multi-select)
 
 		//? Presets category state (0-based: System=0, Appearance=1, Panels=2, Presets=3)
 		static int selected_preset = 0;         //? Currently selected preset (0-8)
@@ -3511,9 +3520,11 @@ namespace MenuV2 {
 		if (dropdown_open) {
 			// Handle dropdown selection modal
 			const bool is_disk_filter = (dropdown_key == "disks_filter");
+			const bool is_net_filter = (dropdown_key == "net_iface_filter");
+			const bool is_multi_select = is_disk_filter or is_net_filter;
 
 			if (is_in(key, "escape", "q", "backspace")) {
-				//? For disk filter, save selections before closing
+				//? For multi-select filters, save selections before closing
 				if (is_disk_filter) {
 					string filter_str;
 					for (const auto& disk : disk_filter_selections) {
@@ -3522,27 +3533,38 @@ namespace MenuV2 {
 					}
 					Config::set("disks_filter", filter_str);
 				}
+				else if (is_net_filter) {
+					string filter_str;
+					for (const auto& iface : net_iface_filter_selections) {
+						if (not filter_str.empty()) filter_str += " ";
+						filter_str += iface;
+					}
+					Config::set("net_iface_filter", filter_str);
+				}
 				dropdown_open = false;
 				dropdown_choices.clear();
 				disk_filter_selections.clear();
+				net_iface_filter_selections.clear();
 				//? Clear screen and trigger full redraw to remove dropdown artifacts
 				std::cout << Term::clear << std::flush;
 				Global::resized = true;
 			}
 			else if (key == "enter" or key == "space") {
-				if (is_disk_filter) {
-					//? Disk filter: toggle checkbox to select disks to show
+				if (is_multi_select) {
+					//? Multi-select: toggle checkbox
 					if (dropdown_selection < static_cast<int>(dropdown_choices.size())) {
-						const string& selected_disk = dropdown_choices[dropdown_selection];
-						if (selected_disk.empty()) {
-							//? First item "(Show All Disks)" - clear filter to show all
-							disk_filter_selections.clear();
+						const string& selected_item = dropdown_choices[dropdown_selection];
+						if (selected_item.empty()) {
+							//? First item "(Show All)" - clear filter to show all
+							if (is_disk_filter) disk_filter_selections.clear();
+							if (is_net_filter) net_iface_filter_selections.clear();
 						} else {
-							//? Toggle disk in show list
-							if (disk_filter_selections.contains(selected_disk)) {
-								disk_filter_selections.erase(selected_disk);
+							//? Toggle item in show list
+							auto& selections = is_disk_filter ? disk_filter_selections : net_iface_filter_selections;
+							if (selections.contains(selected_item)) {
+								selections.erase(selected_item);
 							} else {
-								disk_filter_selections.insert(selected_disk);
+								selections.insert(selected_item);
 							}
 						}
 						Menu::redraw = true;
@@ -4007,6 +4029,19 @@ namespace MenuV2 {
 									}
 								}
 							}
+							//? For net interface filter, initialize multi-select state from config
+							else if (opt->key == "net_iface_filter") {
+								net_iface_filter_selections.clear();
+								string current_filter = Config::getS("net_iface_filter");
+								if (not current_filter.empty()) {
+									// Parse space-separated filter entries
+									std::istringstream iss(current_filter);
+									string iface_name;
+									while (iss >> iface_name) {
+										net_iface_filter_selections.insert(iface_name);
+									}
+								}
+							}
 						}
 					}
 					else if (opt->control == ControlType::MultiCheck and not opt->choices.empty()) {
@@ -4456,9 +4491,11 @@ namespace MenuV2 {
 			if (dropdown_open and not dropdown_choices.empty()) {
 				const bool is_theme_dropdown = (dropdown_key == "color_theme");
 				const bool is_disk_dropdown = (dropdown_key == "disks_filter");
-				const int dropdown_max_height = min(15, static_cast<int>(dropdown_choices.size()) + 2 + (is_disk_dropdown ? 1 : 0));
+				const bool is_net_dropdown = (dropdown_key == "net_iface_filter");
+				const bool is_multi_select_dropdown = is_disk_dropdown or is_net_dropdown;
+				const int dropdown_max_height = min(15, static_cast<int>(dropdown_choices.size()) + 2 + (is_multi_select_dropdown ? 1 : 0));
 				//? Wider dropdown for themes and disks
-				const int dropdown_width = is_theme_dropdown ? 58 : (is_disk_dropdown ? 95 : 40);
+				const int dropdown_width = is_theme_dropdown ? 58 : (is_disk_dropdown ? 95 : (is_net_dropdown ? 50 : 40));
 				const int dropdown_x = x + (dialog_width - dropdown_width) / 2;
 				const int dropdown_y = y + (dialog_height - dropdown_max_height) / 2;
 
@@ -4466,6 +4503,7 @@ namespace MenuV2 {
 				string dropdown_title = "Select Option";
 				if (is_theme_dropdown) dropdown_title = "Select Theme";
 				else if (is_disk_dropdown) dropdown_title = "Select Disks to Show";
+				else if (is_net_dropdown) dropdown_title = "Select Interfaces to Show";
 
 				// Draw dropdown background box
 				out += Draw::createBox(dropdown_x, dropdown_y, dropdown_width, dropdown_max_height,
@@ -4523,7 +4561,7 @@ namespace MenuV2 {
 #endif
 				}
 
-				// Draw column headers for disk dropdown
+				// Draw column headers for multi-select dropdowns
 				int content_start_y = dropdown_y + 1;
 				if (is_disk_dropdown) {
 					out += Mv::to(content_start_y, dropdown_x + 2);
@@ -4532,9 +4570,16 @@ namespace MenuV2 {
 					out += Fx::ub + Fx::reset;
 					content_start_y++;
 				}
+				else if (is_net_dropdown) {
+					out += Mv::to(content_start_y, dropdown_x + 2);
+					out += Theme::c("title") + Fx::b;
+					out += "Show " + ljust("Interface", 40);
+					out += Fx::ub + Fx::reset;
+					content_start_y++;
+				}
 
 				// Calculate visible range for scrolling - keep cursor centered
-				const int visible_items = dropdown_max_height - 2 - (is_disk_dropdown ? 1 : 0);
+				const int visible_items = dropdown_max_height - 2 - (is_multi_select_dropdown ? 1 : 0);
 				const int total_items = static_cast<int>(dropdown_choices.size());
 				const int half_visible = visible_items / 2;
 				int scroll_start = 0;
@@ -4585,11 +4630,11 @@ namespace MenuV2 {
 						if (disk_mount.size() > 32) disk_mount = disk_mount.substr(0, 29) + "...";
 						if (disk_dev.size() > 20) disk_dev = disk_dev.substr(0, 17) + "...";
 
-						//? Determine checkbox state - checked means disk will be hidden
+						//? Determine checkbox state - checked means disk will be shown
 						bool is_checked = disk_filter_selections.contains(item_full_path);
-						string checkbox = is_checked ? "[x]" : "[ ]";
-						//? First item "(No Filter)" has no checkbox
-						if (item_full_path.empty()) checkbox = "   ";
+						string checkbox = is_checked ? "●" : "○";
+						//? First item "(Show All)" has no checkbox
+						if (item_full_path.empty()) checkbox = " ";
 
 						if (is_selected_item) {
 							out += Theme::c("hi_fg") + Fx::b + "> ";
@@ -4597,6 +4642,24 @@ namespace MenuV2 {
 							out += Theme::c("main_fg") + "  ";
 						}
 						out += checkbox + " " + ljust(disk_name, 18) + "  " + ljust(disk_mount, 32) + "  " + ljust(disk_dev, 20);
+						if (is_selected_item) out += Fx::ub;
+					}
+					else if (is_net_dropdown) {
+						//? Network interface dropdown: show Interface name with checkbox
+						string iface_name = item_full_path.empty() ? "(Show All Interfaces)" : item_full_path;
+
+						//? Determine checkbox state - checked means interface will be shown
+						bool is_checked = net_iface_filter_selections.contains(item_full_path);
+						string checkbox = is_checked ? "●" : "○";
+						//? First item "(Show All)" has no checkbox
+						if (item_full_path.empty()) checkbox = " ";
+
+						if (is_selected_item) {
+							out += Theme::c("hi_fg") + Fx::b + "> ";
+						} else {
+							out += Theme::c("main_fg") + "  ";
+						}
+						out += checkbox + " " + ljust(iface_name, 40);
 						if (is_selected_item) out += Fx::ub;
 					}
 					else {

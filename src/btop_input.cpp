@@ -1000,15 +1000,39 @@ namespace Input {
 
 				if (is_in(key, "b", "n")) {
 					atomic_wait(Runner::active);
-					int c_index = v_index(Net::interfaces, Net::selected_iface);
-					if (c_index != (int)Net::interfaces.size()) {
+
+					//? Build filtered interfaces list based on net_iface_filter config
+					vector<string> filtered_ifaces;
+					const string& filter = Config::getS("net_iface_filter");
+					if (filter.empty()) {
+						//? No filter - use all interfaces
+						filtered_ifaces = Net::interfaces;
+					} else {
+						//? Filter is set - only include interfaces in the filter
+						for (const auto& iface : Net::interfaces) {
+							if (filter.find(iface) != string::npos) {
+								filtered_ifaces.push_back(iface);
+							}
+						}
+						//? If filter resulted in empty list, fall back to all interfaces
+						if (filtered_ifaces.empty()) {
+							filtered_ifaces = Net::interfaces;
+						}
+					}
+
+					int c_index = v_index(filtered_ifaces, Net::selected_iface);
+					if (c_index == (int)filtered_ifaces.size()) {
+						//? Current interface not in filtered list, start at beginning
+						c_index = 0;
+					}
+					if (not filtered_ifaces.empty()) {
 						if (key == "b") {
-							if (--c_index < 0) c_index = Net::interfaces.size() - 1;
+							if (--c_index < 0) c_index = filtered_ifaces.size() - 1;
 						}
 						else if (key == "n") {
-							if (++c_index == (int)Net::interfaces.size()) c_index = 0;
+							if (++c_index == (int)filtered_ifaces.size()) c_index = 0;
 						}
-						Net::selected_iface = Net::interfaces.at(c_index);
+						Net::selected_iface = filtered_ifaces.at(c_index);
 						Net::rescale = true;
 					}
 				}
