@@ -2549,7 +2549,10 @@ namespace MenuV2 {
 		// Count active lower panels
 		int panel_count = (has_mem ? 1 : 0) + (has_net ? 1 : 0) + (has_proc ? 1 : 0);
 
-		if (panel_count == 0) {
+		//? Check if ANY panel is enabled (including CPU/GPU/PWR)
+		bool any_panel_enabled = preset.cpu_enabled or preset.gpu_enabled or preset.pwr_enabled or
+		                         has_mem or has_net or has_proc;
+		if (not any_panel_enabled) {
 			return "No panels selected";
 		}
 
