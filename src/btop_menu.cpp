@@ -2371,17 +2371,25 @@ namespace MenuV2 {
 	string drawSlider(int min_val, int max_val, int current, int width, bool selected, bool tty_mode) {
 		if (width < 10) width = 10;
 
-		float ratio = static_cast<float>(current - min_val) / static_cast<float>(max_val - min_val);
-		int pos = static_cast<int>(ratio * (width - 2));
+		// Track width is width minus brackets and arrows: [ ◀ track ▶ ]
+		int track_width = width - 4;
+		float range = static_cast<float>(max_val - min_val);
+		float ratio = (range > 0) ? static_cast<float>(current - min_val) / range : 0.0f;
+		int pos = static_cast<int>(ratio * track_width);
 		if (pos < 0) pos = 0;
-		if (pos > width - 2) pos = width - 2;
+		if (pos > track_width - 1) pos = track_width - 1;
 
 		string bar;
 		const string track_char = tty_mode ? "-" : "─";
 		const string handle_char = tty_mode ? "O" : "●";
+		const string left_arrow = tty_mode ? "<" : "◀";
+		const string right_arrow = tty_mode ? ">" : "▶";
 
 		bar += "[";
-		for (int i = 0; i < width - 2; i++) {
+		// Left arrow inside bracket (clickable)
+		bar += Theme::c("hi_fg") + left_arrow + Theme::c("main_fg");
+
+		for (int i = 0; i < track_width; i++) {
 			if (i == pos) {
 				bar += Theme::c("proc_misc") + handle_char + Theme::c("main_fg");
 			} else if (i < pos) {
@@ -2390,6 +2398,9 @@ namespace MenuV2 {
 				bar += Theme::c("inactive_fg") + track_char + Theme::c("main_fg");
 			}
 		}
+
+		// Right arrow inside bracket (clickable)
+		bar += Theme::c("hi_fg") + right_arrow + Theme::c("main_fg");
 		bar += "]";
 
 		string result;
@@ -3375,6 +3386,10 @@ namespace MenuV2 {
 
 	//? ==================== Main Options Menu V2 ====================
 
+	//? Preset editor state (namespace scope for persistence across function calls)
+	bool ns_in_preset_editor = false;
+	int ns_editing_preset_idx = -1;  //? Which preset we're editing (-1 = new preset)
+
 	int optionsMenuV2(const string& key) {
 		// This is a placeholder - full implementation requires substantial UI work
 		// For now, redirect to the classic menu
@@ -3397,7 +3412,7 @@ namespace MenuV2 {
 
 		//? Presets category state (0-based: System=0, Appearance=1, Panels=2, Presets=3)
 		static int selected_preset = 0;         //? Currently selected preset (0-8)
-		static bool in_preset_editor = false;   //? Whether we're in the preset editor dialog
+		//? MOVED: static bool in_preset_editor = false; -> now ns_in_preset_editor at namespace scope
 		static int preset_button_focus = 0;     //? 0=list, 1=Edit, 2=Delete, 3=New
 
 		//? MultiCheck state for shown_gpus
@@ -3480,11 +3495,22 @@ namespace MenuV2 {
 			// Draw dialog background
 			Menu::bg += Draw::createBox(x, y, dialog_width, dialog_height, Theme::c("hi_fg"), true, "MBTOP Settings");
 
-			// Mouse mappings for tabs (visual drawing is done dynamically)
+			// Add close button [X] in top-right corner of title bar
+			int close_btn_x = x + dialog_width - 5;
+			Menu::bg += Mv::to(y, close_btn_x) + Theme::c("hi_fg") + "[" + Theme::c("inactive_fg") + "×" + Theme::c("hi_fg") + "]";
+
+			// Mouse mapping for close button
+			Menu::mouse_mappings["close_settings"] = {y, close_btn_x, 1, 3};
+
+			// Mouse mappings for tabs - calculate actual positions based on tab text widths
+			int tab_x = x + 2;
 			for (size_t i = 0; i < cats.size(); i++) {
+				string tab_text = cats[i].icon.empty() ? cats[i].name : cats[i].icon + " " + cats[i].name;
+				int tab_width = static_cast<int>(tab_text.size()) + 2;  // +2 for brackets/spaces
 				Menu::mouse_mappings["tab_" + to_string(i)] = {
-					y + 1, x + 2 + static_cast<int>(i) * 14, 3, 13
+					y + 1, tab_x, 3, tab_width
 				};
+				tab_x += tab_width + 2;  // +2 for spacing between tabs
 			}
 
 			// Double-line separator under categories
@@ -3505,16 +3531,25 @@ namespace MenuV2 {
 			rebuildMenuBg();
 		}
 
+		//? Handle close button [x] - always works, even when in preset editor
+		if (key == "close_settings") {
+			ns_in_preset_editor = false;  // Reset editor state if open
+			return Menu::Closed;
+		}
+
 		//? Handle preset editor mode - delegate to presetEditor but Menu::bg is already built
-		if (in_preset_editor) {
-			int editor_result = presetEditor(key, selected_preset, x, y, dialog_width, dialog_height);
+		if (ns_in_preset_editor) {
+			int editor_result = presetEditor(key, ns_editing_preset_idx, x, y, dialog_width, dialog_height);
 			if (editor_result == Menu::Closed) {
-				in_preset_editor = false;
+				ns_in_preset_editor = false;
 				preset_button_focus = 0;  // Reset focus to preset list after closing editor
-				Menu::redraw = true;
-				return Menu::Changed;
+				rebuildMenuBg();           // Rebuild entire menu background to clear editor overlay
+				Menu::redraw = true;       // Force redraw to clear overlay and draw fresh
+				// Fall through to redraw the Presets panel immediately
 			}
-			return editor_result;
+			else {
+				return editor_result;
+			}
 		}
 
 		if (dropdown_open) {
@@ -3523,7 +3558,7 @@ namespace MenuV2 {
 			const bool is_net_filter = (dropdown_key == "net_iface_filter");
 			const bool is_multi_select = is_disk_filter or is_net_filter;
 
-			if (is_in(key, "escape", "q", "backspace")) {
+			if (is_in(key, "escape", "q", "backspace") or key == "close_dropdown") {
 				//? For multi-select filters, save selections before closing
 				if (is_disk_filter) {
 					string filter_str;
@@ -3600,16 +3635,70 @@ namespace MenuV2 {
 					Global::resized = true;
 				}
 			}
-			else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
+			else if (is_in(key, "down", "j", "mouse_scroll_down") or (vim_keys and key == "j")) {
 				if (dropdown_selection < static_cast<int>(dropdown_choices.size()) - 1) {
 					dropdown_selection++;
 					Menu::redraw = true;
 				}
 			}
-			else if (is_in(key, "up", "k") or (vim_keys and key == "k")) {
+			else if (is_in(key, "up", "k", "mouse_scroll_up") or (vim_keys and key == "k")) {
 				if (dropdown_selection > 0) {
 					dropdown_selection--;
 					Menu::redraw = true;
+				}
+			}
+			//? Handle dropdown item click via mouse
+			else if (key.starts_with("dropdown_item_")) {
+				try {
+					int item_idx = std::stoi(key.substr(14));
+					if (item_idx < 0 or item_idx >= static_cast<int>(dropdown_choices.size())) {
+						retval = Menu::NoChange;
+					}
+					else {
+					dropdown_selection = item_idx;
+					Menu::redraw = true;
+					//? Single-click selects, so simulate enter for single-select dropdowns
+					if (not is_disk_filter and not is_net_filter) {
+						//? Apply single selection and close dropdown
+						const auto& cat = cats[selected_cat];
+						if (selected_subcat < static_cast<int>(cat.subcats.size())) {
+							const auto& subcat = cat.subcats[selected_subcat];
+							if (selected_option < static_cast<int>(subcat.options.size())) {
+								const auto& opt = subcat.options[selected_option];
+								Config::set(opt.key, dropdown_choices[dropdown_selection]);
+								if (opt.key == "color_theme") {
+									theme_refresh = true;
+								}
+								else if (opt.key == "clock_format") {
+									const string& fmt = dropdown_choices[dropdown_selection];
+									bool is_12h = (fmt.find("%I") != string::npos or fmt.find("%p") != string::npos);
+									Config::set("clock_12h", is_12h);
+								}
+							}
+						}
+						dropdown_open = false;
+						dropdown_choices.clear();
+						std::cout << Term::clear << std::flush;
+						Global::resized = true;
+					}
+					//? For multi-select dropdowns, just toggle on click
+					else {
+						const string& selected_item = dropdown_choices[dropdown_selection];
+						if (selected_item.empty()) {
+							if (is_disk_filter) disk_filter_selections.clear();
+							if (is_net_filter) net_iface_filter_selections.clear();
+						} else {
+							auto& selections = is_disk_filter ? disk_filter_selections : net_iface_filter_selections;
+							if (selections.contains(selected_item)) {
+								selections.erase(selected_item);
+							} else {
+								selections.insert(selected_item);
+							}
+						}
+					}
+					}  // close else block for valid item_idx
+				} catch (const std::exception&) {
+					retval = Menu::NoChange;
 				}
 			}
 			else {
@@ -3661,19 +3750,31 @@ namespace MenuV2 {
 				// Just return - full app theme refresh happens when entire menu system closes
 				return Menu::Closed;
 			}
+			//? Handle tab clicks FIRST - before category-specific handling
+			else if (key.starts_with("tab_")) {
+				int tab_idx = key.back() - '0';
+				if (tab_idx >= 0 and tab_idx < static_cast<int>(cats.size())) {
+					selected_cat = tab_idx;
+					selected_subcat = 0;
+					selected_option = 0;
+					scroll_offset = 0;
+					preset_button_focus = 0;  // Reset preset focus when switching tabs
+					Menu::redraw = true;
+				}
+			}
 
 			//? ==================== Presets Category Special Key Handling ====================
 			else if (selected_cat == PRESETS_CATEGORY) {
 				auto presets = getPresets();
 				const int total_presets = static_cast<int>(presets.size());
 
-				if (is_in(key, "up", "k") or (vim_keys and key == "k")) {
+				if (is_in(key, "up", "k", "mouse_scroll_up") or (vim_keys and key == "k")) {
 					if (preset_button_focus == 0) {
 						// Navigate preset list
 						selected_preset = (selected_preset - 1 + total_presets) % total_presets;
 					}
 				}
-				else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
+				else if (is_in(key, "down", "j", "mouse_scroll_down") or (vim_keys and key == "j")) {
 					if (preset_button_focus == 0) {
 						// Navigate preset list
 						selected_preset = (selected_preset + 1) % total_presets;
@@ -3701,10 +3802,11 @@ namespace MenuV2 {
 				}
 				else if (is_in(key, "enter", "space") or key == "\r" or key == "\n") {
 					if (preset_button_focus == 0 or preset_button_focus == 1) {
-						// Enter on list item or Edit button -> immediately open editor
-						in_preset_editor = true;
+						// Enter on list item or Edit button -> edit selected preset
+						ns_in_preset_editor = true;
+						ns_editing_preset_idx = selected_preset;  // Store which preset we're editing
 						rebuildMenuBg();  // Ensure Menu::bg is ready for editor overlay
-						return presetEditor("", selected_preset, x, y, dialog_width, dialog_height);  // Immediately show editor
+						return presetEditor("", selected_preset, x, y, dialog_width, dialog_height);
 					}
 					else if (preset_button_focus == 2) {
 						// Delete selected preset (only if more than one preset exists)
@@ -3720,10 +3822,11 @@ namespace MenuV2 {
 						}
 					}
 					else if (preset_button_focus == 3) {
-						// New preset -> immediately open editor
-						in_preset_editor = true;
+						// New preset -> open editor with -1 to create new preset
+						ns_in_preset_editor = true;
+						ns_editing_preset_idx = -1;  // -1 means new preset
 						rebuildMenuBg();
-						return presetEditor("", selected_preset, x, y, dialog_width, dialog_height);
+						return presetEditor("", -1, x, y, dialog_width, dialog_height);
 					}
 				}
 				else if (key.size() == 1 and key[0] >= '1' and key[0] <= '9') {
@@ -3747,6 +3850,46 @@ namespace MenuV2 {
 					selected_option = 0;
 					scroll_offset = 0;
 					Menu::redraw = true;
+				}
+				//? Handle preset list item click via mouse
+				else if (key.starts_with("preset_")) {
+					try {
+						int preset_idx = std::stoi(key.substr(7));
+						if (preset_idx >= 0 and preset_idx < total_presets) {
+							selected_preset = preset_idx;
+							preset_button_focus = 0;  // Focus on list
+							Menu::redraw = true;
+						}
+					} catch (const std::exception&) {
+						retval = Menu::NoChange;
+					}
+				}
+				//? Handle button clicks via mouse
+				else if (key == "btn_edit") {
+					preset_button_focus = 1;
+					ns_in_preset_editor = true;
+					ns_editing_preset_idx = selected_preset;  // Store which preset we're editing
+					rebuildMenuBg();
+					return presetEditor("", selected_preset, x, y, dialog_width, dialog_height);
+				}
+				else if (key == "btn_delete") {
+					if (total_presets > 1) {
+						auto presets_copy = presets;
+						presets_copy.erase(presets_copy.begin() + selected_preset);
+						savePresets(presets_copy);
+						if (selected_preset >= static_cast<int>(presets_copy.size())) {
+							selected_preset = static_cast<int>(presets_copy.size()) - 1;
+						}
+						preset_button_focus = 0;
+						Menu::redraw = true;
+					}
+				}
+				else if (key == "btn_new") {
+					preset_button_focus = 3;
+					ns_in_preset_editor = true;
+					ns_editing_preset_idx = -1;  // -1 means new preset
+					rebuildMenuBg();
+					return presetEditor("", -1, x, y, dialog_width, dialog_height);
 				}
 				else {
 					retval = Menu::NoChange;
@@ -3934,7 +4077,7 @@ namespace MenuV2 {
 					}
 				}
 			}
-			else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
+			else if (is_in(key, "down", "j", "mouse_scroll_down") or (vim_keys and key == "j")) {
 				const auto& cat = cats[selected_cat];
 				if (not cat.subcats.empty()) {
 					int total_options = 0;
@@ -3952,7 +4095,7 @@ namespace MenuV2 {
 					}
 				}
 			}
-			else if (is_in(key, "up", "k") or (vim_keys and key == "k")) {
+			else if (is_in(key, "up", "k", "mouse_scroll_up") or (vim_keys and key == "k")) {
 				const auto& cat = cats[selected_cat];
 				if (not cat.subcats.empty()) {
 					selected_option--;
@@ -4088,6 +4231,10 @@ namespace MenuV2 {
 					}
 				}
 			}
+			//? Handle close button click
+			else if (key == "close_settings") {
+				return Menu::Closed;
+			}
 			else if (key.starts_with("tab_")) {
 				int tab_idx = key.back() - '0';
 				if (tab_idx >= 0 and tab_idx < static_cast<int>(cats.size())) {
@@ -4096,6 +4243,134 @@ namespace MenuV2 {
 					selected_option = 0;
 					scroll_offset = 0;
 					Menu::redraw = true;
+				}
+			}
+			//? Handle option row click via mouse (format: "opt_subcat_option")
+			else if (key.starts_with("opt_")) {
+				//? Parse "opt_X_Y" where X is subcat index, Y is option index
+				size_t first_underscore = key.find('_', 4);
+				if (first_underscore != string::npos) {
+					try {
+						int sc_idx = std::stoi(key.substr(4, first_underscore - 4));
+						int opt_idx = std::stoi(key.substr(first_underscore + 1));
+						const auto& cat = cats[selected_cat];
+						if (sc_idx >= 0 and sc_idx < static_cast<int>(cat.subcats.size())) {
+						const auto& subcat = cat.subcats[sc_idx];
+						if (opt_idx >= 0 and opt_idx < static_cast<int>(subcat.options.size())) {
+							selected_subcat = sc_idx;
+							selected_option = opt_idx;
+							Menu::redraw = true;
+
+							//? For toggles, clicking toggles the value directly
+							const auto& opt = subcat.options[opt_idx];
+							if (opt.control == ControlType::Toggle) {
+								if (isBoxToggleKey(opt.key)) {
+									toggleBox(opt.key);
+								} else {
+									Config::flip(opt.key);
+									if (is_in(opt.key, "truecolor", "force_tty", "theme_background", "rounded_corners")) {
+										theme_refresh = true;
+										if (opt.key == "truecolor") Config::flip("lowcolor");
+										else if (opt.key == "force_tty") Config::flip("tty_mode");
+									}
+									else if (opt.key == "disable_mouse") {
+										const auto is_mouse_enabled = not Config::getB("disable_mouse");
+										std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
+									}
+								}
+							}
+							//? For Select controls, open dropdown on click
+							else if (opt.control == ControlType::Select and not opt.choices_ref.empty()) {
+								dropdown_choices = getDynamicChoices(opt.choices_ref);
+								dropdown_key = opt.key;
+								if (not dropdown_choices.empty()) {
+									dropdown_open = true;
+									dropdown_selection = 0;
+									//? Find current value's position in choices
+									string current = Config::getS(opt.key);
+									for (size_t i = 0; i < dropdown_choices.size(); i++) {
+										if (dropdown_choices[i] == current) {
+											dropdown_selection = static_cast<int>(i);
+											break;
+										}
+									}
+								}
+							}
+						}
+						}
+					} catch (const std::exception&) {
+						retval = Menu::NoChange;
+					}
+				}
+			}
+			//? Handle slider arrow clicks (format: "slider_dec_key" or "slider_inc_key")
+			else if (key.starts_with("slider_dec_")) {
+				string opt_key = key.substr(11);  // Skip "slider_dec_"
+				// Find the option first to validate key and get step value
+				bool found = false;
+				for (const auto& cat : cats) {
+					if (found) break;
+					for (const auto& subcat : cat.subcats) {
+						if (found) break;
+						for (const auto& opt : subcat.options) {
+							if (opt.key == opt_key and opt.control == ControlType::Slider) {
+								int current = Config::getI(opt_key);
+								int new_val = max(current - opt.step, opt.min_val);
+								Config::set(opt_key, new_val);
+								found = true;
+								break;
+							}
+						}
+					}
+				}
+			}
+			else if (key.starts_with("slider_inc_")) {
+				string opt_key = key.substr(11);  // Skip "slider_inc_"
+				// Find the option first to validate key and get step value
+				bool found = false;
+				for (const auto& cat : cats) {
+					if (found) break;
+					for (const auto& subcat : cat.subcats) {
+						if (found) break;
+						for (const auto& opt : subcat.options) {
+							if (opt.key == opt_key and opt.control == ControlType::Slider) {
+								int current = Config::getI(opt_key);
+								int new_val = min(current + opt.step, opt.max_val);
+								Config::set(opt_key, new_val);
+								found = true;
+								break;
+							}
+						}
+					}
+				}
+			}
+			//? Handle radio button clicks (format: "radio_key_N" where N is option index)
+			else if (key.starts_with("radio_")) {
+				// Parse key format: "radio_configkey_index"
+				// Find the option first by matching known keys, then extract the index
+				string remainder = key.substr(6);  // Skip "radio_"
+				bool found = false;
+				for (const auto& cat : cats) {
+					if (found) break;
+					for (const auto& subcat : cat.subcats) {
+						if (found) break;
+						for (const auto& opt : subcat.options) {
+							if (opt.control == ControlType::Radio and remainder.starts_with(opt.key + "_")) {
+								// Found matching option, extract index
+								string idx_str = remainder.substr(opt.key.size() + 1);
+								try {
+									int choice_idx = std::stoi(idx_str);
+									if (choice_idx >= 0 and choice_idx < static_cast<int>(opt.choices.size())) {
+										Config::set(opt.key, opt.choices[choice_idx]);
+										found = true;
+									}
+								} catch (...) {
+									// Invalid index, ignore
+								}
+								break;
+							}
+						}
+					}
 				}
 			}
 			else {
@@ -4113,6 +4388,11 @@ namespace MenuV2 {
 		// Draw content
 		if (retval == Menu::Changed or Menu::redraw) {
 			out = Menu::bg;
+
+			//? Clear dynamic mouse mappings (keep tab and close_settings mappings from rebuildMenuBg)
+			std::erase_if(Menu::mouse_mappings, [](const auto& item) {
+				return not item.first.starts_with("tab_") and item.first != "close_settings";
+			});
 
 			// Draw tab bar dynamically (so highlighting updates on category change)
 			out += Mv::to(y + 2, x + 2);
@@ -4156,7 +4436,8 @@ namespace MenuV2 {
 						name = name.substr(0, list_width - 7) + "...";
 					}
 
-					out += Mv::to(content_y + 2 + i, content_x);
+					int preset_row_y = content_y + 2 + i;
+					out += Mv::to(preset_row_y, content_x);
 					if (is_sel) {
 						out += Theme::c("selected_bg") + Theme::c("selected_fg");
 					} else if (i == selected_preset) {
@@ -4170,28 +4451,37 @@ namespace MenuV2 {
 					if (is_sel) {
 						out += Fx::reset;
 					}
+
+					//? Mouse mapping for preset list item
+					Menu::mouse_mappings["preset_" + to_string(i)] = {preset_row_y, content_x, 1, list_width};
 				}
 
 				// Draw buttons below the list
 				int button_y = content_y + 2 + static_cast<int>(presets.size()) + 1;
-				out += Mv::to(button_y, content_x);
+				int button_x = content_x;
+				out += Mv::to(button_y, button_x);
 
 				// Edit button
 				bool edit_sel = (preset_button_focus == 1);
 				out += (edit_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
 					+ "[ Edit ]" + Fx::reset + "  ";
+				Menu::mouse_mappings["btn_edit"] = {button_y, button_x, 1, 8};
+				button_x += 10;  // "[ Edit ]" + "  "
 
 				// Delete button (only shown if more than one preset exists)
 				if (presets.size() > 1) {
 					bool delete_sel = (preset_button_focus == 2);
 					out += (delete_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
 						+ "[ Delete ]" + Fx::reset + "  ";
+					Menu::mouse_mappings["btn_delete"] = {button_y, button_x, 1, 10};
+					button_x += 12;  // "[ Delete ]" + "  "
 				}
 
 				// New button
 				bool new_sel = (preset_button_focus == 3);
 				out += (new_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
 					+ "[ New ]" + Fx::reset;
+				Menu::mouse_mappings["btn_new"] = {button_y, button_x, 1, 7};
 
 				// Draw preview on right side
 				out += Mv::to(content_y, preview_x) + Theme::c("title") + Fx::b
@@ -4430,7 +4720,48 @@ namespace MenuV2 {
 							line += Fx::reset;
 						}
 
-						out += Mv::to(content_y + visible_line, content_x) + line;
+						int opt_row_y = content_y + visible_line;
+						out += Mv::to(opt_row_y, content_x) + line;
+
+						//? Mouse mapping for option row - click to select this option
+						//? For sliders and radios, only map the label area to avoid conflict with control mappings
+						const int label_width = 25;
+						if (opt.control == ControlType::Slider) {
+							// Only map label area for sliders to avoid conflict with arrow mappings
+							Menu::mouse_mappings["opt_" + to_string(sc_idx) + "_" + to_string(opt_idx)] = {
+								opt_row_y, content_x, 1, label_width
+							};
+							// Add slider-specific mouse mappings for arrows inside brackets [◀---▶]
+							const int slider_width = 20;  // Must match value in drawSlider call
+							// Left arrow (◀) at label_width + 1 (after '[')
+							Menu::mouse_mappings["slider_dec_" + opt.key] = {
+								opt_row_y, content_x + label_width + 1, 1, 1
+							};
+							// Right arrow (▶) at label_width + slider_width - 2 (before ']')
+							Menu::mouse_mappings["slider_inc_" + opt.key] = {
+								opt_row_y, content_x + label_width + slider_width - 2, 1, 1
+							};
+						} else if (opt.control == ControlType::Radio and not opt.choices.empty()) {
+							// Only map label area for radios
+							Menu::mouse_mappings["opt_" + to_string(sc_idx) + "_" + to_string(opt_idx)] = {
+								opt_row_y, content_x, 1, label_width
+							};
+							// Add mouse mappings for each radio option: "● Label ○ Label2 ○ Label3"
+							int radio_x = content_x + label_width;
+							for (size_t ri = 0; ri < opt.choices.size(); ri++) {
+								// Each option: symbol(1) + space(1) + text + space separator(1)
+								int option_width = 2 + static_cast<int>(opt.choices[ri].size());
+								Menu::mouse_mappings["radio_" + opt.key + "_" + to_string(ri)] = {
+									opt_row_y, radio_x, 1, option_width
+								};
+								radio_x += option_width + 1;  // +1 for space between options
+							}
+						} else {
+							Menu::mouse_mappings["opt_" + to_string(sc_idx) + "_" + to_string(opt_idx)] = {
+								opt_row_y, content_x, 1, content_width
+							};
+						}
+
 						visible_line++;
 					}
 					current_line++;
@@ -4508,6 +4839,11 @@ namespace MenuV2 {
 				// Draw dropdown background box
 				out += Draw::createBox(dropdown_x, dropdown_y, dropdown_width, dropdown_max_height,
 					Theme::c("hi_fg"), true, dropdown_title);
+
+				// Add close button [×] in top-right corner of dropdown
+				int dd_close_x = dropdown_x + dropdown_width - 5;
+				out += Mv::to(dropdown_y, dd_close_x) + Theme::c("hi_fg") + "[" + Theme::c("inactive_fg") + "×" + Theme::c("hi_fg") + "]";
+				Menu::mouse_mappings["close_dropdown"] = {dropdown_y, dd_close_x, 1, 3};
 
 				// Get disk info map for disk dropdown - query system directly (not Mem::collect which filters)
 				struct DiskDisplayInfo { string name; string device; };
@@ -4601,7 +4937,13 @@ namespace MenuV2 {
 					string item_display = item_full_path;
 
 					bool is_selected_item = (item_idx == dropdown_selection);
-					out += Mv::to(content_start_y + i, dropdown_x + 2);
+					int item_row_y = content_start_y + i;
+					out += Mv::to(item_row_y, dropdown_x + 2);
+
+					//? Mouse mapping for dropdown item
+					Menu::mouse_mappings["dropdown_item_" + to_string(item_idx)] = {
+						item_row_y, dropdown_x + 2, 1, dropdown_width - 4
+					};
 
 					if (is_disk_dropdown) {
 						//? Disk dropdown: show Name | Mountpoint | Device columns
@@ -4765,7 +5107,7 @@ namespace MenuV2 {
 				current_preset = presets[preset_idx];
 			} else {
 				current_preset = PresetDef{};
-				current_preset.name = "New Preset";
+				current_preset.name = "New-Preset";
 			}
 			initialized = true;
 			selected_field = 0;
@@ -4792,6 +5134,8 @@ namespace MenuV2 {
 					return current_preset.net_enabled && current_preset.mem_enabled;
 				case PROC_Pos:
 					return current_preset.proc_enabled;
+				case GraphSymbol:
+					return true;  // Global graph style - always editable
 				default:
 					return true;
 			}
@@ -4923,12 +5267,17 @@ namespace MenuV2 {
 		if (editing_name) {
 			if (is_in(key, "escape", "enter") or key == "\r" or key == "\n") {
 				if (key == "enter" or key == "\r" or key == "\n") {
-					current_preset.name = name_editor.text;
+					//? Substitute spaces with dashes on save (spaces break config parsing)
+					string safe_name = name_editor.text;
+					std::replace(safe_name.begin(), safe_name.end(), ' ', '-');
+					current_preset.name = safe_name;
 				}
 				name_editor.clear();
 				editing_name = false;
 			} else {
-				name_editor.command(key);
+				//? Substitute spaces with dashes while typing
+				string input_key = (key == " ") ? "-" : key;
+				name_editor.command(input_key);
 			}
 		}
 		else {
@@ -5003,14 +5352,16 @@ namespace MenuV2 {
 						break;
 					case Save: {
 						auto presets = getPresets();
+						int new_preset_idx = preset_idx;
 						if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
 							presets[preset_idx] = current_preset;
 						} else {
 							presets.push_back(current_preset);
+							new_preset_idx = static_cast<int>(presets.size()) - 1;  // Index of newly added preset
 						}
 						savePresets(presets);
 
-						Config::current_preset = preset_idx;
+						Config::current_preset = new_preset_idx;
 						Config::apply_preset(current_preset.toConfigString());
 						Draw::calcSizes();
 						Global::resized = true;
@@ -5024,13 +5375,157 @@ namespace MenuV2 {
 						return Menu::Closed;
 				}
 			}
+			//? Handle mouse click on Save button
+			else if (key == "editor_save") {
+				auto presets = getPresets();
+				int new_preset_idx = preset_idx;
+				if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
+					presets[preset_idx] = current_preset;
+				} else {
+					presets.push_back(current_preset);
+					new_preset_idx = static_cast<int>(presets.size()) - 1;  // Index of newly added preset
+				}
+				savePresets(presets);
+
+				Config::current_preset = new_preset_idx;
+				Config::apply_preset(current_preset.toConfigString());
+				Draw::calcSizes();
+				Global::resized = true;
+				Runner::run("all", false, true);
+
+				initialized = false;
+				return Menu::Closed;
+			}
+			//? Handle mouse click on Cancel button or close button [×]
+			else if (key == "editor_cancel" or key == "close_preset_editor") {
+				initialized = false;
+				return Menu::Closed;
+			}
+			//? Handle mouse click on field rows (pe_field_N)
+			else if (key.starts_with("pe_field_")) {
+				try {
+					int clicked_field = std::stoi(key.substr(9));  // "pe_field_".length() == 9
+					if (clicked_field >= 0 and clicked_field < total_fields) {
+						// Check if field is editable
+						bool can_select = isFieldEditable(clicked_field);
+						if ((clicked_field == MEM_Graph or clicked_field == Show_Disk) and not isMemOptionEditable(clicked_field)) {
+							can_select = false;
+						}
+
+						if (can_select) {
+							selected_field = clicked_field;
+
+							// For toggle fields, also toggle on click
+							switch (clicked_field) {
+								case CPU:
+									current_preset.cpu_enabled = not current_preset.cpu_enabled;
+									break;
+								case GPU:
+									current_preset.gpu_enabled = not current_preset.gpu_enabled;
+									break;
+								case PWR:
+									current_preset.pwr_enabled = not current_preset.pwr_enabled;
+									break;
+								case MEM:
+									current_preset.mem_enabled = not current_preset.mem_enabled;
+									current_preset.enforceConstraints();
+									break;
+								case Show_Disk:
+									current_preset.show_disk = not current_preset.show_disk;
+									break;
+								case NET:
+									current_preset.net_enabled = not current_preset.net_enabled;
+									current_preset.enforceConstraints();
+									break;
+								case PROC:
+									current_preset.proc_enabled = not current_preset.proc_enabled;
+									current_preset.enforceConstraints();
+									break;
+								case Name:
+									// Enter edit mode for name field
+									name_editor = Draw::TextEdit{current_preset.name, false};
+									editing_name = true;
+									break;
+								case Save: {
+									// Handle Save button click (same as editor_save)
+									auto presets = getPresets();
+									int new_preset_idx = preset_idx;
+									if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
+										presets[preset_idx] = current_preset;
+									} else {
+										presets.push_back(current_preset);
+										new_preset_idx = static_cast<int>(presets.size()) - 1;  // Index of newly added preset
+									}
+									savePresets(presets);
+
+									Config::current_preset = new_preset_idx;
+									Config::apply_preset(current_preset.toConfigString());
+									Draw::calcSizes();
+									Global::resized = true;
+									Runner::run("all", false, true);
+
+									initialized = false;
+									return Menu::Closed;
+								}
+								case Cancel:
+									// Handle Cancel button click (same as editor_cancel)
+									initialized = false;
+									return Menu::Closed;
+								default:
+									// For radio fields, just select (use left/right to change)
+									if (isRadioField(clicked_field)) {
+										radio_focus = getRadioValue(clicked_field);
+									}
+									break;
+							}
+							retval = Menu::Changed;
+						} else {
+							retval = Menu::NoChange;
+						}
+					} else {
+						retval = Menu::NoChange;
+					}
+				} catch (...) {
+					retval = Menu::NoChange;
+				}
+			}
+			//? Handle mouse click on radio options (pe_radio_FIELD_N)
+			else if (key.starts_with("pe_radio_")) {
+				try {
+					string remainder = key.substr(9);  // Skip "pe_radio_"
+					size_t underscore = remainder.find('_');
+					if (underscore != string::npos) {
+						int field = std::stoi(remainder.substr(0, underscore));
+						int option_idx = std::stoi(remainder.substr(underscore + 1));
+
+						// Verify field is editable
+						bool can_edit = isFieldEditable(field);
+						if ((field == MEM_Graph or field == Show_Disk) and not isMemOptionEditable(field)) {
+							can_edit = false;
+						}
+
+						if (can_edit and isRadioField(field)) {
+							selected_field = field;
+							radio_focus = option_idx;
+							setRadioValue(field, option_idx);
+							retval = Menu::Changed;
+						} else {
+							retval = Menu::NoChange;
+						}
+					}
+				} catch (...) {
+					retval = Menu::NoChange;
+				}
+			}
 			else {
 				retval = Menu::NoChange;
 			}
 		}
 
 		// ============ RENDERING - 2 COLUMN LAYOUT ============
-		if (retval == Menu::Changed or Menu::redraw) {
+		// NOTE: Preset editor ALWAYS renders to ensure mouse mappings stay valid
+		// This is acceptable for a modal dialog with limited complexity
+		{
 			out = Menu::bg;
 
 			// Draw blank mask around the dialog (1 char padding for visibility)
@@ -5046,6 +5541,11 @@ namespace MenuV2 {
 
 			// Draw main box
 			out += Draw::createBox(x, y, dialog_width, dialog_height, Theme::c("hi_fg"), true, "Preset Editor");
+
+			// Add close button [×] in top-right corner
+			int editor_close_x = x + dialog_width - 5;
+			out += Mv::to(y, editor_close_x) + Theme::c("hi_fg") + "[" + Theme::c("inactive_fg") + "×" + Theme::c("hi_fg") + "]";
+			Menu::mouse_mappings["close_preset_editor"] = {y, editor_close_x, 1, 3};
 
 			// Draw vertical divider between columns
 			for (int row = 1; row < dialog_height - 1; row++) {
@@ -5079,6 +5579,10 @@ namespace MenuV2 {
 				} else {
 					out += fg + value;
 				}
+
+				//? Mouse mapping for this field row (click to select, click toggle to toggle)
+				Menu::mouse_mappings["pe_field_" + to_string(field)] = {row_y, label_x, 1, left_col_width - 2};
+
 				row_y++;
 			};
 
@@ -5100,6 +5604,22 @@ namespace MenuV2 {
 				int current = getRadioValue(field);
 				int focus = is_sel ? radio_focus : -1;
 				out += drawRadio(options, current, focus, tty_mode);
+
+				//? Mouse mapping for label area (click to select field)
+				Menu::mouse_mappings["pe_field_" + to_string(field)] = {row_y, label_x, 1, value_x - label_x};
+
+				//? Mouse mappings for each radio option (click to select option)
+				if (is_editable) {
+					int radio_x = value_x;
+					for (size_t ri = 0; ri < options.size(); ri++) {
+						int option_width = 2 + static_cast<int>(options[ri].size());
+						Menu::mouse_mappings["pe_radio_" + to_string(field) + "_" + to_string(ri)] = {
+							row_y, radio_x, 1, option_width
+						};
+						radio_x += option_width + 1;
+					}
+				}
+
 				row_y++;
 			};
 
@@ -5117,6 +5637,8 @@ namespace MenuV2 {
 				} else {
 					out += Theme::c("main_fg") + "[" + current_preset.name + "]";
 				}
+				//? Mouse mapping for Name field
+				Menu::mouse_mappings["pe_field_" + to_string(Name)] = {row_y, label_x, 1, left_col_width - 2};
 				row_y++;
 			}
 
@@ -5133,6 +5655,7 @@ namespace MenuV2 {
 				string marker = is_sel ? ">" : " ";
 				out += Mv::to(row_y, label_x) + fg + marker + "Position";
 				out += Mv::to(row_y, value_x) + fg + "(Top)";
+				Menu::mouse_mappings["pe_field_" + to_string(CPU_Pos)] = {row_y, label_x, 1, left_col_width - 2};
 				row_y++;
 			}
 			drawField(GPU, "GPU", current_preset.gpu_enabled ? "ON" : "OFF", true);
@@ -5144,6 +5667,7 @@ namespace MenuV2 {
 				string marker = is_sel ? ">" : " ";
 				out += Mv::to(row_y, label_x) + fg + marker + "Position";
 				out += Mv::to(row_y, value_x) + fg + "(Top)";
+				Menu::mouse_mappings["pe_field_" + to_string(GPU_Pos)] = {row_y, label_x, 1, left_col_width - 2};
 				row_y++;
 			}
 			drawField(PWR, "PWR", current_preset.pwr_enabled ? "ON" : "OFF", true);
@@ -5155,6 +5679,7 @@ namespace MenuV2 {
 				string marker = is_sel ? ">" : " ";
 				out += Mv::to(row_y, label_x) + fg + marker + "Position";
 				out += Mv::to(row_y, value_x) + fg + "(Top)";
+				Menu::mouse_mappings["pe_field_" + to_string(PWR_Pos)] = {row_y, label_x, 1, left_col_width - 2};
 				row_y++;
 			}
 
@@ -5180,6 +5705,7 @@ namespace MenuV2 {
 				string marker = is_sel ? ">" : " ";
 				out += Mv::to(row_y, label_x) + fg + marker + "Position";
 				out += Mv::to(row_y, value_x) + fg + "(Wide)";
+				Menu::mouse_mappings["pe_field_" + to_string(NET_Pos)] = {row_y, label_x, 1, left_col_width - 2};
 				row_y++;
 			}
 
@@ -5193,17 +5719,24 @@ namespace MenuV2 {
 			// ---- GRAPH SYMBOL (split across two lines) ----
 			{
 				bool is_sel = (selected_field == GraphSymbol);
-				bool is_editable = true;
+				bool is_editable = isFieldEditable(GraphSymbol);
 				string fg = is_editable ? (is_sel ? Theme::c("hi_fg") : Theme::c("main_fg"))
 				                         : Theme::c("inactive_fg");
 				string marker = is_sel ? ">" : " ";
 
 				// Line 1: Label + first two options
+				int graph_start_y = row_y;
 				out += Mv::to(row_y, label_x) + fg + marker + "Style";
 				out += Mv::to(row_y, value_x);
 				int current = getRadioValue(GraphSymbol);
 				int focus = is_sel ? radio_focus : -1;
 				out += drawRadio({"default", "braille"}, current, (focus <= 1) ? focus : -1, tty_mode);
+
+				//? Mouse mappings for first row radio options (default=0, braille=1)
+				int radio_x = value_x;
+				Menu::mouse_mappings["pe_radio_" + to_string(GraphSymbol) + "_0"] = {row_y, radio_x, 1, 9};  // "● default"
+				radio_x += 10;
+				Menu::mouse_mappings["pe_radio_" + to_string(GraphSymbol) + "_1"] = {row_y, radio_x, 1, 9};  // "○ braille"
 				row_y++;
 
 				// Line 2: Indent + remaining options
@@ -5212,7 +5745,16 @@ namespace MenuV2 {
 				int adj_current = (current >= 2) ? current - 2 : -1;
 				int adj_focus = (is_sel and focus >= 2) ? focus - 2 : -1;
 				out += drawRadio({"block", "tty"}, adj_current, adj_focus, tty_mode);
+
+				//? Mouse mappings for second row radio options (block=2, tty=3)
+				radio_x = value_x;
+				Menu::mouse_mappings["pe_radio_" + to_string(GraphSymbol) + "_2"] = {row_y, radio_x, 1, 7};  // "○ block"
+				radio_x += 8;
+				Menu::mouse_mappings["pe_radio_" + to_string(GraphSymbol) + "_3"] = {row_y, radio_x, 1, 5};  // "○ tty"
 				row_y++;
+
+				//? Mouse mapping for GraphSymbol field label (click to select field)
+				Menu::mouse_mappings["pe_field_" + to_string(GraphSymbol)] = {graph_start_y, label_x, 1, value_x - label_x};
 			}
 
 			// ---- BUTTONS at bottom of left column ----
@@ -5228,14 +5770,21 @@ namespace MenuV2 {
 				} else {
 					out += Theme::c("main_fg") + "[ Save ]";
 				}
+				//? Mouse mappings for Save button (both action and field selection)
+				Menu::mouse_mappings["editor_save"] = {buttons_y, btn_x, 1, 8};
+				Menu::mouse_mappings["pe_field_" + to_string(Save)] = {buttons_y, btn_x, 1, 8};
 
 				out += "  ";
+				btn_x += 10;  // "[ Save ]" + "  "
 
 				if (cancel_sel) {
 					out += Theme::c("hi_fg") + Fx::b + "[ CANCEL ]" + Fx::ub;
 				} else {
 					out += Theme::c("main_fg") + "[ Cancel ]";
 				}
+				//? Mouse mappings for Cancel button (both action and field selection)
+				Menu::mouse_mappings["editor_cancel"] = {buttons_y, btn_x, 1, 10};
+				Menu::mouse_mappings["pe_field_" + to_string(Cancel)] = {buttons_y, btn_x, 1, 10};
 			}
 
 			// ==================== RIGHT COLUMN: PREVIEW ====================
