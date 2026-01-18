@@ -13,17 +13,17 @@
 # Main background, empty for terminal default, need to be empty if you want transparent background
 theme[main_bg]="#2E3440"
 
-# Main text color
-theme[main_fg]="#D8DEE9"
+# Main text color - Nord Snow Storm brightest for better readability
+theme[main_fg]="#ECEFF4"
 
-# Title color for boxes
-theme[title]="#8FBCBB"
+# Title color for boxes - Nord Snow Storm for headers
+theme[title]="#ECEFF4"
 
-# Highlight color for keyboard shortcuts - Nord Violet
-theme[hi_fg]="#B48EAD"
+# Highlight color for keyboard shortcuts - Nord Frost Blue (original)
+theme[hi_fg]="#5E81AC"
 
-# Background color of selected item in processes box - Darker violet
-theme[selected_bg]="#5E3E5E"
+# Background color of selected item in processes box - Nord Polar Night (original)
+theme[selected_bg]="#4C566A"
 
 # Foreground color of selected item in processes box
 theme[selected_fg]="#ECEFF4"
@@ -90,15 +90,15 @@ theme[download_start]="#2E4558"
 theme[download_mid]="#5E8595"
 theme[download_end]="#88C0D0"
 
-# Upload graph colors - Nord Violet gradient (bottom chart)
-theme[upload_start]="#5E3E5E"
-theme[upload_mid]="#8A6888"
-theme[upload_end]="#B48EAD"
+# Upload graph colors - Nord Violet gradient (bottom chart - bright at line, dark at edge)
+theme[upload_start]="#D8B4D8"
+theme[upload_mid]="#B48EAD"
+theme[upload_end]="#3B2540"
 
-# Process box color gradient for threads, mem and cpu usage - Green → Yellow → Red
-theme[process_start]="#A3BE8C"
-theme[process_mid]="#EBCB8B"
-theme[process_end]="#BF616A"
+# Process box color gradient for threads, mem and cpu usage - Nord Frost (original)
+theme[process_start]="#81A1C1"
+theme[process_mid]="#88C0D0"
+theme[process_end]="#ECEFF4"
 
 # Process box gradient colors for process states
 theme[proc_pause_bg]="#BF616A"
