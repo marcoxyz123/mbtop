@@ -629,11 +629,15 @@ namespace Tools {
 			//? Use release semantics to ensure prior writes are visible to other threads
 			this->atom.store(true, std::memory_order_release);
 		}
+		//? Notify waiting threads that lock state has changed
+		this->atom.notify_all();
 	}
 
 	atomic_lock::~atomic_lock() noexcept {
 		//? Use release semantics to ensure all writes before unlock are visible
 		this->atom.store(false, std::memory_order_release);
+		//? Notify waiting threads that lock has been released
+		this->atom.notify_all();
 	}
 
 	string readfile(const std::filesystem::path& path, const string& fallback) {
