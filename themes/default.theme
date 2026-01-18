@@ -1,0 +1,109 @@
+# mbtop Default Theme
+# Based on Nord palette (https://www.nordtheme.com) with enhanced colors
+# Customized for mbtop by MBE
+
+# Colors should be in 6 or 2 character hexadecimal or single spaced rgb decimal: "#RRGGBB", "#BW" or "0-255 0-255 0-255"
+# example for white: "#ffffff", "#ff" or "255 255 255".
+
+# All graphs and meters can be gradients
+# For single color graphs leave "mid" and "end" variable empty.
+# Use "start" and "end" variables for two color gradient
+# Use "start", "mid" and "end" for three color gradient
+
+# Main background, empty for terminal default, need to be empty if you want transparent background
+theme[main_bg]="#2E3440"
+
+# Main text color
+theme[main_fg]="#D8DEE9"
+
+# Title color for boxes
+theme[title]="#8FBCBB"
+
+# Highlight color for keyboard shortcuts - Nord Violet
+theme[hi_fg]="#B48EAD"
+
+# Background color of selected item in processes box - Darker violet
+theme[selected_bg]="#5E3E5E"
+
+# Foreground color of selected item in processes box
+theme[selected_fg]="#ECEFF4"
+
+# Color of inactive/disabled text
+theme[inactive_fg]="#4C566A"
+
+# Color of text appearing on top of graphs
+theme[graph_text]="#4C566A"
+
+# Background color of the percentage meters
+theme[meter_bg]="#4C566A"
+
+# Misc colors for processes box including mini cpu graphs, details memory graph and details status text
+theme[proc_misc]="#A3BE8C"
+
+# Cpu box outline color
+theme[cpu_box]="#4C566A"
+
+# Memory/disks box outline color
+theme[mem_box]="#4C566A"
+
+# Net up/down box outline color
+theme[net_box]="#4C566A"
+
+# Processes box outline color
+theme[proc_box]="#4C566A"
+
+# Box divider line and small boxes line color
+theme[div_line]="#4C566A"
+
+# Temperature graph colors - Green (cool) → Yellow (warm) → Red (hot)
+theme[temp_start]="#A3BE8C"
+theme[temp_mid]="#EBCB8B"
+theme[temp_end]="#BF616A"
+
+# CPU graph colors - Green → Yellow → Red gradient
+theme[cpu_start]="#A3BE8C"
+theme[cpu_mid]="#EBCB8B"
+theme[cpu_end]="#BF616A"
+
+# Mem/Disk free meter - Nord Green shades
+theme[free_start]="#3B4525"
+theme[free_mid]="#A3BE8C"
+theme[free_end]="#C9E5A0"
+
+# Mem/Disk cached meter - Nord Frost/Cyan shades
+theme[cached_start]="#2E4558"
+theme[cached_mid]="#88C0D0"
+theme[cached_end]="#A8E0F0"
+
+# Mem/Disk available meter - Nord Yellow/Gold shades
+theme[available_start]="#4E4520"
+theme[available_mid]="#EBCB8B"
+theme[available_end]="#F5DBA8"
+
+# Mem/Disk used meter - Nord Red shades
+theme[used_start]="#5E3535"
+theme[used_mid]="#BF616A"
+theme[used_end]="#D08080"
+
+# Download graph colors - Nord Frost/Cyan gradient (top chart)
+theme[download_start]="#2E4558"
+theme[download_mid]="#5E8595"
+theme[download_end]="#88C0D0"
+
+# Upload graph colors - Nord Violet gradient (bottom chart)
+theme[upload_start]="#5E3E5E"
+theme[upload_mid]="#8A6888"
+theme[upload_end]="#B48EAD"
+
+# Process box color gradient for threads, mem and cpu usage - Green → Yellow → Red
+theme[process_start]="#A3BE8C"
+theme[process_mid]="#EBCB8B"
+theme[process_end]="#BF616A"
+
+# Process box gradient colors for process states
+theme[proc_pause_bg]="#BF616A"
+theme[proc_follow_bg]="#5E81AC"
+theme[proc_banner_bg]="#B48EAD"
+theme[proc_banner_fg]="#ECEFF4"
+theme[followed_bg]="#5E81AC"
+theme[followed_fg]="#ECEFF4"
