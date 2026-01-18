@@ -28,6 +28,7 @@ tab-size = 4
 #include <errno.h>
 #include <signal.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <filesystem>
@@ -5278,7 +5279,41 @@ namespace MenuV2 {
 				}
 				name_editor.clear();
 				editing_name = false;
-			} else {
+			}
+			//? Handle Save/Cancel clicks while editing name - save name first, then process action
+			else if (key == "editor_save") {
+				//? Save the name being edited
+				string safe_name = name_editor.text;
+				std::replace(safe_name.begin(), safe_name.end(), ' ', '-');
+				current_preset.name = safe_name;
+				name_editor.clear();
+				editing_name = false;
+				//? Now save the preset
+				auto presets = getPresets();
+				int new_preset_idx = preset_idx;
+				if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
+					presets[preset_idx] = current_preset;
+				} else {
+					presets.push_back(current_preset);
+					new_preset_idx = static_cast<int>(presets.size()) - 1;
+				}
+				savePresets(presets);
+				Config::current_preset = new_preset_idx;
+				Config::apply_preset(current_preset.toConfigString());
+				Draw::calcSizes();
+				Global::resized = true;
+				Runner::run("all", false, true);
+				initialized = false;
+				return Menu::Closed;
+			}
+			else if (key == "editor_cancel" or key == "close_preset_editor") {
+				//? Cancel without saving - discard name edit
+				name_editor.clear();
+				editing_name = false;
+				initialized = false;
+				return Menu::Closed;
+			}
+			else {
 				//? Substitute spaces with dashes while typing
 				string input_key = (key == " ") ? "-" : key;
 				name_editor.command(input_key);
