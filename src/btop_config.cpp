@@ -153,6 +153,10 @@ namespace Config {
 
 		{"cpu_bottom",			"#* Show cpu box at bottom of screen instead of top."},
 
+		{"gpu_bottom",			"#* Show gpu box at bottom of screen instead of top."},
+
+		{"pwr_bottom",			"#* Show pwr box at bottom of screen instead of top."},
+
 		{"show_uptime", 		"#* Shows the system uptime in the CPU box."},
 
 		{"show_cpu_watts",		"#* Shows the CPU package current power consumption in watts. Requires running `make setcap` or `make setuid` or running with sudo."},

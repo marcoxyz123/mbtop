@@ -32,6 +32,8 @@ tab-size = 4
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <set>
+#include <sstream>
 #include <unordered_map>
 #include <utility>
 
@@ -2096,21 +2098,18 @@ static int optionsMenu(const string& key) {
 			bg.clear();
 			bg.shrink_to_fit();
 			currentMenu = -1;
-			// If theme or boxes changed during menu session, apply changes and trigger full refresh
-			// Aggressive clear to prevent display corruption from cached colors
+			// Always clear screen and trigger full refresh when menu closes
+			// This prevents artifacts from modal windows overlaying panels
+			std::cout << Term::clear << std::flush;  // Clear screen completely first
+			if (MenuV2::theme_changed_pending) {
+				Theme::setTheme();         // Load the new theme colors
+			}
 			if (MenuV2::theme_changed_pending or MenuV2::boxes_changed_pending) {
-				std::cout << Term::clear << std::flush;  // Clear screen completely first
-				if (MenuV2::theme_changed_pending) {
-					Theme::setTheme();         // Load the new theme colors
-				}
-				Draw::calcSizes();             // Recalculate all box sizes and clear caches
-				Global::resized = true;        // Trigger full refresh in main loop
-				MenuV2::theme_changed_pending = false;
-				MenuV2::boxes_changed_pending = false;
+				Draw::calcSizes();         // Recalculate all box sizes and clear caches
 			}
-			else {
-				Runner::run("all", true, true);
-			}
+			Global::resized = true;        // Trigger full refresh in main loop
+			MenuV2::theme_changed_pending = false;
+			MenuV2::boxes_changed_pending = false;
 			mouse_mappings.clear();
 			return;
 		}
@@ -2338,8 +2337,8 @@ namespace MenuV2 {
 	//? disabled_mask: bitmask of which options are disabled (shown in red)
 	string drawMultiCheck(const vector<string>& options, int selected_mask, int focus_idx, int disabled_mask, bool tty_mode) {
 		string result;
-		const string checked_char = tty_mode ? "[x]" : "☑";
-		const string unchecked_char = tty_mode ? "[ ]" : "☐";
+		const string checked_char = tty_mode ? "(o)" : "●";
+		const string unchecked_char = tty_mode ? "( )" : "○";
 		const string red_color = "\x1b[38;5;203m";  // Nord red
 
 		for (size_t i = 0; i < options.size(); i++) {
@@ -2950,7 +2949,7 @@ namespace MenuV2 {
 						{"show_network_drives", "Network Drives", "Show NFS/SMB/AFP network drives", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"use_fstab", "Use fstab", "Use fstab for disk detection", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"disk_free_priv", "Free as Privileged", "Calculate free space as privileged user", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"disks_filter", "Disks Filter", "Select disk to show (empty=all)", ControlType::Select, {}, "disks_filter", 0, 0, 0},
+						{"disks_filter", "Disks to Show", "Select disks to display (empty = show all)", ControlType::Select, {}, "disks_filter", 0, 0, 0},
 					}},
 					{"Disk | I/O", {
 						{"show_io_stat", "Show I/O Stats", "Display disk I/O statistics", ControlType::Toggle, {}, "", 0, 0, 0},
@@ -3385,6 +3384,7 @@ namespace MenuV2 {
 		static vector<string> dropdown_choices;
 		static string dropdown_key;            //? Track which option key opened the dropdown
 		static bool theme_refresh = false;
+		static std::set<string> disk_filter_selections;  //? Track selected disks to show (multi-select)
 
 		//? Presets category state (0-based: System=0, Appearance=1, Panels=2, Presets=3)
 		static int selected_preset = 0;         //? Currently selected preset (0-8)
@@ -3510,36 +3510,73 @@ namespace MenuV2 {
 
 		if (dropdown_open) {
 			// Handle dropdown selection modal
+			const bool is_disk_filter = (dropdown_key == "disks_filter");
+
 			if (is_in(key, "escape", "q", "backspace")) {
-				dropdown_open = false;
-				dropdown_choices.clear();
-			}
-			else if (key == "enter" or key == "space") {
-				// Apply selection
-				const auto& cat = cats[selected_cat];
-				if (selected_subcat < static_cast<int>(cat.subcats.size())) {
-					const auto& subcat = cat.subcats[selected_subcat];
-					if (selected_option < static_cast<int>(subcat.options.size())) {
-						const auto& opt = subcat.options[selected_option];
-						if (dropdown_selection < static_cast<int>(dropdown_choices.size())) {
-							Config::set(opt.key, dropdown_choices[dropdown_selection]);
-							// Trigger theme refresh for theme-related options
-							if (opt.key == "color_theme") {
-								theme_refresh = true;
-							}
-							// Sync clock_12h config when clock_format changes
-							else if (opt.key == "clock_format") {
-								const string& fmt = dropdown_choices[dropdown_selection];
-								// 12-hour formats contain %I (hour) or %p (AM/PM)
-								bool is_12h = (fmt.find("%I") != string::npos or fmt.find("%p") != string::npos);
-								Config::set("clock_12h", is_12h);
-							}
-							Menu::redraw = true;  // Redraw to show new selection
-						}
+				//? For disk filter, save selections before closing
+				if (is_disk_filter) {
+					string filter_str;
+					for (const auto& disk : disk_filter_selections) {
+						if (not filter_str.empty()) filter_str += " ";
+						filter_str += disk;
 					}
+					Config::set("disks_filter", filter_str);
 				}
 				dropdown_open = false;
 				dropdown_choices.clear();
+				disk_filter_selections.clear();
+				//? Clear screen and trigger full redraw to remove dropdown artifacts
+				std::cout << Term::clear << std::flush;
+				Global::resized = true;
+			}
+			else if (key == "enter" or key == "space") {
+				if (is_disk_filter) {
+					//? Disk filter: toggle checkbox to select disks to show
+					if (dropdown_selection < static_cast<int>(dropdown_choices.size())) {
+						const string& selected_disk = dropdown_choices[dropdown_selection];
+						if (selected_disk.empty()) {
+							//? First item "(Show All Disks)" - clear filter to show all
+							disk_filter_selections.clear();
+						} else {
+							//? Toggle disk in show list
+							if (disk_filter_selections.contains(selected_disk)) {
+								disk_filter_selections.erase(selected_disk);
+							} else {
+								disk_filter_selections.insert(selected_disk);
+							}
+						}
+						Menu::redraw = true;
+					}
+				} else {
+					//? Other dropdowns: apply single selection
+					const auto& cat = cats[selected_cat];
+					if (selected_subcat < static_cast<int>(cat.subcats.size())) {
+						const auto& subcat = cat.subcats[selected_subcat];
+						if (selected_option < static_cast<int>(subcat.options.size())) {
+							const auto& opt = subcat.options[selected_option];
+							if (dropdown_selection < static_cast<int>(dropdown_choices.size())) {
+								Config::set(opt.key, dropdown_choices[dropdown_selection]);
+								// Trigger theme refresh for theme-related options
+								if (opt.key == "color_theme") {
+									theme_refresh = true;
+								}
+								// Sync clock_12h config when clock_format changes
+								else if (opt.key == "clock_format") {
+									const string& fmt = dropdown_choices[dropdown_selection];
+									// 12-hour formats contain %I (hour) or %p (AM/PM)
+									bool is_12h = (fmt.find("%I") != string::npos or fmt.find("%p") != string::npos);
+									Config::set("clock_12h", is_12h);
+								}
+								Menu::redraw = true;  // Redraw to show new selection
+							}
+						}
+					}
+					dropdown_open = false;
+					dropdown_choices.clear();
+					//? Clear screen and trigger full redraw to remove dropdown artifacts
+					std::cout << Term::clear << std::flush;
+					Global::resized = true;
+				}
 			}
 			else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
 				if (dropdown_selection < static_cast<int>(dropdown_choices.size()) - 1) {
@@ -3956,6 +3993,20 @@ namespace MenuV2 {
 							}
 							dropdown_key = opt->key;  //? Track which option opened the dropdown
 							dropdown_open = true;
+
+							//? For disk filter, initialize multi-select state from config
+							if (opt->key == "disks_filter") {
+								disk_filter_selections.clear();
+								string current_filter = Config::getS("disks_filter");
+								if (not current_filter.empty()) {
+									// Parse space-separated filter entries
+									std::istringstream iss(current_filter);
+									string disk_path;
+									while (iss >> disk_path) {
+										disk_filter_selections.insert(disk_path);
+									}
+								}
+							}
 						}
 					}
 					else if (opt->control == ControlType::MultiCheck and not opt->choices.empty()) {
@@ -4307,20 +4358,26 @@ namespace MenuV2 {
 									}
 								}
 
-								//? Platform-aware disabled mask for GPU vendors
+								//? Platform-aware disabled mask and selection for GPU vendors
 								if (opt.key == "shown_gpus") {
 									#if defined(__APPLE__) && defined(GPU_SUPPORT)
 									bool is_apple_silicon = Gpu::apple_silicon_gpu.is_available();
 									if (is_apple_silicon) {
 										//? Apple Silicon: Only "Apple" is available (index 0)
 										disabled_mask = 0b1110;  // NVIDIA(1), AMD(2), Intel(3) disabled
+										//? Force correct display: only Apple should be selected
+										selected_mask = 0b0001;  // Only Apple selected
 									} else {
 										//? Intel Mac: "Apple" is disabled
 										disabled_mask = 0b0001;  // Apple(0) disabled
+										//? Clear Apple selection if somehow set on Intel Mac
+										selected_mask &= ~0b0001;
 									}
 									#else
 									//? Non-Apple: "Apple" option disabled
 									disabled_mask = 0b0001;  // Apple(0) disabled
+									//? Clear Apple selection on non-Apple platforms
+									selected_mask &= ~0b0001;
 									#endif
 								}
 
@@ -4401,24 +4458,69 @@ namespace MenuV2 {
 				const bool is_disk_dropdown = (dropdown_key == "disks_filter");
 				const int dropdown_max_height = min(15, static_cast<int>(dropdown_choices.size()) + 2 + (is_disk_dropdown ? 1 : 0));
 				//? Wider dropdown for themes and disks
-				const int dropdown_width = is_theme_dropdown ? 58 : (is_disk_dropdown ? 70 : 40);
+				const int dropdown_width = is_theme_dropdown ? 58 : (is_disk_dropdown ? 95 : 40);
 				const int dropdown_x = x + (dialog_width - dropdown_width) / 2;
 				const int dropdown_y = y + (dialog_height - dropdown_max_height) / 2;
 
 				// Get dropdown title
 				string dropdown_title = "Select Option";
 				if (is_theme_dropdown) dropdown_title = "Select Theme";
-				else if (is_disk_dropdown) dropdown_title = "Select Disk";
+				else if (is_disk_dropdown) dropdown_title = "Select Disks to Show";
 
 				// Draw dropdown background box
 				out += Draw::createBox(dropdown_x, dropdown_y, dropdown_width, dropdown_max_height,
 					Theme::c("hi_fg"), true, dropdown_title);
 
-				// Get disk info map for disk dropdown
-				std::unordered_map<string, Mem::disk_info> disk_map;
+				// Get disk info map for disk dropdown - query system directly (not Mem::collect which filters)
+				struct DiskDisplayInfo { string name; string device; };
+				std::unordered_map<string, DiskDisplayInfo> disk_display_map;
 				if (is_disk_dropdown) {
-					auto mem = Mem::collect(true);  // no_update = true to get cached data
-					disk_map = mem.disks;
+#if defined(__APPLE__)
+					struct statfs *stfs = nullptr;
+					int count = getmntinfo(&stfs, MNT_NOWAIT);
+					for (int i = 0; i < count; i++) {
+						string mountpoint = stfs[i].f_mntonname;
+						string device = stfs[i].f_mntfromname;
+						string fstype = stfs[i].f_fstypename;
+						uint32_t flags = stfs[i].f_flags;
+
+						// Skip system filesystems (same logic as getDynamicChoices)
+						if (fstype == "autofs" or fstype == "devfs") continue;
+						if (flags & MNT_DONTBROWSE) continue;
+
+						// Extract display name from mountpoint
+						string display_name;
+						if (mountpoint.starts_with("/Volumes/"))
+							display_name = fs::path(mountpoint).filename().string();
+						else if (mountpoint == "/")
+							display_name = "Macintosh HD";
+						else
+							display_name = mountpoint;
+
+						disk_display_map[mountpoint] = {display_name, device};
+					}
+#elif defined(__linux__)
+					FILE* mtab = setmntent("/proc/mounts", "r");
+					if (mtab != nullptr) {
+						struct mntent* entry;
+						while ((entry = getmntent(mtab)) != nullptr) {
+							string mountpoint = entry->mnt_dir;
+							string device = entry->mnt_fsname;
+							string fstype = entry->mnt_type;
+
+							// Skip virtual filesystems
+							if (fstype == "proc" or fstype == "sysfs" or fstype == "devtmpfs" or
+							    fstype == "tmpfs" or fstype == "cgroup" or fstype == "cgroup2")
+								continue;
+
+							string display_name = fs::path(mountpoint).filename().string();
+							if (display_name.empty()) display_name = mountpoint;
+
+							disk_display_map[mountpoint] = {display_name, device};
+						}
+						endmntent(mtab);
+					}
+#endif
 				}
 
 				// Draw column headers for disk dropdown
@@ -4426,7 +4528,7 @@ namespace MenuV2 {
 				if (is_disk_dropdown) {
 					out += Mv::to(content_start_y, dropdown_x + 2);
 					out += Theme::c("title") + Fx::b;
-					out += ljust("Name", 18) + ljust("Mountpoint", 25) + ljust("Device", 22);
+					out += "Show " + ljust("Name", 18) + "  " + ljust("Mountpoint", 32) + "  " + ljust("Device", 20);
 					out += Fx::ub + Fx::reset;
 					content_start_y++;
 				}
@@ -4458,35 +4560,43 @@ namespace MenuV2 {
 
 					if (is_disk_dropdown) {
 						//? Disk dropdown: show Name | Mountpoint | Device columns
-						string disk_name = "(All Disks)";
+						string disk_name = "(No Filter)";
 						string disk_mount = "";
 						string disk_dev = "";
 
-						if (not item_full_path.empty() and disk_map.contains(item_full_path)) {
-							const auto& disk = disk_map.at(item_full_path);
+						if (not item_full_path.empty() and disk_display_map.contains(item_full_path)) {
+							const auto& disk = disk_display_map.at(item_full_path);
 							disk_name = disk.name.empty() ? "(unnamed)" : disk.name;
 							disk_mount = item_full_path;
-							disk_dev = disk.dev.string();
+							disk_dev = disk.device;
 						} else if (item_full_path.empty()) {
-							disk_name = "(All Disks)";
+							disk_name = "(Show All Disks)";
 							disk_mount = "";
 							disk_dev = "";
 						} else {
-							disk_name = item_full_path;
+							// Fallback if not found in map
+							disk_name = fs::path(item_full_path).filename().string();
+							if (disk_name.empty()) disk_name = item_full_path;
 							disk_mount = item_full_path;
 						}
 
-						// Truncate long values
-						if (disk_name.size() > 16) disk_name = disk_name.substr(0, 13) + "...";
-						if (disk_mount.size() > 23) disk_mount = disk_mount.substr(0, 20) + "...";
+						// Truncate long values (reduced by 4 to make room for checkbox)
+						if (disk_name.size() > 18) disk_name = disk_name.substr(0, 15) + "...";
+						if (disk_mount.size() > 32) disk_mount = disk_mount.substr(0, 29) + "...";
 						if (disk_dev.size() > 20) disk_dev = disk_dev.substr(0, 17) + "...";
+
+						//? Determine checkbox state - checked means disk will be hidden
+						bool is_checked = disk_filter_selections.contains(item_full_path);
+						string checkbox = is_checked ? "[x]" : "[ ]";
+						//? First item "(No Filter)" has no checkbox
+						if (item_full_path.empty()) checkbox = "   ";
 
 						if (is_selected_item) {
 							out += Theme::c("hi_fg") + Fx::b + "> ";
 						} else {
 							out += Theme::c("main_fg") + "  ";
 						}
-						out += ljust(disk_name, 16) + "  " + ljust(disk_mount, 23) + "  " + ljust(disk_dev, 20);
+						out += checkbox + " " + ljust(disk_name, 18) + "  " + ljust(disk_mount, 32) + "  " + ljust(disk_dev, 20);
 						if (is_selected_item) out += Fx::ub;
 					}
 					else {
