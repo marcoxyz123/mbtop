@@ -692,10 +692,8 @@ namespace Config {
 
 		// ============ LAYOUT CONFIGURATION BASED ON 13 LAYOUTS ============
 		// Decode positions
-		bool mem_vertical = (mem_type == 1);
 		bool net_left = (net_pos == 0);     // Left = under MEM
 		bool net_right = (net_pos == 1);    // Right = beside MEM
-		bool net_wide = (net_pos == 2);     // Wide = fills width
 		bool proc_right_pos = (proc_pos == 0);  // Right = compact on right
 		bool proc_wide = (proc_pos == 1);   // Wide = fills width at bottom
 

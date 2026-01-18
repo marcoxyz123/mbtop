@@ -4029,8 +4029,8 @@ namespace Draw {
 		Config::unlock();
 		auto boxes = Config::getS("shown_boxes");
 		auto cpu_bottom = Config::getB("cpu_bottom");
-		auto gpu_bottom = Config::getB("gpu_bottom");
-		auto pwr_bottom = Config::getB("pwr_bottom");
+		[[maybe_unused]] auto gpu_bottom = Config::getB("gpu_bottom");
+		[[maybe_unused]] auto pwr_bottom = Config::getB("pwr_bottom");
 		auto mem_below_net = Config::getB("mem_below_net");
 		auto net_beside_mem = Config::getB("net_beside_mem");
 		auto proc_full_width = Config::getB("proc_full_width");
@@ -4393,6 +4393,11 @@ namespace Draw {
 
 		//? Calculate total top height (excluding bottom panels)
 		int gpu_top_offset = (not gpu_bottom and Gpu::shown > 0) ? Gpu::total_height : 0;
+	#else
+		//? Non-GPU build: simplified offset calculations
+		int pwr_offset = 0;
+		int total_bottom_height = (cpu_bottom and Cpu::shown) ? Cpu::height : 0;
+		int gpu_top_offset = 0;
 	#endif
 
 		//* Calculate and draw mem box outlines
