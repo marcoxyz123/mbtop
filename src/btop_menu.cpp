@@ -2499,37 +2499,51 @@ namespace MenuV2 {
 
 		int y_pos = 0;
 
-		// Calculate space reserved for panels at bottom
-		int bottom_reserved = 0;
-		if (preset.cpu_enabled and preset.cpu_bottom) bottom_reserved += 3;
-		if (preset.gpu_enabled and preset.gpu_bottom) bottom_reserved += 3;
-		if (preset.pwr_enabled and preset.pwr_bottom) bottom_reserved += 3;
-
-		// CPU at top if enabled and not at bottom
-		if (preset.cpu_enabled and not preset.cpu_bottom) {
-			drawBox(0, y_pos, width, 3, "CPU");
-			y_pos += 3;
-		}
-
-		// GPU at top if enabled and not at bottom
-		if (preset.gpu_enabled and not preset.gpu_bottom) {
-			drawBox(0, y_pos, width, 3, "GPU");
-			y_pos += 3;
-		}
-
-		// PWR at top if enabled and not at bottom
-		if (preset.pwr_enabled and not preset.pwr_bottom) {
-			drawBox(0, y_pos, width, 3, "PWR");
-			y_pos += 3;
-		}
-
-		int remaining = height - y_pos - bottom_reserved;
-		if (remaining < 3) remaining = 3;
-
 		// Panel state
 		bool has_mem = preset.mem_enabled;
 		bool has_net = preset.net_enabled;
 		bool has_proc = preset.proc_enabled;
+
+		// Count top and bottom panels
+		int top_panel_count = 0;
+		int bottom_panel_count = 0;
+		if (preset.cpu_enabled) { if (preset.cpu_bottom) bottom_panel_count++; else top_panel_count++; }
+		if (preset.gpu_enabled) { if (preset.gpu_bottom) bottom_panel_count++; else top_panel_count++; }
+		if (preset.pwr_enabled) { if (preset.pwr_bottom) bottom_panel_count++; else top_panel_count++; }
+
+		// Calculate panel heights - if no lower panels, top/bottom panels fill the space
+		bool no_lower_panels = not has_mem and not has_net and not has_proc;
+		int total_tb_panels = top_panel_count + bottom_panel_count;
+
+		int top_panel_height = 3;  // Default fixed height
+		int bottom_panel_height = 3;
+		int bottom_reserved = bottom_panel_count * 3;
+
+		if (no_lower_panels and total_tb_panels > 0) {
+			// No lower panels - top/bottom panels fill entire space proportionally
+			int panel_h = height / total_tb_panels;
+			if (panel_h < 3) panel_h = 3;
+			top_panel_height = panel_h;
+			bottom_panel_height = panel_h;
+			bottom_reserved = bottom_panel_count * panel_h;
+		}
+
+		// Draw top panels (CPU, GPU, PWR if at top position)
+		if (preset.cpu_enabled and not preset.cpu_bottom) {
+			drawBox(0, y_pos, width, top_panel_height, "CPU");
+			y_pos += top_panel_height;
+		}
+		if (preset.gpu_enabled and not preset.gpu_bottom) {
+			drawBox(0, y_pos, width, top_panel_height, "GPU");
+			y_pos += top_panel_height;
+		}
+		if (preset.pwr_enabled and not preset.pwr_bottom) {
+			drawBox(0, y_pos, width, top_panel_height, "PWR");
+			y_pos += top_panel_height;
+		}
+
+		int remaining = height - y_pos - bottom_reserved;
+		if (remaining < 3) remaining = 3;
 
 		// Build labels with type indicator
 		string mem_label = "MEM";
@@ -2680,16 +2694,16 @@ namespace MenuV2 {
 		// Draw bottom panels (order from bottom: CPU at very bottom, GPU above, PWR above GPU)
 		int bottom_y = height;
 		if (preset.cpu_enabled and preset.cpu_bottom) {
-			bottom_y -= 3;
-			drawBox(0, bottom_y, width, 3, "CPU");
+			bottom_y -= bottom_panel_height;
+			drawBox(0, bottom_y, width, bottom_panel_height, "CPU");
 		}
 		if (preset.gpu_enabled and preset.gpu_bottom) {
-			bottom_y -= 3;
-			drawBox(0, bottom_y, width, 3, "GPU");
+			bottom_y -= bottom_panel_height;
+			drawBox(0, bottom_y, width, bottom_panel_height, "GPU");
 		}
 		if (preset.pwr_enabled and preset.pwr_bottom) {
-			bottom_y -= 3;
-			drawBox(0, bottom_y, width, 3, "PWR");
+			bottom_y -= bottom_panel_height;
+			drawBox(0, bottom_y, width, bottom_panel_height, "PWR");
 		}
 
 		// Add layout indicator at bottom
