@@ -557,7 +557,7 @@ namespace Config {
 				return false;
 			}
 			for (int y = 0; const auto& box : ssplit(preset, ',')) {
-				if (++y > 4) {
+				if (++y > 6) {  //? Allow up to 6 boxes: CPU, GPU, PWR, MEM, NET, PROC
 					validError = "Too many boxes entered for preset!";
 					return false;
 				}
@@ -580,7 +580,8 @@ namespace Config {
 					validError = "Invalid box name in config value presets!";
 					return false;
 				}
-				if (not is_in(vals.at(1), "0", "1")) {
+				//? Position values: 0, 1 for most boxes; NET can also have 2 (Wide)
+				if (not is_in(vals.at(1), "0", "1", "2")) {
 					validError = "Invalid position value in config value presets!";
 					return false;
 				}
