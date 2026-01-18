@@ -5207,6 +5207,10 @@ namespace MenuV2 {
 					break;
 				case MEM_Type:
 					current_preset.mem_type = static_cast<MemType>(val);
+					//? Auto-deselect show_disk when switching to Horizontal (no room for disk display)
+					if (current_preset.mem_type == MemType::Horizontal) {
+						current_preset.show_disk = false;
+					}
 					break;
 				case MEM_Graph:
 					current_preset.mem_graph_meter = (val == 1);
