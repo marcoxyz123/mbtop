@@ -143,29 +143,61 @@ namespace MenuV2 {
 		vector<string> subtab_names; // Names of sub-tabs if has_subtabs
 	};
 
-	//? Preset layout definitions
-	enum class MemLayout { Hidden, Horizontal, Vertical };
-	enum class DiskMode { Hidden, BarMeter, Graph };
-	enum class NetLayout { Hidden, Horizontal, Vertical };
-	enum class ProcLayout { Hidden, Horizontal, Vertical };
+	//? ==================== Preset Layout System ====================
+	//? Clean model with 13 distinct layout combinations
+	//?
+	//? MEM Type: Controls internal bar orientation (H=horizontal bars, V=vertical bars)
+	//?   - If Horizontal: Graph forced to Bar, Disk forced to hidden
+	//?   - If Vertical: Graph can be Bar/Meter, Disk can be shown
+	//?
+	//? NET Position (when MEM visible): Left=under MEM, Right=beside MEM
+	//? NET Position (when MEM hidden): Wide only
+	//?
+	//? PROC Position: Right=compact on right, Wide=fills width at bottom
 
-	//? Preset definition structure
+	//? Memory display type - controls internal bar orientation
+	enum class MemType { Horizontal, Vertical };
+
+	//? Network position relative to MEM
+	enum class NetPosition { Left, Right, Wide };
+
+	//? Process position
+	enum class ProcPosition { Right, Wide };
+
+	//? Preset definition structure - clean model
 	struct PresetDef {
 		string name = "";
+
+		//? Top panels (always full width, stacked)
 		bool cpu_enabled = true;
 		bool gpu_enabled = false;
 		bool pwr_enabled = false;
-		MemLayout mem_layout = MemLayout::Horizontal;
-		DiskMode disk_mode = DiskMode::BarMeter;
-		NetLayout net_layout = NetLayout::Horizontal;
-		ProcLayout proc_layout = ProcLayout::Horizontal;
+
+		//? MEM panel
+		bool mem_enabled = true;
+		MemType mem_type = MemType::Vertical;     // H or V - controls bar orientation
+		bool mem_graph_meter = false;             // false=Bar, true=Meter (only editable if type=V)
+		bool show_disk = true;                    // Show disk section (only editable if type=V)
+
+		//? NET panel
+		bool net_enabled = true;
+		NetPosition net_position = NetPosition::Right;  // Left/Right/Wide
+
+		//? PROC panel
+		bool proc_enabled = true;
+		ProcPosition proc_position = ProcPosition::Wide;  // Right/Wide
+
+		//? Graph appearance
 		string graph_symbol = "default";
 
-		//? Convert to old config string format
+		//? Convert to config string format for shown_boxes
 		string toConfigString() const;
 
-		//? Parse from old config string format
+		//? Parse from config string format
 		static PresetDef fromConfigString(const string& config, const string& name);
+
+		//? Enforce constraints after any change (call after modifying fields)
+		void enforceConstraints();
 	};
 
 	//? Get all category definitions
@@ -179,6 +211,9 @@ namespace MenuV2 {
 
 	//? UI Component Renderers - return strings for drawing
 	string drawToggle(bool value, bool selected, bool tty_mode = false);
+	//? Draw radio buttons with focus tracking: focus_idx specifies which option has keyboard focus (-1 = no focus)
+	string drawRadio(const vector<string>& options, int current_idx, int focus_idx, bool tty_mode = false);
+	//? Overload for backward compatibility (selected=true highlights current value)
 	string drawRadio(const vector<string>& options, int current_idx, bool selected, bool tty_mode = false);
 	string drawSlider(int min_val, int max_val, int current, int width, bool selected, bool tty_mode = false);
 	string drawSelect(const string& value, int width, bool selected, bool open = false);
@@ -189,8 +224,8 @@ namespace MenuV2 {
 	//? Main options menu V2 function
 	int optionsMenuV2(const string& key);
 
-	//? Preset editor dialog
-	int presetEditor(const string& key, int preset_idx);
+	//? Preset editor dialog - parent bounds for responsive layout
+	int presetEditor(const string& key, int preset_idx, int parent_x, int parent_y, int parent_w, int parent_h);
 
 	//? Flag to track if theme changed during menu session (for full refresh on exit)
 	extern bool theme_changed_pending;

@@ -350,9 +350,29 @@ namespace Input {
 					if (intKey == 4 and not Net::shown and Mem::shown) {
 						bool proc_shown = Proc::shown;
 						bool proc_full = Config::getB("proc_full_width");
+						bool show_disks = Config::getB("show_disks");
 
 						if (not proc_shown) {
-							//? Proc hidden -> show proc beside mem (not full width)
+							if (show_disks) {
+								//? MEM V with disks: start with stacked layout (proc full width below)
+								Config::set("proc_full_width", true);
+							} else {
+								//? MEM H: start with proc beside mem (proc on right)
+								Config::set("proc_full_width", false);
+								Config::set("proc_left", false);  // PROC on right, MEM stays on left
+							}
+							if (not Config::toggle_box("proc")) {
+								Menu::show(Menu::Menus::SizeError);
+								return;
+							}
+						}
+						else if (show_disks and proc_full) {
+							//? MEM V with disks: stacked -> beside (proc on right, mem on left)
+							Config::set("proc_full_width", false);
+							Config::set("proc_left", false);  // PROC on right, MEM stays on left
+						}
+						else if (show_disks and not proc_full) {
+							//? MEM V with disks: beside -> hide proc
 							Config::set("proc_full_width", false);
 							if (not Config::toggle_box("proc")) {
 								Menu::show(Menu::Menus::SizeError);
@@ -360,11 +380,11 @@ namespace Input {
 							}
 						}
 						else if (not proc_full) {
-							//? Proc beside mem -> switch to full width below mem
+							//? MEM H: beside -> stacked (full width)
 							Config::set("proc_full_width", true);
 						}
 						else {
-							//? Proc below mem (full width) -> hide proc
+							//? MEM H: stacked -> hide proc
 							Config::set("proc_full_width", false);
 							if (not Config::toggle_box("proc")) {
 								Menu::show(Menu::Menus::SizeError);

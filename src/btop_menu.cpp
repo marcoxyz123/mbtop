@@ -2265,24 +2265,67 @@ namespace MenuV2 {
 		return result;
 	}
 
-	string drawRadio(const vector<string>& options, int current_idx, bool selected, bool tty_mode) {
+	//? Draw radio buttons with optional focus indicator
+	//? current_idx: currently selected value, focus_idx: which option has keyboard focus (-1 = no focus)
+	string drawRadio(const vector<string>& options, int current_idx, int focus_idx, bool tty_mode) {
 		string result;
-		const string sel_char = tty_mode ? "(*)" : Theme::c("proc_misc") + "●" + Theme::c("main_fg");
-		const string unsel_char = tty_mode ? "( )" : Theme::c("inactive_fg") + "○" + Theme::c("main_fg");
+		const string sel_char = tty_mode ? "(*)" : Theme::c("hi_fg") + "●" + Fx::reset;
+		const string unsel_char = tty_mode ? "( )" : Theme::c("inactive_fg") + "○" + Fx::reset;
 
 		for (size_t i = 0; i < options.size(); i++) {
-			if (i > 0) result += "  ";
+			if (i > 0) result += " ";
 			bool is_current = (static_cast<int>(i) == current_idx);
+			bool is_focused = (static_cast<int>(i) == focus_idx);
 
-			if (selected and is_current) {
+			// Show focus with highlight background
+			if (is_focused) {
 				result += Theme::c("selected_bg") + Theme::c("selected_fg");
 			}
 			result += (is_current ? sel_char : unsel_char) + " " + options[i];
-			if (selected and is_current) {
+			if (is_focused) {
 				result += Fx::reset;
 			}
 		}
 		return result;
+	}
+
+	//? Draw radio buttons with disabled (red) options
+	//? disabled_mask: bitmask of which options to show in red (e.g., 0b110 = options 1 and 2 disabled)
+	string drawRadioWithDisabled(const vector<string>& options, int current_idx, int focus_idx, int disabled_mask, bool tty_mode) {
+		string result;
+		const string sel_char = tty_mode ? "(*)" : Theme::c("hi_fg") + "●";
+		const string unsel_char = tty_mode ? "( )" : Theme::c("inactive_fg") + "○";
+		const string red_color = "\x1b[38;5;203m";  // Nord red (color 203 ≈ #ff5f5f)
+
+		for (size_t i = 0; i < options.size(); i++) {
+			if (i > 0) result += " ";
+			bool is_current = (static_cast<int>(i) == current_idx);
+			bool is_focused = (static_cast<int>(i) == focus_idx);
+			bool is_disabled = (disabled_mask & (1 << i)) != 0;
+
+			// Show focus with highlight background
+			if (is_focused and not is_disabled) {
+				result += Theme::c("selected_bg") + Theme::c("selected_fg");
+			}
+
+			if (is_disabled) {
+				// Show disabled options in red (entire option including text)
+				result += red_color + (is_current ? "●" : "○") + " " + options[i] + Fx::reset;
+			} else {
+				// Enabled: use main_fg for the text to ensure proper color
+				result += (is_current ? sel_char : unsel_char) + Theme::c("main_fg") + " " + options[i];
+			}
+
+			if (is_focused and not is_disabled) {
+				result += Fx::reset;
+			}
+		}
+		return result;
+	}
+
+	//? Overload for backward compatibility (no focus tracking)
+	string drawRadio(const vector<string>& options, int current_idx, bool selected, bool tty_mode) {
+		return drawRadio(options, current_idx, selected ? current_idx : -1, tty_mode);
 	}
 
 	string drawSlider(int min_val, int max_val, int current, int width, bool selected, bool tty_mode) {
@@ -2340,37 +2383,63 @@ namespace MenuV2 {
 	}
 
 	//? ==================== Preset Preview Renderer ====================
+	//? Clean implementation for 13 distinct layout combinations
+	//?
+	//? Single panel (3 layouts):
+	//?   1. MEM alone → fills all
+	//?   2. NET alone → fills all
+	//?   3. PROC alone → fills all
+	//?
+	//? Two panels (6 layouts):
+	//?   4. MEM + NET Left    → MEM top, NET under (min height)
+	//?   5. MEM + NET Right   → MEM left, NET right (same height)
+	//?   6. MEM + PROC Right  → MEM left, PROC right
+	//?   7. MEM + PROC Wide   → MEM top, PROC fills bottom
+	//?   12. NET + PROC Right → NET left, PROC right
+	//?   13. NET + PROC Wide  → NET top (min), PROC fills bottom
+	//?
+	//? Three panels (4 layouts):
+	//?   8.  MEM + NET Left + PROC Right  → MEM top-left, NET under MEM, PROC right
+	//?   9.  MEM + NET Left + PROC Wide   → MEM top, NET under, PROC wide bottom
+	//?   10. MEM + NET Right + PROC Right → MEM left, NET+PROC stacked right
+	//?   11. MEM + NET Right + PROC Wide  → MEM+NET side by side, PROC wide bottom
 
 	string drawPresetPreview(const PresetDef& preset, int width, int height) {
 		if (width < 20 or height < 8) return "Preview too small";
 
 		vector<string> lines(height, string(width, ' '));
+		bool use_unicode = Config::getB("preview_unicode");
 
-		auto drawBox = [&](int x, int y, int w, int h, const string& label) {
-			if (y < 0 or y >= height or x < 0 or x >= width) return;
+		// Draw a box with label centered
+		auto drawBox = [&](int bx, int by, int bw, int bh, const string& label) {
+			if (by < 0 or by >= height or bx < 0 or bx >= width or bw <= 0 or bh <= 0) return;
+
 			// Top border
-			if (y < height) {
-				for (int i = x; i < x + w and i < width; i++) {
-					lines[y][i] = (i == x) ? '+' : (i == x + w - 1) ? '+' : '-';
-				}
+			for (int i = bx; i < bx + bw and i < width; i++) {
+				if (by < height) lines[by][i] = (i == bx) ? '+' : (i == bx + bw - 1) ? '+' : '-';
 			}
 			// Bottom border
-			if (y + h - 1 < height) {
-				for (int i = x; i < x + w and i < width; i++) {
-					lines[y + h - 1][i] = (i == x) ? '+' : (i == x + w - 1) ? '+' : '-';
+			int bottom_y = by + bh - 1;
+			if (bottom_y < height and bottom_y >= 0) {
+				for (int i = bx; i < bx + bw and i < width; i++) {
+					lines[bottom_y][i] = (i == bx) ? '+' : (i == bx + bw - 1) ? '+' : '-';
 				}
 			}
-			// Sides and content
-			for (int row = y + 1; row < y + h - 1 and row < height; row++) {
-				if (x < width) lines[row][x] = '|';
-				if (x + w - 1 < width) lines[row][x + w - 1] = '|';
+			// Sides
+			for (int row = by + 1; row < by + bh - 1 and row < height; row++) {
+				if (row >= 0) {
+					if (bx < width) lines[row][bx] = '|';
+					if (bx + bw - 1 < width) lines[row][bx + bw - 1] = '|';
+				}
 			}
 			// Center label
-			if (y + h / 2 < height and not label.empty()) {
-				int label_start = x + (w - static_cast<int>(label.size())) / 2;
-				for (size_t i = 0; i < label.size() and label_start + static_cast<int>(i) < width; i++) {
-					if (label_start + static_cast<int>(i) >= 0) {
-						lines[y + h / 2][label_start + i] = label[i];
+			if (bh >= 3 and not label.empty()) {
+				int label_y = by + bh / 2;
+				if (label_y < height and label_y >= 0) {
+					int label_start = bx + (bw - static_cast<int>(label.size())) / 2;
+					for (size_t i = 0; i < label.size(); i++) {
+						int lx = label_start + static_cast<int>(i);
+						if (lx >= 0 and lx < width) lines[label_y][lx] = label[i];
 					}
 				}
 			}
@@ -2396,66 +2465,260 @@ namespace MenuV2 {
 			y_pos += 3;
 		}
 
-		int remaining_height = height - y_pos;
-		if (remaining_height < 4) remaining_height = 4;
+		int remaining = height - y_pos;
+		if (remaining < 3) remaining = 3;
 
-		// Memory, Network, Processes layout
-		bool has_mem = (preset.mem_layout != MemLayout::Hidden);
-		bool has_net = (preset.net_layout != NetLayout::Hidden);
-		bool has_proc = (preset.proc_layout != ProcLayout::Hidden);
+		// Panel state
+		bool has_mem = preset.mem_enabled;
+		bool has_net = preset.net_enabled;
+		bool has_proc = preset.proc_enabled;
 
-		if (preset.mem_layout == MemLayout::Horizontal and preset.net_layout == NetLayout::Horizontal) {
-			// MEM H | NET H side by side, PROC H below
-			int mem_net_height = has_proc ? remaining_height / 2 : remaining_height;
-			int half_width = width / 2;
-
-			if (has_mem) {
-				string mem_label = (preset.disk_mode == DiskMode::Hidden) ? "MEM H" : "MEM+DSK";
-				drawBox(0, y_pos, half_width, mem_net_height, mem_label);
-			}
-			if (has_net) {
-				drawBox(half_width, y_pos, width - half_width, mem_net_height, "NET H");
-			}
-
-			if (has_proc and preset.proc_layout == ProcLayout::Horizontal) {
-				drawBox(0, y_pos + mem_net_height, width, remaining_height - mem_net_height, "PROC H");
+		// Build labels with type indicator
+		string mem_label = "MEM";
+		if (has_mem) {
+			mem_label = (preset.mem_type == MemType::Horizontal) ? "MEM-H" : "MEM-V";
+			if (preset.mem_type == MemType::Vertical and preset.show_disk) {
+				mem_label = "MEM+D";
 			}
 		}
-		else if (preset.mem_layout == MemLayout::Vertical) {
-			// Vertical layout: MEM V on left, potentially NET V + PROC V on right
-			int left_width = width / 3;
-			int right_width = width - left_width;
+		string net_label = "NET";
+		string proc_label = "PROC";
 
-			string mem_label = (preset.disk_mode == DiskMode::Hidden) ? "MEM V" : "MEM V+D";
-			drawBox(0, y_pos, left_width, remaining_height, mem_label);
+		// Sizing constants
+		const int min_h = 3;  // Minimum panel height
+		int half_w = width / 2;
 
-			if (preset.net_layout == NetLayout::Vertical and preset.proc_layout == ProcLayout::Vertical) {
-				int net_height = remaining_height / 2;
-				drawBox(left_width, y_pos, right_width, net_height, "NET V");
-				drawBox(left_width, y_pos + net_height, right_width, remaining_height - net_height, "PROC V");
-			}
-			else if (preset.proc_layout == ProcLayout::Vertical) {
-				drawBox(left_width, y_pos, right_width, remaining_height, "PROC V");
-			}
-			else if (preset.proc_layout == ProcLayout::Horizontal) {
-				int proc_height = remaining_height / 3;
-				drawBox(left_width, y_pos, right_width, remaining_height - proc_height, has_net ? "NET" : "");
-				drawBox(0, y_pos + remaining_height - proc_height, width, proc_height, "PROC H");
-			}
-		}
-		else {
-			// Simple fallback
-			if (has_proc) {
-				drawBox(0, y_pos, width, remaining_height, "PROC");
-			}
+		// Count active lower panels
+		int panel_count = (has_mem ? 1 : 0) + (has_net ? 1 : 0) + (has_proc ? 1 : 0);
+
+		if (panel_count == 0) {
+			return "No panels selected";
 		}
 
-		// Join lines
+		//? ==================== SINGLE PANEL LAYOUTS ====================
+		if (panel_count == 1) {
+			// Layout 1, 2, 3: Single panel fills everything
+			if (has_mem) drawBox(0, y_pos, width, remaining, mem_label);
+			else if (has_net) drawBox(0, y_pos, width, remaining, net_label);
+			else if (has_proc) drawBox(0, y_pos, width, remaining, proc_label);
+		}
+
+		//? ==================== TWO PANEL LAYOUTS ====================
+		else if (panel_count == 2) {
+
+			if (has_mem and has_net and not has_proc) {
+				// Layouts 4-5: MEM + NET
+				if (preset.net_position == NetPosition::Left) {
+					// Layout 4: MEM + NET Left → MEM top, NET under (min height)
+					int mem_h = remaining - min_h;
+					if (mem_h < min_h) mem_h = remaining / 2;
+					drawBox(0, y_pos, width, mem_h, mem_label);
+					drawBox(0, y_pos + mem_h, width, remaining - mem_h, net_label);
+				}
+				else {
+					// Layout 5: MEM + NET Right → MEM left, NET right (same height)
+					drawBox(0, y_pos, half_w, remaining, mem_label);
+					drawBox(half_w, y_pos, width - half_w, remaining, net_label);
+				}
+			}
+
+			else if (has_mem and has_proc and not has_net) {
+				// Layouts 6-7: MEM + PROC
+				if (preset.proc_position == ProcPosition::Right) {
+					// Layout 6: MEM + PROC Right → MEM left, PROC right
+					drawBox(0, y_pos, half_w, remaining, mem_label);
+					drawBox(half_w, y_pos, width - half_w, remaining, proc_label);
+				}
+				else {
+					// Layout 7: MEM + PROC Wide → MEM top, PROC fills bottom
+					int mem_h = min_h;
+					if (remaining - mem_h < min_h) mem_h = remaining / 2;
+					drawBox(0, y_pos, width, mem_h, mem_label);
+					drawBox(0, y_pos + mem_h, width, remaining - mem_h, proc_label);
+				}
+			}
+
+			else if (has_net and has_proc and not has_mem) {
+				// Layouts 12-13: NET + PROC (no MEM)
+				if (preset.proc_position == ProcPosition::Right) {
+					// Layout 12: NET + PROC Right → NET left, PROC right
+					drawBox(0, y_pos, half_w, remaining, net_label);
+					drawBox(half_w, y_pos, width - half_w, remaining, proc_label);
+				}
+				else {
+					// Layout 13: NET + PROC Wide → NET top (min), PROC fills bottom
+					drawBox(0, y_pos, width, min_h, net_label);
+					drawBox(0, y_pos + min_h, width, remaining - min_h, proc_label);
+				}
+			}
+		}
+
+		//? ==================== THREE PANEL LAYOUTS ====================
+		else if (panel_count == 3) {
+
+			bool net_left = (preset.net_position == NetPosition::Left);
+			bool proc_right = (preset.proc_position == ProcPosition::Right);
+
+			if (net_left and proc_right) {
+				// Layout 8: MEM + NET Left + PROC Right
+				// MEM top-left, NET under MEM (both on left), PROC fills right
+				int left_w = half_w;
+				int right_w = width - half_w;
+				int mem_h = remaining - min_h;
+				if (mem_h < min_h) mem_h = remaining / 2;
+
+				drawBox(0, y_pos, left_w, mem_h, mem_label);              // MEM top-left
+				drawBox(0, y_pos + mem_h, left_w, remaining - mem_h, net_label);  // NET under MEM
+				drawBox(left_w, y_pos, right_w, remaining, proc_label);   // PROC right full height
+			}
+			else if (net_left and not proc_right) {
+				// Layout 9: MEM + NET Left + PROC Wide
+				// MEM top, NET under MEM, PROC wide at bottom
+				int top_section = remaining - min_h;  // Space for MEM + NET
+				if (top_section < min_h * 2) top_section = remaining * 2 / 3;
+				int mem_h = top_section - min_h;
+				if (mem_h < min_h) mem_h = top_section / 2;
+				int net_h = top_section - mem_h;
+
+				drawBox(0, y_pos, width, mem_h, mem_label);                      // MEM top
+				drawBox(0, y_pos + mem_h, width, net_h, net_label);              // NET under MEM
+				drawBox(0, y_pos + top_section, width, remaining - top_section, proc_label);  // PROC wide bottom
+			}
+			else if (not net_left and proc_right) {
+				// Layout 10: MEM + NET Right + PROC Right
+				// MEM left, NET above PROC on right
+				int left_w = half_w;
+				int right_w = width - half_w;
+				int net_h = min_h;
+				int proc_h = remaining - net_h;
+				if (proc_h < min_h) {
+					net_h = remaining / 2;
+					proc_h = remaining - net_h;
+				}
+
+				drawBox(0, y_pos, left_w, remaining, mem_label);           // MEM left full height
+				drawBox(left_w, y_pos, right_w, net_h, net_label);         // NET top-right
+				drawBox(left_w, y_pos + net_h, right_w, proc_h, proc_label);  // PROC under NET
+			}
+			else {
+				// Layout 11: MEM + NET Right + PROC Wide
+				// MEM + NET side by side on top, PROC wide at bottom
+				int top_h = min_h;
+				int proc_h = remaining - top_h;
+				if (proc_h < min_h) {
+					top_h = remaining / 2;
+					proc_h = remaining - top_h;
+				}
+
+				drawBox(0, y_pos, half_w, top_h, mem_label);               // MEM top-left
+				drawBox(half_w, y_pos, width - half_w, top_h, net_label);  // NET top-right
+				drawBox(0, y_pos + top_h, width, proc_h, proc_label);      // PROC wide bottom
+			}
+		}
+
+		// Add layout indicator at bottom
+		string indicator;
+		indicator += "M=";
+		indicator += has_mem ? (preset.mem_type == MemType::Vertical ? "V" : "H") : "-";
+		indicator += " N=";
+		if (has_net) {
+			indicator += preset.net_position == NetPosition::Left ? "L" :
+			             preset.net_position == NetPosition::Right ? "R" : "W";
+		} else {
+			indicator += "-";
+		}
+		indicator += " P=";
+		if (has_proc) {
+			indicator += preset.proc_position == ProcPosition::Right ? "R" : "W";
+		} else {
+			indicator += "-";
+		}
+
+		// Place indicator on last line
+		if (height >= 2) {
+			int ind_x = (width - static_cast<int>(indicator.length())) / 2;
+			if (ind_x < 0) ind_x = 0;
+			for (size_t i = 0; i < indicator.length() and ind_x + static_cast<int>(i) < width; i++) {
+				lines[height - 1][ind_x + i] = indicator[i];
+			}
+		}
+
+		// Convert to final output string
 		string result;
-		for (const auto& line : lines) {
-			result += line + "\n";
+		if (use_unicode) {
+			// Helper to check if position has a specific character
+			auto hasChar = [&](int row, int col, char c) -> bool {
+				if (row < 0 or row >= height or col < 0 or col >= width) return false;
+				return lines[row][col] == c;
+			};
+			
+			// Check for line characters at neighbors
+			auto hasUp = [&](int row, int col) -> bool {
+				return hasChar(row - 1, col, '|') or hasChar(row - 1, col, '+');
+			};
+			auto hasDown = [&](int row, int col) -> bool {
+				return hasChar(row + 1, col, '|') or hasChar(row + 1, col, '+');
+			};
+			auto hasLeft = [&](int row, int col) -> bool {
+				return hasChar(row, col - 1, '-') or hasChar(row, col - 1, '+');
+			};
+			auto hasRight = [&](int row, int col) -> bool {
+				return hasChar(row, col + 1, '-') or hasChar(row, col + 1, '+');
+			};
+			
+			for (int row = 0; row < height; row++) {
+				for (int col = 0; col < width; col++) {
+					char c = lines[row][col];
+					if (c == '-') {
+						result += "─";
+					} else if (c == '|') {
+						result += "│";
+					} else if (c == '+') {
+						// Determine junction type based on neighbors
+						bool up = hasUp(row, col);
+						bool down = hasDown(row, col);
+						bool left = hasLeft(row, col);
+						bool right = hasRight(row, col);
+						
+						if (up and down and left and right) {
+							result += "┼";  // Cross
+						} else if (down and right and not up and not left) {
+							result += "┌";  // Top-left corner
+						} else if (down and left and not up and not right) {
+							result += "┐";  // Top-right corner
+						} else if (up and right and not down and not left) {
+							result += "└";  // Bottom-left corner
+						} else if (up and left and not down and not right) {
+							result += "┘";  // Bottom-right corner
+						} else if (left and right and down and not up) {
+							result += "┬";  // T-junction down
+						} else if (left and right and up and not down) {
+							result += "┴";  // T-junction up
+						} else if (up and down and right and not left) {
+							result += "├";  // T-junction right
+						} else if (up and down and left and not right) {
+							result += "┤";  // T-junction left
+						} else if (left and right) {
+							result += "─";  // Horizontal line
+						} else if (up and down) {
+							result += "│";  // Vertical line
+						} else {
+							result += "┼";  // Default to cross for unknown cases
+						}
+					} else {
+						result += c;
+					}
+				}
+				if (row < height - 1) result += "\n";
+			}
+		} else {
+			// ASCII mode - keep original characters
+			for (const auto& line : lines) {
+				result += line + "\n";
+			}
+			if (not result.empty()) result.pop_back();
 		}
-		if (not result.empty()) result.pop_back(); // Remove trailing newline
+		
 		return result;
 	}
 
@@ -2516,6 +2779,7 @@ namespace MenuV2 {
 					}},
 					{"Borders", {
 						{"rounded_corners", "Rounded Corners", "Use rounded corners on boxes", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"preview_unicode", "Unicode Preview", "Use Unicode box-drawing for preset preview", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Graph Style", {
 						{"graph_symbol", "Default Graph Symbol", "Symbol style for all graphs", ControlType::Radio, {"braille", "block", "tty"}, "", 0, 0, 0},
@@ -2692,28 +2956,53 @@ namespace MenuV2 {
 
 	//? ==================== Preset Conversion ====================
 
+	//? ==================== Preset Config String Format ====================
+	//? Format: box:param1:param2:...,box:param1:...
+	//?
+	//? cpu:0:symbol         - CPU panel (0 = always full width)
+	//? gpu0:0:symbol        - GPU panel
+	//? pwr:0:symbol         - Power panel
+	//? mem:type:symbol:meter:disk  - Memory panel
+	//?     type: 0=Horizontal, 1=Vertical
+	//?     meter: 0=Bar, 1=Meter (only used if type=V)
+	//?     disk: 0=hidden, 1=shown (only used if type=V)
+	//? net:pos:symbol       - Network panel
+	//?     pos: 0=Left, 1=Right, 2=Wide
+	//? proc:pos:symbol      - Process panel
+	//?     pos: 0=Right, 1=Wide
+
 	string PresetDef::toConfigString() const {
 		string result;
-
-		// Build shown_boxes style string based on layout
 		vector<string> boxes;
+
+		// Top panels (always full width)
 		if (cpu_enabled) boxes.push_back("cpu:0:" + graph_symbol);
 		if (gpu_enabled) boxes.push_back("gpu0:0:" + graph_symbol);
 		if (pwr_enabled) boxes.push_back("pwr:0:" + graph_symbol);
 
-		if (mem_layout != MemLayout::Hidden) {
-			int pos = (mem_layout == MemLayout::Vertical) ? 0 : 0;
-			boxes.push_back("mem:" + to_string(pos) + ":" + graph_symbol);
-		}
-		if (net_layout != NetLayout::Hidden) {
-			int pos = (net_layout == NetLayout::Vertical) ? 0 : 0;
-			boxes.push_back("net:" + to_string(pos) + ":" + graph_symbol);
-		}
-		if (proc_layout != ProcLayout::Hidden) {
-			int pos = (proc_layout == ProcLayout::Vertical) ? 1 : 0;
-			boxes.push_back("proc:" + to_string(pos) + ":" + graph_symbol);
+		// MEM panel: mem:type:symbol:meter:disk
+		if (mem_enabled) {
+			int type_val = (mem_type == MemType::Vertical) ? 1 : 0;
+			int meter_val = mem_graph_meter ? 1 : 0;
+			int disk_val = show_disk ? 1 : 0;
+			boxes.push_back("mem:" + to_string(type_val) + ":" + graph_symbol + ":" +
+			                to_string(meter_val) + ":" + to_string(disk_val));
 		}
 
+		// NET panel: net:pos:symbol
+		if (net_enabled) {
+			int pos_val = (net_position == NetPosition::Left) ? 0 :
+			              (net_position == NetPosition::Right) ? 1 : 2;
+			boxes.push_back("net:" + to_string(pos_val) + ":" + graph_symbol);
+		}
+
+		// PROC panel: proc:pos:symbol
+		if (proc_enabled) {
+			int pos_val = (proc_position == ProcPosition::Right) ? 0 : 1;
+			boxes.push_back("proc:" + to_string(pos_val) + ":" + graph_symbol);
+		}
+
+		// Join with commas
 		for (size_t i = 0; i < boxes.size(); i++) {
 			if (i > 0) result += ",";
 			result += boxes[i];
@@ -2725,12 +3014,14 @@ namespace MenuV2 {
 	PresetDef PresetDef::fromConfigString(const string& config, const string& preset_name) {
 		PresetDef preset;
 		preset.name = preset_name;
+
+		// Start with everything disabled
 		preset.cpu_enabled = false;
 		preset.gpu_enabled = false;
 		preset.pwr_enabled = false;
-		preset.mem_layout = MemLayout::Hidden;
-		preset.net_layout = NetLayout::Hidden;
-		preset.proc_layout = ProcLayout::Hidden;
+		preset.mem_enabled = false;
+		preset.net_enabled = false;
+		preset.proc_enabled = false;
 
 		auto parts = ssplit(config, ',');
 		for (const auto& part : parts) {
@@ -2738,9 +3029,10 @@ namespace MenuV2 {
 			if (box_parts.empty()) continue;
 
 			string box_name = box_parts[0];
-			int position = (box_parts.size() > 1) ? stoi_safe(box_parts[1], 0) : 0;
+			int param1 = (box_parts.size() > 1) ? stoi_safe(box_parts[1], 0) : 0;
 			string symbol = (box_parts.size() > 2) ? string(box_parts[2]) : "default";
 
+			// Capture first non-default symbol
 			if (preset.graph_symbol == "default" and symbol != "default") {
 				preset.graph_symbol = symbol;
 			}
@@ -2755,40 +3047,94 @@ namespace MenuV2 {
 				preset.pwr_enabled = true;
 			}
 			else if (box_name == "mem") {
-				preset.mem_layout = (position == 1) ? MemLayout::Vertical : MemLayout::Horizontal;
+				preset.mem_enabled = true;
+				// type: 0=H, 1=V
+				preset.mem_type = (param1 == 1) ? MemType::Vertical : MemType::Horizontal;
+				// meter (field 3): 0=Bar, 1=Meter
+				if (box_parts.size() > 3) {
+					preset.mem_graph_meter = (stoi_safe(box_parts[3], 0) == 1);
+				}
+				// disk (field 4): 0=hidden, 1=shown
+				if (box_parts.size() > 4) {
+					preset.show_disk = (stoi_safe(box_parts[4], 0) == 1);
+				}
 			}
 			else if (box_name == "net") {
-				preset.net_layout = (position == 1) ? NetLayout::Vertical : NetLayout::Horizontal;
+				preset.net_enabled = true;
+				// pos: 0=Left, 1=Right, 2=Wide
+				preset.net_position = (param1 == 0) ? NetPosition::Left :
+				                      (param1 == 1) ? NetPosition::Right : NetPosition::Wide;
 			}
 			else if (box_name == "proc") {
-				preset.proc_layout = (position == 1) ? ProcLayout::Vertical : ProcLayout::Horizontal;
+				preset.proc_enabled = true;
+				// pos: 0=Right, 1=Wide
+				preset.proc_position = (param1 == 0) ? ProcPosition::Right : ProcPosition::Wide;
 			}
 		}
+
+		// Apply constraints after parsing
+		preset.enforceConstraints();
 
 		return preset;
 	}
 
+	//? Enforce layout constraints after any modification
+	void PresetDef::enforceConstraints() {
+		// Rule 1: MEM Horizontal forces Bar and no Disk
+		if (mem_type == MemType::Horizontal) {
+			mem_graph_meter = false;  // Force Bar
+			show_disk = false;        // Force no disk
+		}
+
+		// Rule 2: NET position depends on MEM
+		if (not mem_enabled) {
+			// No MEM: NET can only be Wide
+			net_position = NetPosition::Wide;
+		}
+		else if (net_position == NetPosition::Wide) {
+			// MEM enabled but NET was Wide: reset to Right (valid default)
+			net_position = NetPosition::Right;
+		}
+
+		// Rule 3: If only PROC (no MEM, no NET), PROC fills all → force Wide
+		if (proc_enabled and not mem_enabled and not net_enabled) {
+			proc_position = ProcPosition::Wide;
+		}
+
+		// Rule 4: If only NET (no MEM, no PROC), position is Wide
+		if (net_enabled and not mem_enabled and not proc_enabled) {
+			net_position = NetPosition::Wide;
+		}
+	}
+
 	vector<PresetDef> getPresets() {
 		vector<PresetDef> presets;
-		presets.resize(9); // Presets 1-9
 
-		// Get preset names
+		// Get preset names from config
 		auto preset_names_str = Config::getS("preset_names");
 		auto names = ssplit(preset_names_str);
 
-		// Get presets config string
-		auto presets_str = Config::getS("presets");
-		auto preset_configs = ssplit(presets_str);
+		// Read from Config::preset_list which is the actual runtime preset list
+		for (size_t i = 0; i < Config::preset_list.size() && i < 9; i++) {
+			string name = (i < names.size()) ? string(names[i]) : "";
+			string config_str;
 
-		for (int i = 0; i < 9; i++) {
-			string name = (i < static_cast<int>(names.size())) ? string(names[i]) : "";
-			string config = (i < static_cast<int>(preset_configs.size())) ? string(preset_configs[i]) : "";
-
-			if (config.empty()) {
-				presets[i].name = name;
+			// For preset 0, check if there's a saved "preset_0" config first
+			if (i == 0) {
+				config_str = Config::getS("preset_0");
+				if (config_str.empty()) {
+					config_str = Config::preset_list[i];
+				}
 			} else {
-				presets[i] = PresetDef::fromConfigString(config, name);
+				config_str = Config::preset_list[i];
 			}
+
+			presets.push_back(PresetDef::fromConfigString(config_str, name));
+		}
+
+		// Ensure we have at least one preset
+		if (presets.empty()) {
+			presets.push_back(PresetDef{});  // Default preset
 		}
 
 		return presets;
@@ -2798,17 +3144,34 @@ namespace MenuV2 {
 		string names_str;
 		string configs_str;
 
-		for (size_t i = 0; i < presets.size() and i < 9; i++) {
-			if (i > 0) {
-				names_str += " ";
-				configs_str += " ";
-			}
+		// Build names for all presets (including preset 0)
+		for (size_t i = 0; i < presets.size() && i < 9; i++) {
+			if (i > 0) names_str += " ";
 			names_str += presets[i].name.empty() ? ("Preset" + to_string(i + 1)) : presets[i].name;
+		}
+
+		// Update preset_list[0] directly with the first preset's config
+		if (!presets.empty() && !Config::preset_list.empty()) {
+			Config::preset_list[0] = presets[0].toConfigString();
+		}
+
+		// Build config string for presets 1-N
+		// The "presets" config string contains space-separated preset definitions
+		for (size_t i = 1; i < presets.size() && i < 9; i++) {
+			if (i > 1) configs_str += " ";
 			configs_str += presets[i].toConfigString();
 		}
 
 		Config::set("preset_names", names_str);
 		Config::set("presets", configs_str);
+		// Also save preset 0 separately so it persists across restarts
+		if (!presets.empty()) {
+			Config::set("preset_0", presets[0].toConfigString());
+		}
+
+		// Refresh Config::preset_list so 'p' key uses the updated presets
+		// presetsValid() will prepend preset_list[0] and add presets from configs_str
+		Config::presetsValid(configs_str);
 	}
 
 	//? ==================== Dynamic Choices Helper ====================
@@ -2887,6 +3250,13 @@ namespace MenuV2 {
 		static string dropdown_key;            //? Track which option key opened the dropdown
 		static bool theme_refresh = false;
 
+		//? Presets category state (0-based: System=0, Appearance=1, Panels=2, Presets=3)
+		static int selected_preset = 0;         //? Currently selected preset (0-8)
+		static bool in_preset_editor = false;   //? Whether we're in the preset editor dialog
+		static int preset_button_focus = 0;     //? 0=list, 1=Edit, 2=Delete, 3=New
+
+		const int PRESETS_CATEGORY = 3;         //? Index of Presets category (0-based)
+
 		const auto& cats = getCategories();
 		auto tty_mode = Config::getB("tty_mode");
 		auto vim_keys = Config::getB("vim_keys");
@@ -2896,41 +3266,42 @@ namespace MenuV2 {
 		const int min_dialog_height = 30;
 		const int max_dialog_height = 60;
 		const int banner_height = 9;      // MBTOP banner is 9 rows
-		const int settings_height = 3;    // SETTINGS text is 3 rows
-		const int banner_spacing = 0;     // Space between banner and SETTINGS
-		const int dialog_spacing = 0;     // Space between SETTINGS and dialog
+		const int dialog_spacing = 0;     // mask_padding provides the 1 line gap
 
 		// Calculate what we can show based on available space
-		// Priority: Dialog (min 30) > SETTINGS text > MBTOP banner
-		const int total_with_all = banner_height + banner_spacing + settings_height + dialog_spacing + min_dialog_height + 2;
-		const int total_with_banner_only = banner_height + dialog_spacing + min_dialog_height + 2;
+		// Need: top_margin(1) + banner + dialog + bottom_margin(1)
+		const int bottom_margin = 1;  // 1 line gap at bottom of dialog
+		const int total_with_banner = banner_height + dialog_spacing + min_dialog_height + 2 + bottom_margin;
 
-		bool show_banner = (Term::height >= total_with_banner_only);
-		bool show_settings_text = (Term::height >= total_with_all);
+		bool show_banner = (Term::height >= total_with_banner);
 
 		// Calculate dialog height based on available space
 		int available_for_dialog;
-		if (show_settings_text) {
-			available_for_dialog = Term::height - banner_height - banner_spacing - settings_height - dialog_spacing - 2;
-		} else if (show_banner) {
-			available_for_dialog = Term::height - banner_height - dialog_spacing - 2;
+		if (show_banner) {
+			available_for_dialog = Term::height - banner_height - dialog_spacing - 2 - bottom_margin;
 		} else {
-			available_for_dialog = Term::height - 4;
+			available_for_dialog = Term::height - 4 - bottom_margin;
 		}
 		const int dialog_height = max(min_dialog_height, min(available_for_dialog, max_dialog_height));
 
-		// Calculate positions - everything centered
+		// Calculate positions - everything centered horizontally and vertically as a group
 		const int x = (Term::width - dialog_width) / 2;
+
+		// Calculate total height of the visual unit (banner + dialog)
+		const int top_margin = 1;  // Always have 1 blank line above MBTOP banner
+		int total_unit_height = dialog_height;
+		if (show_banner) total_unit_height += banner_height + dialog_spacing;
+
+		// Start y position: center the entire unit vertically, but ensure top margin
+		int unit_start_y = max(1 + top_margin, (Term::height - total_unit_height) / 2);
+
 		int y;
-		if (show_settings_text) {
-			// Banner at top, SETTINGS below, dialog below that
-			y = banner_height + banner_spacing + settings_height + dialog_spacing + 1;
-		} else if (show_banner) {
-			// Banner at top, dialog below
-			y = banner_height + dialog_spacing + 1;
+		if (show_banner) {
+			// Banner at top, 1 line gap, then dialog
+			y = unit_start_y + banner_height + dialog_spacing;
 		} else {
 			// Just dialog, centered
-			y = max(1, (Term::height - dialog_height) / 2);
+			y = unit_start_y;
 		}
 
 		auto& out = Global::overlay;
@@ -2944,40 +3315,7 @@ namespace MenuV2 {
 
 			// Draw MBTOP banner if there's room
 			if (show_banner) {
-				Menu::bg = Draw::banner_gen(1, 0, true);
-			}
-
-			// Draw SETTINGS text if there's room
-			if (show_settings_text) {
-				const array<string, 3> settings_text = {
-					"╔═╗╔═╗╔╦╗╔╦╗╦╔╗╔╔═╗╔═╗",
-					"╚═╗╠╣  ║  ║ ║║║║║ ╦╚═╗",
-					"╚═╝╚═╝ ╩  ╩ ╩╝╚╝╚═╝╚═╝"
-				};
-				const int settings_width = 22;
-				int settings_y = banner_height + banner_spacing;
-				int settings_x = Term::width / 2 - settings_width / 2;
-
-				// Draw blank mask around SETTINGS text
-				int settings_mask_x = max(1, settings_x - 1);
-				int settings_mask_y = max(1, settings_y - 1);
-				int settings_mask_w = min(settings_width + 2, Term::width - settings_mask_x + 1);
-				int settings_mask_h = settings_height + 2;
-				string settings_blank(settings_mask_w, ' ');
-				for (int row = 0; row < settings_mask_h; row++) {
-					Menu::bg += Mv::to(settings_mask_y + row, settings_mask_x) + Theme::c("main_bg") + settings_blank;
-				}
-
-				// Use gradient colors from banner
-				vector<string> colors = {
-					Theme::hex_to_color(Global::Banner_src.at(2).at(1)),
-					Theme::hex_to_color(Global::Banner_src.at(4).at(1)),
-					Theme::hex_to_color(Global::Banner_src.at(6).at(1))
-				};
-				for (int i = 0; i < 3; i++) {
-					Menu::bg += Mv::to(settings_y + i, settings_x) + Fx::b + colors[i] + settings_text[i];
-				}
-				Menu::bg += Fx::ub;
+				Menu::bg = Draw::banner_gen(unit_start_y, 0, true);
 			}
 
 			// Draw blank mask around the dialog box (1 char padding)
@@ -3018,7 +3356,20 @@ namespace MenuV2 {
 		if (Menu::redraw) {
 			rebuildMenuBg();
 		}
-		else if (dropdown_open) {
+
+		//? Handle preset editor mode - delegate to presetEditor but Menu::bg is already built
+		if (in_preset_editor) {
+			int editor_result = presetEditor(key, selected_preset, x, y, dialog_width, dialog_height);
+			if (editor_result == Menu::Closed) {
+				in_preset_editor = false;
+				preset_button_focus = 0;  // Reset focus to preset list after closing editor
+				Menu::redraw = true;
+				return Menu::Changed;
+			}
+			return editor_result;
+		}
+
+		if (dropdown_open) {
 			// Handle dropdown selection modal
 			if (is_in(key, "escape", "q", "backspace")) {
 				dropdown_open = false;
@@ -3112,6 +3463,99 @@ namespace MenuV2 {
 				// Just return - full app theme refresh happens when entire menu system closes
 				return Menu::Closed;
 			}
+
+			//? ==================== Presets Category Special Key Handling ====================
+			else if (selected_cat == PRESETS_CATEGORY) {
+				auto presets = getPresets();
+				const int total_presets = static_cast<int>(presets.size());
+
+				if (is_in(key, "up", "k") or (vim_keys and key == "k")) {
+					if (preset_button_focus == 0) {
+						// Navigate preset list
+						selected_preset = (selected_preset - 1 + total_presets) % total_presets;
+					}
+				}
+				else if (is_in(key, "down", "j") or (vim_keys and key == "j")) {
+					if (preset_button_focus == 0) {
+						// Navigate preset list
+						selected_preset = (selected_preset + 1) % total_presets;
+					}
+				}
+				else if (is_in(key, "left", "h") or (vim_keys and key == "h")) {
+					// Move focus between list and buttons
+					// Skip Delete (focus=2) if only one preset exists
+					if (preset_button_focus > 0) {
+						preset_button_focus--;
+						if (preset_button_focus == 2 and total_presets <= 1) {
+							preset_button_focus--;  // Skip Delete
+						}
+					}
+				}
+				else if (is_in(key, "right", "l") or (vim_keys and key == "l")) {
+					// Move focus to buttons (0=list, 1=Edit, 2=Delete, 3=New)
+					// Skip Delete (focus=2) if only one preset exists
+					if (preset_button_focus < 3) {
+						preset_button_focus++;
+						if (preset_button_focus == 2 and total_presets <= 1) {
+							preset_button_focus++;  // Skip Delete
+						}
+					}
+				}
+				else if (is_in(key, "enter", "space") or key == "\r" or key == "\n") {
+					if (preset_button_focus == 0 or preset_button_focus == 1) {
+						// Enter on list item or Edit button -> immediately open editor
+						in_preset_editor = true;
+						rebuildMenuBg();  // Ensure Menu::bg is ready for editor overlay
+						return presetEditor("", selected_preset, x, y, dialog_width, dialog_height);  // Immediately show editor
+					}
+					else if (preset_button_focus == 2) {
+						// Delete selected preset (only if more than one preset exists)
+						if (total_presets > 1) {
+							auto presets_copy = presets;
+							presets_copy.erase(presets_copy.begin() + selected_preset);
+							savePresets(presets_copy);
+							// Adjust selection if we deleted the last one
+							if (selected_preset >= static_cast<int>(presets_copy.size())) {
+								selected_preset = static_cast<int>(presets_copy.size()) - 1;
+							}
+							preset_button_focus = 0;  // Return focus to list
+						}
+					}
+					else if (preset_button_focus == 3) {
+						// New preset -> immediately open editor
+						in_preset_editor = true;
+						rebuildMenuBg();
+						return presetEditor("", selected_preset, x, y, dialog_width, dialog_height);
+					}
+				}
+				else if (key.size() == 1 and key[0] >= '1' and key[0] <= '9') {
+					// Quick select preset 1-9
+					int preset_num = key[0] - '1';
+					if (preset_num < total_presets) {
+						selected_preset = preset_num;
+						preset_button_focus = 0;
+					}
+				}
+				else if (key == "tab") {
+					selected_cat = (selected_cat + 1) % static_cast<int>(cats.size());
+					selected_subcat = 0;
+					selected_option = 0;
+					scroll_offset = 0;
+					Menu::redraw = true;
+				}
+				else if (key == "shift_tab") {
+					selected_cat = (selected_cat - 1 + static_cast<int>(cats.size())) % static_cast<int>(cats.size());
+					selected_subcat = 0;
+					selected_option = 0;
+					scroll_offset = 0;
+					Menu::redraw = true;
+				}
+				else {
+					retval = Menu::NoChange;
+				}
+			}
+			//? ==================== End Presets Special Key Handling ====================
+
 			else if (key == "tab") {
 				selected_cat = (selected_cat + 1) % static_cast<int>(cats.size());
 				selected_subcat = 0;
@@ -3363,6 +3807,115 @@ namespace MenuV2 {
 			int content_width = dialog_width - 4;
 			int max_lines = dialog_height - 10;  // Reserve space for help section at bottom
 
+			//? ==================== Presets Category Special Rendering ====================
+			if (selected_cat == PRESETS_CATEGORY) {
+				auto presets = getPresets();
+
+				// Draw preset list on left side
+				const int list_width = 30;
+				const int preview_x = content_x + list_width + 4;
+				const int preview_width = content_width - list_width - 6;
+				const int preview_height = max_lines - 4;
+
+				// Header for preset list
+				out += Mv::to(content_y, content_x) + Theme::c("title") + Fx::b
+					+ Symbols::h_line + " Presets " + string(list_width - 11, '-') + Fx::ub;
+
+				// Draw preset list
+				for (int i = 0; i < static_cast<int>(presets.size()) and i < max_lines - 2; i++) {
+					bool is_sel = (i == selected_preset and preset_button_focus == 0);
+					const auto& preset = presets[i];
+					string name = preset.name.empty() ? ("Preset " + to_string(i + 1)) : preset.name;
+
+					// Truncate if too long
+					if (static_cast<int>(name.size()) > list_width - 4) {
+						name = name.substr(0, list_width - 7) + "...";
+					}
+
+					out += Mv::to(content_y + 2 + i, content_x);
+					if (is_sel) {
+						out += Theme::c("selected_bg") + Theme::c("selected_fg");
+					} else if (i == selected_preset) {
+						out += Theme::c("hi_fg");  // Highlighted but not focused
+					} else {
+						out += Theme::c("main_fg");
+					}
+
+					out += to_string(i + 1) + ". " + ljust(name, list_width - 4);
+
+					if (is_sel) {
+						out += Fx::reset;
+					}
+				}
+
+				// Draw buttons below the list
+				int button_y = content_y + 2 + static_cast<int>(presets.size()) + 1;
+				out += Mv::to(button_y, content_x);
+
+				// Edit button
+				bool edit_sel = (preset_button_focus == 1);
+				out += (edit_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
+					+ "[ Edit ]" + Fx::reset + "  ";
+
+				// Delete button (only shown if more than one preset exists)
+				if (presets.size() > 1) {
+					bool delete_sel = (preset_button_focus == 2);
+					out += (delete_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
+						+ "[ Delete ]" + Fx::reset + "  ";
+				}
+
+				// New button
+				bool new_sel = (preset_button_focus == 3);
+				out += (new_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
+					+ "[ New ]" + Fx::reset;
+
+				// Draw preview on right side
+				out += Mv::to(content_y, preview_x) + Theme::c("title") + Fx::b
+					+ Symbols::h_line + " Preview " + string(preview_width - 11, '-') + Fx::ub;
+
+				// Get the selected preset and draw preview
+				const auto& selected = presets[selected_preset];
+				string preview = drawPresetPreview(selected, preview_width - 2, preview_height);
+
+				// Split preview into lines and position them
+				int py = content_y + 2;
+				string line;
+				for (char c : preview) {
+					if (c == '\n') {
+						out += Mv::to(py++, preview_x + 1) + Theme::c("main_fg") + line;
+						line.clear();
+					} else {
+						line += c;
+					}
+				}
+				if (not line.empty()) {
+					out += Mv::to(py, preview_x + 1) + Theme::c("main_fg") + line;
+				}
+
+				// Draw separator and help section
+				out += Mv::to(y + dialog_height - 5, x) + Theme::c("hi_fg") + Symbols::div_left
+					+ Theme::c("div_line");
+				for (int i = 0; i < dialog_width - 2; i++) out += Symbols::h_line;
+				out += Theme::c("hi_fg") + Symbols::div_right;
+
+				// Help text
+				string help_text = "Select a preset to preview, Edit to modify, or New to create";
+				int help_x = x + (dialog_width - static_cast<int>(help_text.size())) / 2;
+				out += Mv::to(y + dialog_height - 3, help_x) + Theme::c("inactive_fg") + help_text;
+
+				// Navigation hints (centered)
+				const int nav_help_len = 60;  // "Tab:Category  ↑↓:Select  ←→:Buttons  1-9:Quick  Enter:Action"
+				int nav_help_x = x + (dialog_width - nav_help_len) / 2;
+				out += Mv::to(y + dialog_height - 1, nav_help_x)
+					+ Theme::c("hi_fg") + "Tab" + Theme::c("main_fg") + ":Category  "
+					+ Theme::c("hi_fg") + "↑↓" + Theme::c("main_fg") + ":Select  "
+					+ Theme::c("hi_fg") + "←→" + Theme::c("main_fg") + ":Buttons  "
+					+ Theme::c("hi_fg") + "1-9" + Theme::c("main_fg") + ":Quick  "
+					+ Theme::c("hi_fg") + "Enter" + Theme::c("main_fg") + ":Action";
+			}
+			//? ==================== End Presets Special Rendering ====================
+			else {
+
 			// First pass: calculate total lines and find selected item's line position
 			int total_lines = 0;
 			int selected_line = 0;
@@ -3557,12 +4110,16 @@ namespace MenuV2 {
 				}
 			}
 
-			// Navigation hints at very bottom
-			out += Mv::to(y + dialog_height - 1, x + 2)
+			// Navigation hints at very bottom (centered)
+			const int cat_help_len = 55;  // "Tab:Category  ↑↓:Navigate  Enter:Toggle/Edit  Esc:Close"
+			int cat_help_x = x + (dialog_width - cat_help_len) / 2;
+			out += Mv::to(y + dialog_height - 1, cat_help_x)
 				+ Theme::c("hi_fg") + "Tab" + Theme::c("main_fg") + ":Category  "
 				+ Theme::c("hi_fg") + "↑↓" + Theme::c("main_fg") + ":Navigate  "
 				+ Theme::c("hi_fg") + "Enter" + Theme::c("main_fg") + ":Toggle/Edit  "
 				+ Theme::c("hi_fg") + "Esc" + Theme::c("main_fg") + ":Close";
+
+			} //? End of else block for non-Presets categories
 
 			// Draw dropdown modal if open
 			if (dropdown_open and not dropdown_choices.empty()) {
@@ -3657,54 +4214,193 @@ namespace MenuV2 {
 	}
 
 	//? ==================== Preset Editor ====================
+	//? Clean implementation matching the 13 layout model
+	//?
+	//? Fields:
+	//?   0. Name (text)
+	//?   1. CPU (toggle), 2. GPU (toggle), 3. PWR (toggle)
+	//?   4. MEM enabled (toggle)
+	//?   5. MEM Type (radio: H, V) - if MEM enabled
+	//?   6. MEM Graph (radio: Bar, Meter) - if MEM enabled AND type=V
+	//?   7. Show Disk (toggle) - if MEM enabled AND type=V
+	//?   8. NET enabled (toggle)
+	//?   9. NET Position (radio: Left, Right) - if NET enabled AND MEM enabled
+	//?   10. PROC enabled (toggle)
+	//?   11. PROC Position (radio: Right, Wide) - if PROC enabled
+	//?   12. Graph Symbol (radio)
+	//?   13. Save, 14. Cancel
 
-	int presetEditor(const string& key, int preset_idx) {
-		// Static state for the editor
+	int presetEditor(const string& key, int preset_idx, int parent_x, int parent_y, int parent_w, int parent_h) {
+		// Static state
 		static PresetDef current_preset;
 		static int selected_field = 0;
 		static bool initialized = false;
 		static Draw::TextEdit name_editor;
 		static bool editing_name = false;
+		static int radio_focus = 0;
 
 		auto tty_mode = Config::getB("tty_mode");
 
-		// Initialize preset from config on first call
+		// Field enumeration
+		enum Fields {
+			Name = 0,
+			CPU, GPU, PWR,
+			MEM, MEM_Type, MEM_Graph, Show_Disk,
+			NET, NET_Pos,
+			PROC, PROC_Pos,
+			GraphSymbol,
+			Save, Cancel
+		};
+		const int total_fields = 15;
+
+		// Initialize on first call
 		if (not initialized) {
 			auto presets = getPresets();
 			if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
 				current_preset = presets[preset_idx];
 			} else {
-				// New preset with defaults
 				current_preset = PresetDef{};
 				current_preset.name = "New Preset";
 			}
 			initialized = true;
+			selected_field = 0;
+			radio_focus = 0;
 			Menu::redraw = true;
 		}
 
-		// Dialog dimensions
-		const int dialog_width = 70;
-		const int dialog_height = 22;
-		const int x = (Term::width - dialog_width) / 2;
-		const int y = (Term::height - dialog_height) / 2;
+		// ============ HELPER FUNCTIONS ============
+
+		// Check if field is editable based on current state
+		auto isFieldEditable = [&](int field) -> bool {
+			switch (field) {
+				case MEM_Type:
+				case MEM_Graph:
+				case Show_Disk:
+					return current_preset.mem_enabled;
+				case NET_Pos:
+					return current_preset.net_enabled && current_preset.mem_enabled;
+				case PROC_Pos:
+					return current_preset.proc_enabled;
+				default:
+					return true;
+			}
+		};
+
+		// Additional constraint: MEM_Graph and Show_Disk only if type=V
+		auto isMemOptionEditable = [&](int field) -> bool {
+			if (not current_preset.mem_enabled) return false;
+			if (field == MEM_Graph or field == Show_Disk) {
+				return current_preset.mem_type == MemType::Vertical;
+			}
+			return true;
+		};
+
+		// Check if field is a radio type
+		auto isRadioField = [](int field) -> bool {
+			return field == MEM_Type or field == MEM_Graph or field == NET_Pos or
+			       field == PROC_Pos or field == GraphSymbol;
+		};
+
+		// Get number of options for radio field
+		auto getRadioMaxOptions = [](int field) -> int {
+			switch (field) {
+				case MEM_Type: return 2;    // H, V
+				case MEM_Graph: return 2;   // Bar, Meter
+				case NET_Pos: return 2;     // Left, Right
+				case PROC_Pos: return 2;    // Right, Wide
+				case GraphSymbol: return 4; // default, braille, block, tty
+				default: return 0;
+			}
+		};
+
+		// Get current radio value
+		auto getRadioValue = [&](int field) -> int {
+			switch (field) {
+				case MEM_Type: return static_cast<int>(current_preset.mem_type);
+				case MEM_Graph: return current_preset.mem_graph_meter ? 1 : 0;
+				case NET_Pos: return static_cast<int>(current_preset.net_position);
+				case PROC_Pos: return static_cast<int>(current_preset.proc_position);
+				case GraphSymbol: {
+					vector<string> syms = {"default", "braille", "block", "tty"};
+					for (size_t i = 0; i < syms.size(); i++) {
+						if (syms[i] == current_preset.graph_symbol) return static_cast<int>(i);
+					}
+					return 0;
+				}
+				default: return 0;
+			}
+		};
+
+		// Set radio value
+		auto setRadioValue = [&](int field, int val) {
+			switch (field) {
+				case MEM_Type:
+					current_preset.mem_type = static_cast<MemType>(val);
+					break;
+				case MEM_Graph:
+					current_preset.mem_graph_meter = (val == 1);
+					break;
+				case NET_Pos:
+					current_preset.net_position = static_cast<NetPosition>(val);
+					break;
+				case PROC_Pos:
+					current_preset.proc_position = static_cast<ProcPosition>(val);
+					break;
+				case GraphSymbol: {
+					vector<string> syms = {"default", "braille", "block", "tty"};
+					if (val >= 0 and val < static_cast<int>(syms.size())) {
+						current_preset.graph_symbol = syms[val];
+					}
+					break;
+				}
+			}
+		};
+
+		// Skip to next valid field
+		auto nextValidField = [&](int dir) {
+			int attempts = 0;
+			do {
+				selected_field = (selected_field + dir + total_fields) % total_fields;
+				attempts++;
+				// Skip disabled fields
+				if (not isFieldEditable(selected_field)) continue;
+				if ((selected_field == MEM_Graph or selected_field == Show_Disk) and
+				    not isMemOptionEditable(selected_field)) continue;
+				break;
+			} while (attempts < total_fields);
+
+			if (isRadioField(selected_field)) {
+				radio_focus = getRadioValue(selected_field);
+			}
+		};
+
+		// ============ DIALOG LAYOUT - 2 COLUMN DESIGN ============
+		const int margin = 2;
+		const int max_width = parent_w - margin * 2;
+		const int max_height = parent_h - margin * 2;
+		// Use more horizontal space for 2-column layout
+		const int dialog_width = std::min(100, std::max(80, max_width));
+		const int dialog_height = std::max(22, std::min(28, max_height));
+		const int x = parent_x + (parent_w - dialog_width) / 2;
+		const int y = parent_y + (parent_h - dialog_height) / 2;
+
+		// Column layout: left for options, right for preview
+		const int left_col_width = 42;  // Options column
+		const int right_col_start = x + left_col_width + 2;
+		const int right_col_width = dialog_width - left_col_width - 4;
 
 		auto& out = Global::overlay;
 		int retval = Menu::Changed;
 
-		// Field definitions for navigation
-		enum Fields { Name, CPU, GPU, PWR, MEM_Layout, MEM_Disk, NET, PROC, GraphSymbol, Save, Cancel };
-		const int total_fields = 11;
-
-		// Key handling
+		// ============ KEY HANDLING ============
 		if (editing_name) {
-			if (is_in(key, "escape", "enter")) {
-				if (key == "enter") {
+			if (is_in(key, "escape", "enter") or key == "\r" or key == "\n") {
+				if (key == "enter" or key == "\r" or key == "\n") {
 					current_preset.name = name_editor.text;
 				}
 				name_editor.clear();
 				editing_name = false;
-			}
-			else {
+			} else {
 				name_editor.command(key);
 			}
 		}
@@ -3714,51 +4410,68 @@ namespace MenuV2 {
 				return Menu::Closed;
 			}
 			else if (is_in(key, "down", "j", "tab")) {
-				selected_field = (selected_field + 1) % total_fields;
+				nextValidField(1);
 			}
 			else if (is_in(key, "up", "k", "shift_tab")) {
-				selected_field = (selected_field - 1 + total_fields) % total_fields;
+				nextValidField(-1);
 			}
-			else if (is_in(key, "enter", "space")) {
+			else if (is_in(key, "left", "h")) {
+				if (isRadioField(selected_field) and isFieldEditable(selected_field)) {
+					int max_opts = getRadioMaxOptions(selected_field);
+					radio_focus = (radio_focus - 1 + max_opts) % max_opts;
+					setRadioValue(selected_field, radio_focus);
+					current_preset.enforceConstraints();
+				}
+			}
+			else if (is_in(key, "right", "l")) {
+				if (isRadioField(selected_field) and isFieldEditable(selected_field)) {
+					int max_opts = getRadioMaxOptions(selected_field);
+					radio_focus = (radio_focus + 1) % max_opts;
+					setRadioValue(selected_field, radio_focus);
+					current_preset.enforceConstraints();
+				}
+			}
+			else if (is_in(key, "enter", "space") or key == "\r" or key == "\n") {
 				switch (selected_field) {
 					case Name:
 						name_editor = Draw::TextEdit{current_preset.name, false};
 						editing_name = true;
 						break;
-					case CPU: current_preset.cpu_enabled = not current_preset.cpu_enabled; break;
-					case GPU: current_preset.gpu_enabled = not current_preset.gpu_enabled; break;
-					case PWR: current_preset.pwr_enabled = not current_preset.pwr_enabled; break;
-					case MEM_Layout:
-						current_preset.mem_layout = static_cast<MemLayout>(
-							(static_cast<int>(current_preset.mem_layout) + 1) % 3);
+					case CPU:
+						current_preset.cpu_enabled = not current_preset.cpu_enabled;
 						break;
-					case MEM_Disk:
-						current_preset.disk_mode = static_cast<DiskMode>(
-							(static_cast<int>(current_preset.disk_mode) + 1) % 3);
+					case GPU:
+						current_preset.gpu_enabled = not current_preset.gpu_enabled;
+						break;
+					case PWR:
+						current_preset.pwr_enabled = not current_preset.pwr_enabled;
+						break;
+					case MEM:
+						current_preset.mem_enabled = not current_preset.mem_enabled;
+						current_preset.enforceConstraints();
+						break;
+					case Show_Disk:
+						if (isMemOptionEditable(Show_Disk)) {
+							current_preset.show_disk = not current_preset.show_disk;
+						}
 						break;
 					case NET:
-						current_preset.net_layout = static_cast<NetLayout>(
-							(static_cast<int>(current_preset.net_layout) + 1) % 3);
+						current_preset.net_enabled = not current_preset.net_enabled;
+						current_preset.enforceConstraints();
 						break;
 					case PROC:
-						current_preset.proc_layout = static_cast<ProcLayout>(
-							(static_cast<int>(current_preset.proc_layout) + 1) % 3);
+						current_preset.proc_enabled = not current_preset.proc_enabled;
+						current_preset.enforceConstraints();
 						break;
-					case GraphSymbol: {
-						vector<string> symbols = {"default", "braille", "block", "tty"};
-						int idx = 0;
-						for (size_t i = 0; i < symbols.size(); i++) {
-							if (symbols[i] == current_preset.graph_symbol) {
-								idx = static_cast<int>(i);
-								break;
-							}
-						}
-						idx = (idx + 1) % static_cast<int>(symbols.size());
-						current_preset.graph_symbol = symbols[idx];
+					case MEM_Type:
+					case MEM_Graph:
+					case NET_Pos:
+					case PROC_Pos:
+					case GraphSymbol:
+						// Radio fields: Enter moves to next field
+						nextValidField(1);
 						break;
-					}
 					case Save: {
-						// Save the preset
 						auto presets = getPresets();
 						if (preset_idx >= 0 and preset_idx < static_cast<int>(presets.size())) {
 							presets[preset_idx] = current_preset;
@@ -3766,6 +4479,13 @@ namespace MenuV2 {
 							presets.push_back(current_preset);
 						}
 						savePresets(presets);
+
+						Config::current_preset = preset_idx;
+						Config::apply_preset(current_preset.toConfigString());
+						Draw::calcSizes();
+						Global::resized = true;
+						Runner::run("all", false, true);
+
 						initialized = false;
 						return Menu::Closed;
 					}
@@ -3774,157 +4494,230 @@ namespace MenuV2 {
 						return Menu::Closed;
 				}
 			}
-			else if (is_in(key, "left", "h")) {
-				// Cycle backward for applicable fields
-				switch (selected_field) {
-					case MEM_Layout:
-						current_preset.mem_layout = static_cast<MemLayout>(
-							(static_cast<int>(current_preset.mem_layout) + 2) % 3);
-						break;
-					case MEM_Disk:
-						current_preset.disk_mode = static_cast<DiskMode>(
-							(static_cast<int>(current_preset.disk_mode) + 2) % 3);
-						break;
-					case NET:
-						current_preset.net_layout = static_cast<NetLayout>(
-							(static_cast<int>(current_preset.net_layout) + 2) % 3);
-						break;
-					case PROC:
-						current_preset.proc_layout = static_cast<ProcLayout>(
-							(static_cast<int>(current_preset.proc_layout) + 2) % 3);
-						break;
-				}
-			}
-			else if (is_in(key, "right", "l")) {
-				// Cycle forward for applicable fields (same as enter/space)
-				switch (selected_field) {
-					case CPU: current_preset.cpu_enabled = not current_preset.cpu_enabled; break;
-					case GPU: current_preset.gpu_enabled = not current_preset.gpu_enabled; break;
-					case PWR: current_preset.pwr_enabled = not current_preset.pwr_enabled; break;
-					case MEM_Layout:
-						current_preset.mem_layout = static_cast<MemLayout>(
-							(static_cast<int>(current_preset.mem_layout) + 1) % 3);
-						break;
-					case MEM_Disk:
-						current_preset.disk_mode = static_cast<DiskMode>(
-							(static_cast<int>(current_preset.disk_mode) + 1) % 3);
-						break;
-					case NET:
-						current_preset.net_layout = static_cast<NetLayout>(
-							(static_cast<int>(current_preset.net_layout) + 1) % 3);
-						break;
-					case PROC:
-						current_preset.proc_layout = static_cast<ProcLayout>(
-							(static_cast<int>(current_preset.proc_layout) + 1) % 3);
-						break;
-				}
-			}
 			else {
 				retval = Menu::NoChange;
 			}
 		}
 
-		// Draw the dialog
+		// ============ RENDERING - 2 COLUMN LAYOUT ============
 		if (retval == Menu::Changed or Menu::redraw) {
-			// Create dialog box
-			out = Draw::createBox(x, y, dialog_width, dialog_height, Theme::c("hi_fg"), true, "Preset Editor");
+			out = Menu::bg;
 
-			int row = y + 2;
-			const int label_x = x + 3;
-			const int value_x = x + 20;
+			// Draw blank mask around the dialog (1 char padding for visibility)
+			const int mask_padding = 1;
+			int mask_x = std::max(1, x - mask_padding);
+			int mask_y = std::max(1, y - mask_padding);
+			int mask_width = std::min(dialog_width + mask_padding * 2, Term::width - mask_x + 1);
+			int mask_height = std::min(dialog_height + mask_padding * 2, Term::height - mask_y + 1);
+			string mask_line(mask_width, ' ');
+			for (int row = 0; row < mask_height; row++) {
+				out += Mv::to(mask_y + row, mask_x) + Theme::c("main_bg") + mask_line;
+			}
 
-			// Helper for rendering a field
-			auto renderField = [&](int field_id, const string& label, const string& value) {
-				bool is_sel = (selected_field == field_id);
-				out += Mv::to(row, label_x) + Theme::c("main_fg") + label + ":";
-				out += Mv::to(row, value_x);
-				if (is_sel) out += Theme::c("selected_bg") + Theme::c("selected_fg");
-				out += value;
-				if (is_sel) out += Fx::reset;
-				row++;
+			// Draw main box
+			out += Draw::createBox(x, y, dialog_width, dialog_height, Theme::c("hi_fg"), true, "Preset Editor");
+
+			// Draw vertical divider between columns
+			for (int row = 1; row < dialog_height - 1; row++) {
+				out += Mv::to(y + row, x + left_col_width) + Theme::c("hi_fg") + "│";
+			}
+			// Connect divider to top/bottom borders
+			out += Mv::to(y, x + left_col_width) + Theme::c("hi_fg") + "┬";
+			out += Mv::to(y + dialog_height - 1, x + left_col_width) + Theme::c("hi_fg") + "┴";
+
+			const int label_x = x + 2;
+			const int value_x = x + 14;
+			int row_y = y + 2;
+
+			// Helper to draw a field row (compact for 2-col layout)
+			auto drawField = [&](int field, const string& label, const string& value, bool is_toggle = false) {
+				bool is_sel = (selected_field == field);
+				bool is_editable = isFieldEditable(field);
+				if ((field == MEM_Graph or field == Show_Disk) and not isMemOptionEditable(field)) {
+					is_editable = false;
+				}
+
+				string fg = is_editable ? (is_sel ? Theme::c("hi_fg") : Theme::c("main_fg"))
+				                         : Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+
+				out += Mv::to(row_y, label_x) + fg + marker + label;
+				out += Mv::to(row_y, value_x);
+
+				if (is_toggle) {
+					out += drawToggle(value == "ON", is_sel and is_editable, tty_mode);
+				} else {
+					out += fg + value;
+				}
+				row_y++;
 			};
 
-			// Name field
-			if (editing_name) {
-				out += Mv::to(row, label_x) + Theme::c("main_fg") + "Name:";
-				out += Mv::to(row, value_x) + Theme::c("selected_bg") + name_editor(20) + Fx::reset;
-			} else {
-				renderField(Name, "Name", current_preset.name);
-			}
-			row++;
-
-			// Panel toggles
-			out += Mv::to(row, label_x) + Theme::c("title") + Fx::b + "─ Panels " + string(20, '-') + Fx::ub;
-			row++;
-			renderField(CPU, "CPU", drawToggle(current_preset.cpu_enabled, selected_field == CPU, tty_mode));
-			renderField(GPU, "GPU", drawToggle(current_preset.gpu_enabled, selected_field == GPU, tty_mode));
-			renderField(PWR, "Power", drawToggle(current_preset.pwr_enabled, selected_field == PWR, tty_mode));
-			row++;
-
-			// Memory layout
-			vector<string> mem_opts = {"Hidden", "Horizontal", "Vertical"};
-			renderField(MEM_Layout, "Memory", drawRadio(mem_opts, static_cast<int>(current_preset.mem_layout), selected_field == MEM_Layout, tty_mode));
-
-			// Disk mode
-			vector<string> disk_opts = {"Hidden", "Bar/Meter", "Graph"};
-			renderField(MEM_Disk, "  Disk Mode", drawRadio(disk_opts, static_cast<int>(current_preset.disk_mode), selected_field == MEM_Disk, tty_mode));
-			row++;
-
-			// Network layout
-			vector<string> net_opts = {"Hidden", "Horizontal", "Vertical"};
-			renderField(NET, "Network", drawRadio(net_opts, static_cast<int>(current_preset.net_layout), selected_field == NET, tty_mode));
-
-			// Process layout
-			vector<string> proc_opts = {"Hidden", "Horizontal", "Vertical"};
-			renderField(PROC, "Processes", drawRadio(proc_opts, static_cast<int>(current_preset.proc_layout), selected_field == PROC, tty_mode));
-			row++;
-
-			// Graph symbol
-			vector<string> sym_opts = {"default", "braille", "block", "tty"};
-			int sym_idx = 0;
-			for (size_t i = 0; i < sym_opts.size(); i++) {
-				if (sym_opts[i] == current_preset.graph_symbol) {
-					sym_idx = static_cast<int>(i);
-					break;
+			// Helper to draw radio options (compact)
+			auto drawRadioField = [&](int field, const string& label, const vector<string>& options) {
+				bool is_sel = (selected_field == field);
+				bool is_editable = isFieldEditable(field);
+				if ((field == MEM_Graph or field == Show_Disk) and not isMemOptionEditable(field)) {
+					is_editable = false;
 				}
-			}
-			renderField(GraphSymbol, "Graph Symbol", drawRadio(sym_opts, sym_idx, selected_field == GraphSymbol, tty_mode));
-			row += 2;
 
-			// Buttons
-			out += Mv::to(row, label_x);
-			bool save_sel = (selected_field == Save);
-			bool cancel_sel = (selected_field == Cancel);
-			out += (save_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("hi_fg"))
-				+ "[ Save ]" + Fx::reset + "   "
-				+ (cancel_sel ? Theme::c("selected_bg") + Theme::c("selected_fg") : Theme::c("inactive_fg"))
-				+ "[ Cancel ]" + Fx::reset;
+				string fg = is_editable ? (is_sel ? Theme::c("hi_fg") : Theme::c("main_fg"))
+				                         : Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
 
-			// Draw preview on the right side
-			const int preview_x = x + 40;
-			const int preview_y = y + 3;
-			const int preview_w = 26;
-			const int preview_h = 15;
+				out += Mv::to(row_y, label_x) + fg + marker + label;
+				out += Mv::to(row_y, value_x);
 
-			out += Mv::to(preview_y - 1, preview_x) + Theme::c("title") + "Preview:";
-			out += drawPresetPreview(current_preset, preview_w, preview_h);
+				int current = getRadioValue(field);
+				int focus = is_sel ? radio_focus : -1;
+				out += drawRadio(options, current, focus, tty_mode);
+				row_y++;
+			};
 
-			// Position the preview
-			string preview = drawPresetPreview(current_preset, preview_w, preview_h);
-			// Split preview into lines and position them
-			int py = preview_y;
-			string line;
-			for (char c : preview) {
-				if (c == '\n') {
-					out += Mv::to(py++, preview_x) + line;
-					line.clear();
+			// ==================== LEFT COLUMN: OPTIONS ====================
+
+			// ---- NAME ----
+			{
+				bool is_sel = (selected_field == Name);
+				string marker = is_sel ? ">" : " ";
+				out += Mv::to(row_y, label_x) + (is_sel ? Theme::c("hi_fg") : Theme::c("main_fg"));
+				out += marker + "Name:";
+				out += Mv::to(row_y, value_x);
+				if (editing_name) {
+					out += Theme::c("hi_fg") + Fx::ul + name_editor.text + Fx::uul + " ";
 				} else {
-					line += c;
+					out += Theme::c("main_fg") + "[" + current_preset.name + "]";
+				}
+				row_y++;
+			}
+
+			// ---- TOP PANELS (compact: all on one line concept, but separate rows) ----
+			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Top ─" + Fx::ub;
+			row_y++;
+
+			drawField(CPU, "CPU", current_preset.cpu_enabled ? "ON" : "OFF", true);
+			drawField(GPU, "GPU", current_preset.gpu_enabled ? "ON" : "OFF", true);
+			drawField(PWR, "PWR", current_preset.pwr_enabled ? "ON" : "OFF", true);
+
+			// ---- MEMORY SECTION ----
+			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Memory ─" + Fx::ub;
+			row_y++;
+
+			drawField(MEM, "MEM", current_preset.mem_enabled ? "ON" : "OFF", true);
+			drawRadioField(MEM_Type, "Type", {"Horizontal", "Vertical"});
+			drawRadioField(MEM_Graph, "Graph", {"Bar", "Meter"});
+			drawField(Show_Disk, "Disk", current_preset.show_disk ? "ON" : "OFF", true);
+
+			// ---- NETWORK SECTION ----
+			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Network ─" + Fx::ub;
+			row_y++;
+
+			drawField(NET, "NET", current_preset.net_enabled ? "ON" : "OFF", true);
+			if (current_preset.mem_enabled) {
+				drawRadioField(NET_Pos, "Position", {"Left", "Right"});
+			} else {
+				bool is_sel = (selected_field == NET_Pos);
+				string fg = Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+				out += Mv::to(row_y, label_x) + fg + marker + "Position";
+				out += Mv::to(row_y, value_x) + fg + "(Wide)";
+				row_y++;
+			}
+
+			// ---- PROCESS SECTION ----
+			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Process ─" + Fx::ub;
+			row_y++;
+
+			drawField(PROC, "PROC", current_preset.proc_enabled ? "ON" : "OFF", true);
+			drawRadioField(PROC_Pos, "Position", {"Right", "Wide"});
+
+			// ---- GRAPH SYMBOL (split across two lines) ----
+			{
+				bool is_sel = (selected_field == GraphSymbol);
+				bool is_editable = true;
+				string fg = is_editable ? (is_sel ? Theme::c("hi_fg") : Theme::c("main_fg"))
+				                         : Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+
+				// Line 1: Label + first two options
+				out += Mv::to(row_y, label_x) + fg + marker + "Style";
+				out += Mv::to(row_y, value_x);
+				int current = getRadioValue(GraphSymbol);
+				int focus = is_sel ? radio_focus : -1;
+				out += drawRadio({"default", "braille"}, current, (focus <= 1) ? focus : -1, tty_mode);
+				row_y++;
+
+				// Line 2: Indent + remaining options
+				out += Mv::to(row_y, value_x);
+				// Adjust indices for second row (block=2, tty=3 become 0,1 in display)
+				int adj_current = (current >= 2) ? current - 2 : -1;
+				int adj_focus = (is_sel and focus >= 2) ? focus - 2 : -1;
+				out += drawRadio({"block", "tty"}, adj_current, adj_focus, tty_mode);
+				row_y++;
+			}
+
+			// ---- BUTTONS at bottom of left column ----
+			int buttons_y = y + dialog_height - 3;
+			{
+				bool save_sel = (selected_field == Save);
+				bool cancel_sel = (selected_field == Cancel);
+				int btn_x = label_x + 2;
+
+				out += Mv::to(buttons_y, btn_x);
+				if (save_sel) {
+					out += Theme::c("hi_fg") + Fx::b + "[ SAVE ]" + Fx::ub;
+				} else {
+					out += Theme::c("main_fg") + "[ Save ]";
+				}
+
+				out += "  ";
+
+				if (cancel_sel) {
+					out += Theme::c("hi_fg") + Fx::b + "[ CANCEL ]" + Fx::ub;
+				} else {
+					out += Theme::c("main_fg") + "[ Cancel ]";
 				}
 			}
-			if (not line.empty()) {
-				out += Mv::to(py, preview_x) + line;
+
+			// ==================== RIGHT COLUMN: PREVIEW ====================
+			int preview_x = right_col_start + 1;
+			int preview_y = y + 2;
+			int preview_width = right_col_width - 2;
+			int preview_height = dialog_height - 4;
+
+			// Preview header
+			out += Mv::to(y + 1, right_col_start + 2) + Theme::c("title") + Fx::b + "Preview" + Fx::ub;
+
+			if (preview_height >= 8 and preview_width >= 20) {
+				string preview = drawPresetPreview(current_preset, preview_width, preview_height);
+				int py = preview_y;
+				// Split by newlines and output whole lines to preserve UTF-8 characters
+				string line;
+				for (size_t i = 0; i < preview.size(); i++) {
+					if (preview[i] == '\n') {
+						out += Mv::to(py++, preview_x) + Theme::c("main_fg") + line;
+						line.clear();
+					} else {
+						line += preview[i];
+					}
+				}
+				if (not line.empty()) {
+					out += Mv::to(py, preview_x) + Theme::c("main_fg") + line;
+				}
+			} else {
+				out += Mv::to(preview_y + preview_height / 2, preview_x) + Theme::c("inactive_fg") + "(Preview too small)";
 			}
+
+			// Keyboard help at bottom of editor dialog (centered)
+			const int help_len = 60;  // "↑↓:Navigate  ←→:Option  Space:Toggle  Enter:Save  Esc:Cancel"
+			int help_x = x + (dialog_width - help_len) / 2;
+			out += Mv::to(y + dialog_height - 1, help_x)
+				+ Theme::c("hi_fg") + "↑↓" + Theme::c("main_fg") + ":Navigate  "
+				+ Theme::c("hi_fg") + "←→" + Theme::c("main_fg") + ":Option  "
+				+ Theme::c("hi_fg") + "Space" + Theme::c("main_fg") + ":Toggle  "
+				+ Theme::c("hi_fg") + "Enter" + Theme::c("main_fg") + ":Save  "
+				+ Theme::c("hi_fg") + "Esc" + Theme::c("main_fg") + ":Cancel";
+
+			out += Fx::reset;
 		}
 
 		return (Menu::redraw ? Menu::Changed : retval);

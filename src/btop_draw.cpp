@@ -668,12 +668,12 @@ namespace Cpu {
 			if (Config::current_preset < 0) {
 				preset_display = "*";
 			} else {
-				preset_display = to_string(Config::current_preset);
+				preset_display = to_string(Config::current_preset + 1);  // Display 1-based numbering
 				// Get preset name from config
 				const auto& preset_names_str = Config::getS("preset_names");
-				if (not preset_names_str.empty() and Config::current_preset > 0) {
+				if (not preset_names_str.empty()) {
 					auto preset_names = ssplit(preset_names_str);
-					int name_idx = Config::current_preset - 1;  // preset 1 = first name, etc.
+					int name_idx = Config::current_preset;  // 0-based index into names
 					if (name_idx >= 0 and name_idx < (int)preset_names.size()) {
 						preset_display += " " + string(preset_names[name_idx]);
 					}
@@ -4033,6 +4033,7 @@ namespace Draw {
 		auto net_beside_mem = Config::getB("net_beside_mem");
 		auto proc_full_width = Config::getB("proc_full_width");
 		auto proc_left = Config::getB("proc_left");
+		auto stacked_layout = Config::getB("stacked_layout");
 
 		Cpu::box.clear();
 
@@ -4367,8 +4368,25 @@ namespace Draw {
 			//? This gives proc maximum space regardless of whether disks are shown
 			int compact_min_height = 10;
 
+			//? SPECIAL: Fully stacked layout (Layout 9) - all panels full width, stacked vertically
+			if (stacked_layout and Net::shown and Proc::shown) {
+				width = Term::width;
+				//? MEM gets ~40% of remaining height
+			#ifdef GPU_SUPPORT
+				int remaining_height = Term::height - Cpu::height - Gpu::total_height - pwr_offset;
+			#else
+				int remaining_height = Term::height - Cpu::height;
+			#endif
+				height = std::max(min_height, remaining_height * 40 / 100);
+				x = 1;
+			#ifdef GPU_SUPPORT
+				y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+			#else
+				y = cpu_bottom ? 1 : Cpu::height + 1;
+			#endif
+			}
 			//? Side-by-side mode: mem and net share the horizontal space
-			if (net_beside_mem and Net::shown) {
+			else if (net_beside_mem and Net::shown) {
 				//? Width: always half the terminal (proc goes below, not beside)
 				width = Term::width / 2;
 
@@ -4627,8 +4645,21 @@ namespace Draw {
 		if (Net::shown) {
 			using namespace Net;
 
+			//? SPECIAL: Fully stacked layout (Layout 9) - NET full width below MEM
+			if (stacked_layout and Mem::shown and Proc::shown) {
+				width = Term::width;
+				//? NET gets ~20% of remaining height (minimum 6)
+			#ifdef GPU_SUPPORT
+				int remaining_height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Mem::height;
+			#else
+				int remaining_height = Term::height - Cpu::height - Mem::height;
+			#endif
+				height = std::max(min_height, remaining_height * 25 / 100);
+				x = 1;
+				y = Mem::y + Mem::height;  //? Directly below MEM
+			}
 			//? Side-by-side mode: net is beside mem (to the right)
-			if (net_beside_mem and Mem::shown) {
+			else if (net_beside_mem and Mem::shown) {
 				//? Width: remaining space after mem (proc goes below, not beside)
 				width = Term::width - Mem::width;
 
@@ -4703,8 +4734,20 @@ namespace Draw {
 		if (Proc::shown) {
 			using namespace Proc;
 
+			//? SPECIAL: Fully stacked layout (Layout 9) - PROC full width below NET
+			if (stacked_layout and Mem::shown and Net::shown) {
+				width = Term::width;
+				x = 1;
+				y = Net::y + Net::height;  //? Directly below NET
+			#ifdef GPU_SUPPORT
+				height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Mem::height - Net::height;
+			#else
+				height = Term::height - Cpu::height - Mem::height - Net::height;
+			#endif
+				if (height < 5) height = 5;  //? Minimum height for proc
+			}
 			//? Side-by-side mode with proc positioning options
-			if (net_beside_mem and Mem::shown and Net::shown) {
+			else if (net_beside_mem and Mem::shown and Net::shown) {
 				if (proc_full_width) {
 					//? Proc full width: spans under both mem and net
 					width = Term::width;

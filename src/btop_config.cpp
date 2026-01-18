@@ -188,6 +188,8 @@ namespace Config {
 		{"preset_names",		"#* Custom names for presets 1-9, separated by whitespace. Empty to use default numbers.\n"
 								"#* Example: \"Standard LLM Processes Power CPU/MEM\" for presets 1-5."},
 
+		{"preset_0",			"#* Configuration for preset 0 (first preset). Format: box:position:symbol,..."},
+
 		{"background_update", 	"#* Update main ui in background when menus are showing, set this to false if the menus is flickering too much for comfort."},
 
 		{"custom_cpu_name", 	"#* Custom cpu model name, empty string to disable."},
@@ -204,6 +206,8 @@ namespace Config {
 		{"net_beside_mem",		"#* Show net box beside mem box instead of above/below. Pressing '3' cycles: hidden -> stacked -> beside."},
 
 		{"proc_full_width",		"#* When net_beside_mem is active, show proc panel full width under both mem+net. Pressing '4' cycles: hidden -> under net -> full width."},
+
+		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
 
@@ -268,6 +272,8 @@ namespace Config {
 		{"log_level", 			"#* Set loglevel for \"~/.local/state/btop.log\" levels are: \"ERROR\" \"WARNING\" \"INFO\" \"DEBUG\".\n"
 								"#* The level set includes all lower levels, i.e. \"DEBUG\" will show all logging info."},
 		{"save_config_on_exit",  "#* Automatically save current settings to config file on exit."},
+
+		{"preview_unicode",		"#* Use Unicode box-drawing characters for preset preview. Set to false for ASCII."},
 	#ifdef GPU_SUPPORT
 
 		{"nvml_measure_pcie_speeds",
@@ -308,6 +314,7 @@ namespace Config {
 	#endif
 		{"clock_format", "%X"},
 		{"preset_names", "Standard LLM Processes Power CPU/MEM"},
+		{"preset_0", ""},
 		{"custom_cpu_name", ""},
 		{"disks_filter", ""},
 		{"io_graph_speeds", ""},
@@ -365,6 +372,7 @@ namespace Config {
 		{"mem_below_net", false},
 		{"net_beside_mem", true},
 		{"proc_full_width", false},
+		{"stacked_layout", false},
 		{"zfs_arc_cached", true},
 		{"show_swap", true},
 		{"swap_disk", true},
@@ -413,6 +421,7 @@ namespace Config {
 	#endif
 		{"terminal_sync", true},
 		{"save_config_on_exit", true},
+		{"preview_unicode", true},
 		{"disable_mouse", false},
 	};
 	std::unordered_map<std::string_view, bool> boolsTmp;
@@ -517,7 +526,12 @@ namespace Config {
 	int current_preset = -1;
 
 	bool presetsValid(const string& presets) {
-		vector<string> new_presets = {preset_list.at(0)};
+		// Use saved preset_0 if available, otherwise use current preset_list[0]
+		string first_preset = getS("preset_0");
+		if (first_preset.empty()) {
+			first_preset = preset_list.at(0);
+		}
+		vector<string> new_presets = {first_preset};
 
 		for (int x = 0; const auto& preset : ssplit(presets)) {
 			if (++x > 9) {
@@ -530,9 +544,19 @@ namespace Config {
 					return false;
 				}
 				const auto& vals = ssplit(box, ':');
-				if (vals.size() != 3) {
-					validError = "Malformatted preset in config value presets!";
-					return false;
+				// mem can have 3-6 fields (position, symbol, show_disk, mem_graph, disk_graph)
+				// other boxes have exactly 3 fields
+				bool is_mem = (vals.size() > 0 && vals.at(0) == "mem");
+				if (is_mem) {
+					if (vals.size() < 3 || vals.size() > 6) {
+						validError = "Malformatted mem preset in config value presets!";
+						return false;
+					}
+				} else {
+					if (vals.size() != 3) {
+						validError = "Malformatted preset in config value presets!";
+						return false;
+					}
 				}
 				if (not is_in(vals.at(0), "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "gpu5", "pwr")) {
 					validError = "Invalid box name in config value presets!";
@@ -556,32 +580,173 @@ namespace Config {
 
 	//* Apply selected preset
 	bool apply_preset(const string& preset) {
-		string boxes;
+		//? ==================== New Preset Format (13 Layout Model) ====================
+		//? cpu:0:symbol, gpu0:0:symbol, pwr:0:symbol
+		//? mem:type:symbol:meter:disk
+		//?     type: 0=Horizontal, 1=Vertical
+		//?     meter: 0=Bar, 1=Meter (only used if type=V)
+		//?     disk: 0=hidden, 1=shown (only used if type=V)
+		//? net:pos:symbol
+		//?     pos: 0=Left, 1=Right, 2=Wide
+		//? proc:pos:symbol
+		//?     pos: 0=Right, 1=Wide
 
+		string boxes;
+		bool has_mem = false, has_net = false, has_proc = false;
+		int mem_type = 0;   // 0=H, 1=V
+		int net_pos = 0;    // 0=Left, 1=Right, 2=Wide
+		int proc_pos = 0;   // 0=Right, 1=Wide
+
+		// First pass: build boxes string and extract positions
 		for (const auto& box : ssplit(preset, ',')) {
 			const auto& vals = ssplit(box, ':');
+			if (vals.empty()) continue;
 			boxes += vals.at(0) + ' ';
+
+			if (vals.at(0) == "mem") {
+				has_mem = true;
+				mem_type = (vals.size() > 1) ? stoi(vals.at(1)) : 0;
+			} else if (vals.at(0) == "net") {
+				has_net = true;
+				net_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 1;
+			} else if (vals.at(0) == "proc") {
+				has_proc = true;
+				proc_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 1;
+			}
 		}
 		if (not boxes.empty()) boxes.pop_back();
 
+		// Check terminal size
 		auto min_size = Term::get_min_size(boxes);
 		if (Term::width < min_size.at(0) or Term::height < min_size.at(1)) {
 			return false;
 		}
 
+		// Second pass: apply settings
 		for (const auto& box : ssplit(preset, ',')) {
 			const auto& vals = ssplit(box, ':');
-			if (vals.at(0) == "cpu") {
-				set("cpu_bottom", (vals.at(1) != "0"));
-			} else if (vals.at(0) == "mem") {
-				set("mem_below_net", (vals.at(1) != "0"));
-			} else if (vals.at(0) == "proc") {
-				set("proc_left", (vals.at(1) != "0"));
-			}
+			if (vals.empty()) continue;
+
+			// Apply graph symbol
+			string symbol = (vals.size() > 2) ? string(vals.at(2)) : "default";
 			if (vals.at(0).starts_with("gpu")) {
-				set("graph_symbol_gpu", vals.at(2));
+				set("graph_symbol_gpu", symbol);
 			} else {
-				set(strings.find("graph_symbol_" + vals.at(0))->first, vals.at(2));
+				auto it = strings.find("graph_symbol_" + vals.at(0));
+				if (it != strings.end()) {
+					set(it->first, symbol);
+				}
+			}
+
+			// MEM-specific settings
+			if (vals.at(0) == "mem") {
+				bool is_vertical = (mem_type == 1);
+
+				// meter: 0=Bar, 1=Meter
+				bool use_meter = false;
+				if (vals.size() > 3) {
+					use_meter = (vals.at(3) == "1");
+				}
+
+				// disk: 0=hidden, 1=shown
+				bool show_disk = false;
+				if (vals.size() > 4) {
+					show_disk = (vals.at(4) == "1");
+				}
+
+				// Apply MEM settings
+				set("mem_horizontal", !is_vertical);  // H=true for horizontal bars
+				set("mem_graphs", true);              // Always show graphs
+				set("mem_bar_mode", !use_meter);      // true=bars, false=meters
+				set("show_disks", show_disk);
+			}
+		}
+
+		// ============ LAYOUT CONFIGURATION BASED ON 13 LAYOUTS ============
+		// Decode positions
+		bool mem_vertical = (mem_type == 1);
+		bool net_left = (net_pos == 0);     // Left = under MEM
+		bool net_right = (net_pos == 1);    // Right = beside MEM
+		bool net_wide = (net_pos == 2);     // Wide = fills width
+		bool proc_right_pos = (proc_pos == 0);  // Right = compact on right
+		bool proc_wide = (proc_pos == 1);   // Wide = fills width at bottom
+
+		// Default settings
+		set("cpu_bottom", false);
+		set("mem_below_net", false);
+
+		// ============ APPLY LAYOUT RULES ============
+
+		// Single panel layouts (1-3): No special settings needed, panel fills space
+
+		// MEM + NET layouts (4-5)
+		if (has_mem and has_net and not has_proc) {
+			if (net_left) {
+				// Layout 4: MEM top, NET under (stacked)
+				set("net_beside_mem", false);
+				set("mem_below_net", false);
+			} else {
+				// Layout 5: MEM left, NET right (side by side)
+				set("net_beside_mem", true);
+			}
+		}
+
+		// MEM + PROC layouts (6-7)
+		if (has_mem and has_proc and not has_net) {
+			if (proc_right_pos) {
+				// Layout 6: MEM left, PROC right
+				set("proc_left", false);
+				set("proc_full_width", false);
+			} else {
+				// Layout 7: MEM top, PROC fills bottom
+				set("proc_left", false);
+				set("proc_full_width", true);
+			}
+		}
+
+		// NET + PROC layouts without MEM (12-13)
+		if (has_net and has_proc and not has_mem) {
+			if (proc_right_pos) {
+				// Layout 12: NET left, PROC right
+				set("proc_left", false);
+				set("proc_full_width", false);
+			} else {
+				// Layout 13: NET top, PROC fills bottom
+				set("proc_left", false);
+				set("proc_full_width", true);
+			}
+		}
+
+		// Three panel layouts (8-11)
+		// Reset stacked_layout by default (only Layout 9 uses it)
+		set("stacked_layout", false);
+
+		if (has_mem and has_net and has_proc) {
+			if (net_left and proc_right_pos) {
+				// Layout 8: MEM+NET stacked left, PROC right
+				set("net_beside_mem", false);
+				set("proc_left", false);
+				set("proc_full_width", false);
+			}
+			else if (net_left and proc_wide) {
+				// Layout 9: ALL STACKED - MEM top, NET under, PROC wide bottom
+				// This is a special layout that requires stacked_layout flag
+				set("stacked_layout", true);
+				set("net_beside_mem", false);
+				set("proc_left", false);
+				set("proc_full_width", true);
+			}
+			else if (net_right and proc_right_pos) {
+				// Layout 10: MEM left, NET+PROC stacked right
+				set("net_beside_mem", true);
+				set("proc_left", false);
+				set("proc_full_width", false);
+			}
+			else {
+				// Layout 11: MEM+NET side by side top, PROC wide bottom
+				set("net_beside_mem", true);
+				set("proc_left", false);
+				set("proc_full_width", true);
 			}
 		}
 
