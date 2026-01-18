@@ -4029,6 +4029,8 @@ namespace Draw {
 		Config::unlock();
 		auto boxes = Config::getS("shown_boxes");
 		auto cpu_bottom = Config::getB("cpu_bottom");
+		auto gpu_bottom = Config::getB("gpu_bottom");
+		auto pwr_bottom = Config::getB("pwr_bottom");
 		auto mem_below_net = Config::getB("mem_below_net");
 		auto net_beside_mem = Config::getB("net_beside_mem");
 		auto proc_full_width = Config::getB("proc_full_width");
@@ -4117,6 +4119,7 @@ namespace Draw {
 				Pwr::height = Pwr::min_height;
 			}
 		}
+
 	#endif
 		Mem::shown = boxes.contains("mem");
 		Net::shown = boxes.contains("net");
@@ -4159,6 +4162,8 @@ namespace Draw {
 
 			x = 1;
 			y = cpu_bottom ? Term::height - height + 1 : 1;
+			Logger::debug("CPU panel: y={}, height={}, ends_at_y={}, cpu_bottom={}, Term::height={}",
+				y, height, y + height - 1, cpu_bottom, Term::height);
 
 		#ifdef GPU_SUPPORT
 			//? Use height - 6 because drawing loop's cy == max_row condition means effective rows = max_row - 1
@@ -4300,7 +4305,20 @@ namespace Draw {
 						if (height > 13) height = 13;
 					}
 				}
-				x_vec[i] = 1; y_vec[i] = 1 + total_height + (not Config::getB("cpu_bottom"))*Cpu::shown*Cpu::height;
+				x_vec[i] = 1;
+				if (gpu_bottom) {
+					//? GPU at bottom: position from bottom up, above CPU (if at bottom)
+					int cpu_at_bottom_height = (cpu_bottom and Cpu::shown) ? Cpu::height : 0;
+					//? GPU section ends just above CPU (or at screen bottom if no CPU at bottom)
+					int gpu_end_y = Term::height - cpu_at_bottom_height;
+					//? Stack GPUs from bottom: this GPU goes above already accumulated GPUs
+					y_vec[i] = gpu_end_y - total_height - height + 1;
+				} else {
+					//? GPU at top: position after CPU (if at top)
+					y_vec[i] = 1 + total_height + (not cpu_bottom)*Cpu::shown*Cpu::height;
+				}
+				Logger::debug("GPU{} panel: y={}, height={}, ends_at_y={}, gpu_bottom={}, total_height_so_far={}",
+					i, y_vec[i], height, y_vec[i] + height - 1, gpu_bottom, total_height);
 				//? For Apple Silicon with single GPU, display "gpu" instead of "gpu0"
 				string box_name = (Shared::gpuCoreCount > 0 and Gpu::count == 1)
 					? "gpu"
@@ -4346,15 +4364,35 @@ namespace Draw {
 			height = max(height, min_height);
 
 			x = 1;
-			y = (Config::getB("cpu_bottom") ? 1 : Cpu::height + 1) + Gpu::total_height;
+			if (pwr_bottom) {
+				//? PWR at bottom: position above GPU (if at bottom) and CPU (if at bottom)
+				int cpu_at_bottom_height = (cpu_bottom and Cpu::shown) ? Cpu::height : 0;
+				int gpu_at_bottom_height = (gpu_bottom and Gpu::shown > 0) ? Gpu::total_height : 0;
+				y = Term::height - cpu_at_bottom_height - gpu_at_bottom_height - height + 1;
+			} else {
+				//? PWR at top: position after CPU (if at top) and GPU (if at top)
+				int cpu_at_top_height = (not cpu_bottom and Cpu::shown) ? Cpu::height : 0;
+				int gpu_at_top_height = (not gpu_bottom and Gpu::shown > 0) ? Gpu::total_height : 0;
+				y = 1 + cpu_at_top_height + gpu_at_top_height;
+			}
 
 			box = createBox(x, y, width, height, Theme::c("cpu_box"), true, "pwr", "", 7);
-			Logger::debug("PWR panel: x={}, y={}, width={}, height={}, ends_at_y={}", x, y, width, height, y + height - 1);
+			Logger::debug("PWR panel: x={}, y={}, width={}, height={}, ends_at_y={}, pwr_bottom={}", x, y, width, height, y + height - 1, pwr_bottom);
 		}
 
-		//? Calculate Pwr offset for panels below it
+		//? Calculate offsets for panels in the middle (MEM, NET, PROC)
+		//? Only count panels at top in the top offset
 		int pwr_offset = 0;
-		if (Pwr::shown) pwr_offset = Pwr::height;
+		if (Pwr::shown and not pwr_bottom) pwr_offset = Pwr::height;
+
+		//? Calculate total bottom height for middle panel calculations
+		int total_bottom_height = 0;
+		if (cpu_bottom and Cpu::shown) total_bottom_height += Cpu::height;
+		if (gpu_bottom and Gpu::shown > 0) total_bottom_height += Gpu::total_height;
+		if (pwr_bottom and Pwr::shown) total_bottom_height += Pwr::height;
+
+		//? Calculate total top height (excluding bottom panels)
+		int gpu_top_offset = (not gpu_bottom and Gpu::shown > 0) ? Gpu::total_height : 0;
 	#endif
 
 		//* Calculate and draw mem box outlines
@@ -4373,14 +4411,14 @@ namespace Draw {
 				width = Term::width;
 				//? MEM gets ~40% of remaining height
 			#ifdef GPU_SUPPORT
-				int remaining_height = Term::height - Cpu::height - Gpu::total_height - pwr_offset;
+				int remaining_height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height;
 			#else
 				int remaining_height = Term::height - Cpu::height;
 			#endif
 				height = std::max(min_height, remaining_height * 40 / 100);
 				x = 1;
 			#ifdef GPU_SUPPORT
-				y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+				y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 			#else
 				y = cpu_bottom ? 1 : Cpu::height + 1;
 			#endif
@@ -4398,7 +4436,7 @@ namespace Draw {
 				else {
 					//? No proc OR proc beside: mem takes full height
 				#ifdef GPU_SUPPORT
-					height = Term::height - Cpu::height - Gpu::total_height - pwr_offset;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height;
 				#else
 					height = Term::height - Cpu::height;
 				#endif
@@ -4406,7 +4444,7 @@ namespace Draw {
 
 				x = 1;  //? Mem always on left in side-by-side
 			#ifdef GPU_SUPPORT
-				y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+				y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 			#else
 				y = cpu_bottom ? 1 : Cpu::height + 1;
 			#endif
@@ -4418,7 +4456,7 @@ namespace Draw {
 				height = compact_min_height;  //? Proc-priority: Mem at minimum
 				x = 1;
 			#ifdef GPU_SUPPORT
-				y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+				y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 			#else
 				y = cpu_bottom ? 1 : Cpu::height + 1;
 			#endif
@@ -4431,9 +4469,9 @@ namespace Draw {
 			#ifdef GPU_SUPPORT
 				if (Net::shown and not mem_below_net) {
 					//? Net is below mem: mem expands, net stays at min_height (6)
-					height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Net::min_height;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Net::min_height;
 				} else {
-					height = ceil((double)Term::height * (100 - Net::height_p * Net::shown*4 / ((Gpu::shown != 0 and Cpu::shown) + 4)) / 100) - Cpu::height - Gpu::total_height - pwr_offset;
+					height = ceil((double)Term::height * (100 - Net::height_p * Net::shown*4 / ((Gpu::shown != 0 and Cpu::shown) + 4)) / 100) - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height;
 				}
 			#else
 				if (Net::shown and not mem_below_net) {
@@ -4447,11 +4485,11 @@ namespace Draw {
 				x = (proc_left and Proc::shown) ? Term::width - width + 1: 1;
 				if (mem_below_net and Net::shown)
 			#ifdef GPU_SUPPORT
-					y = Term::height - height + 1 - (cpu_bottom ? Cpu::height : 0);
+					y = Term::height - height + 1 - total_bottom_height;
 				else
-					y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+					y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 			#else
-					y = Term::height - height + 1 - (cpu_bottom ? Cpu::height : 0);
+					y = Term::height - height + 1 - total_bottom_height;
 				else
 					y = cpu_bottom ? 1 : Cpu::height + 1;
 			#endif
@@ -4650,7 +4688,7 @@ namespace Draw {
 				width = Term::width;
 				//? NET gets ~20% of remaining height (minimum 6)
 			#ifdef GPU_SUPPORT
-				int remaining_height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Mem::height;
+				int remaining_height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Mem::height;
 			#else
 				int remaining_height = Term::height - Cpu::height - Mem::height;
 			#endif
@@ -4676,7 +4714,7 @@ namespace Draw {
 				else {
 					//? No proc: net takes full height
 				#ifdef GPU_SUPPORT
-					height = Term::height - Cpu::height - Gpu::total_height - pwr_offset;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height;
 				#else
 					height = Term::height - Cpu::height;
 				#endif
@@ -4685,7 +4723,7 @@ namespace Draw {
 				//? Position right after mem box
 				x = Mem::x + Mem::width;
 			#ifdef GPU_SUPPORT
-				y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+				y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 			#else
 				y = cpu_bottom ? 1 : Cpu::height + 1;
 			#endif
@@ -4698,7 +4736,7 @@ namespace Draw {
 					height = min_height;
 				} else {
 				#ifdef GPU_SUPPORT
-					height = Term::height - Cpu::height - Gpu::total_height - Mem::height - pwr_offset;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Mem::height;
 				#else
 					height = Term::height - Cpu::height - Mem::height;
 				#endif
@@ -4706,12 +4744,12 @@ namespace Draw {
 				x = (proc_left and Proc::shown) ? Term::width - width + 1 : 1;
 				if (mem_below_net and Mem::shown)
 				#ifdef GPU_SUPPORT
-					y = (cpu_bottom ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+					y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 				#else
 					y = cpu_bottom ? 1 : Cpu::height + 1;
 				#endif
 				else
-					y = Term::height - height + 1 - (cpu_bottom ? Cpu::height : 0);
+					y = Term::height - height + 1 - total_bottom_height;
 			}
 
 			b_width = (width > 45) ? 27 : 19;
@@ -4740,7 +4778,7 @@ namespace Draw {
 				x = 1;
 				y = Net::y + Net::height;  //? Directly below NET
 			#ifdef GPU_SUPPORT
-				height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Mem::height - Net::height;
+				height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Mem::height - Net::height;
 			#else
 				height = Term::height - Cpu::height - Mem::height - Net::height;
 			#endif
@@ -4753,7 +4791,7 @@ namespace Draw {
 					width = Term::width;
 					x = 1;
 				#ifdef GPU_SUPPORT
-					height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Mem::height;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Mem::height;
 				#else
 					height = Term::height - Cpu::height - Mem::height;
 				#endif
@@ -4764,7 +4802,7 @@ namespace Draw {
 					width = Net::width;
 					x = Net::x;
 				#ifdef GPU_SUPPORT
-					height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Net::height;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Net::height;
 				#else
 					height = Term::height - Cpu::height - Net::height;
 				#endif
@@ -4776,7 +4814,7 @@ namespace Draw {
 				width = Term::width;
 				x = 1;
 			#ifdef GPU_SUPPORT
-				height = Term::height - Cpu::height - Gpu::total_height - pwr_offset - Mem::height;
+				height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Mem::height;
 			#else
 				height = Term::height - Cpu::height - Mem::height;
 			#endif
@@ -4786,15 +4824,15 @@ namespace Draw {
 				//? Stacked layout (net under mem): Proc beside Mem+Net stack
 				width = Term::width - (Mem::shown ? Mem::width : (Net::shown ? Net::width : 0));
 			#ifdef GPU_SUPPORT
-				height = Term::height - Cpu::height - Gpu::total_height - pwr_offset;
+				height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height;
 			#else
 				height = Term::height - Cpu::height;
 			#endif
 				x = proc_left ? 1 : Term::width - width + 1;
 			#ifdef GPU_SUPPORT
-				y = ((cpu_bottom and Cpu::shown) ? 1 : Cpu::height + 1) + Gpu::total_height + pwr_offset;
+				y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 			#else
-				y = (cpu_bottom and Cpu::shown) ? 1 : Cpu::height + 1;
+				y = 1 + (cpu_bottom ? 0 : Cpu::height);
 			#endif
 			}
 

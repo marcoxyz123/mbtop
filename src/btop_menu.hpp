@@ -112,6 +112,7 @@ namespace MenuV2 {
 		Select,      // Dropdown from dynamic list
 		Slider,      // Numeric range with visual slider
 		Text,        // Free text input
+		MultiCheck,  // Multi-select checkboxes ☑/☐ (space-separated values)
 		Special      // Custom handling (presets)
 	};
 
@@ -170,8 +171,11 @@ namespace MenuV2 {
 
 		//? Top panels (always full width, stacked)
 		bool cpu_enabled = true;
+		bool cpu_bottom = false;          // CPU at bottom of screen instead of top
 		bool gpu_enabled = false;
+		bool gpu_bottom = false;          // GPU at bottom of screen instead of top
 		bool pwr_enabled = false;
+		bool pwr_bottom = false;          // PWR at bottom of screen instead of top
 
 		//? MEM panel
 		bool mem_enabled = true;

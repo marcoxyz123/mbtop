@@ -37,6 +37,10 @@ tab-size = 4
 #include "btop_shared.hpp"
 #include "btop_tools.hpp"
 
+#if defined(__APPLE__) && defined(GPU_SUPPORT)
+#include "osx/apple_silicon_gpu.hpp"
+#endif
+
 using std::array;
 using std::atomic;
 using std::string_view;
@@ -281,7 +285,7 @@ namespace Config {
 		{"rsmi_measure_pcie_speeds",
 								"#* Measure PCIe throughput on AMD cards, may impact performance on certain cards."},
 		{"gpu_mirror_graph",	"#* Horizontally mirror the GPU graph."},
-		{"shown_gpus",			"#* Set which GPU vendors to show. Available values are \"nvidia amd intel\""},
+		{"shown_gpus",			"#* Set which GPU vendors to show. Available values are \"apple nvidia amd intel\""},
 		{"custom_gpu_name0",	"#* Custom gpu0 model name, empty string to disable."},
 		{"custom_gpu_name1",	"#* Custom gpu1 model name, empty string to disable."},
 		{"custom_gpu_name2",	"#* Custom gpu2 model name, empty string to disable."},
@@ -332,7 +336,11 @@ namespace Config {
 		{"custom_gpu_name4", ""},
 		{"custom_gpu_name5", ""},
 		{"show_gpu_info", "Auto"},
+	#if defined(__APPLE__)
+		{"shown_gpus", "apple"}  //? Default to Apple on macOS (Apple Silicon)
+	#else
 		{"shown_gpus", "nvidia amd intel"}
+	#endif
 	#endif
 	};
 	std::unordered_map<std::string_view, string> stringsTmp;
@@ -357,6 +365,8 @@ namespace Config {
 		{"cpu_invert_lower", true},
 		{"cpu_single_graph", false},
 		{"cpu_bottom", false},
+		{"gpu_bottom", false},
+		{"pwr_bottom", false},
 		{"show_uptime", true},
 		{"show_cpu_watts", true},
 		{"check_temp", true},
@@ -593,6 +603,9 @@ namespace Config {
 
 		string boxes;
 		bool has_mem = false, has_net = false, has_proc = false;
+		int cpu_pos = 0;    // 0=Top, 1=Bottom
+		int gpu_pos = 0;    // 0=Top, 1=Bottom
+		int pwr_pos = 0;    // 0=Top, 1=Bottom
 		int mem_type = 0;   // 0=H, 1=V
 		int net_pos = 0;    // 0=Left, 1=Right, 2=Wide
 		int proc_pos = 0;   // 0=Right, 1=Wide
@@ -603,7 +616,13 @@ namespace Config {
 			if (vals.empty()) continue;
 			boxes += vals.at(0) + ' ';
 
-			if (vals.at(0) == "mem") {
+			if (vals.at(0) == "cpu") {
+				cpu_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 0;
+			} else if (vals.at(0).starts_with("gpu")) {
+				gpu_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 0;
+			} else if (vals.at(0) == "pwr") {
+				pwr_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 0;
+			} else if (vals.at(0) == "mem") {
 				has_mem = true;
 				mem_type = (vals.size() > 1) ? stoi(vals.at(1)) : 0;
 			} else if (vals.at(0) == "net") {
@@ -671,8 +690,10 @@ namespace Config {
 		bool proc_right_pos = (proc_pos == 0);  // Right = compact on right
 		bool proc_wide = (proc_pos == 1);   // Wide = fills width at bottom
 
-		// Default settings
-		set("cpu_bottom", false);
+		// Default settings for panel positions
+		set("cpu_bottom", cpu_pos == 1);  // 0=Top, 1=Bottom
+		set("gpu_bottom", gpu_pos == 1);  // 0=Top, 1=Bottom
+		set("pwr_bottom", pwr_pos == 1);  // 0=Top, 1=Bottom
 		set("mem_below_net", false);
 
 		// ============ APPLY LAYOUT RULES ============
@@ -1031,6 +1052,23 @@ namespace Config {
 			}
 
 			if (not load_warnings.empty()) write_new = true;
+
+			//? Auto-correct shown_gpus on Apple Silicon
+			#if defined(__APPLE__) && defined(GPU_SUPPORT)
+			if (strings.contains("shown_gpus")) {
+				string& gpus = strings.at("shown_gpus");
+				//? Check if value contains non-Apple vendors on Apple Silicon
+				if (Gpu::apple_silicon_gpu.is_available() and
+				    (gpus.find("nvidia") != string::npos or
+				     gpus.find("amd") != string::npos or
+				     gpus.find("intel") != string::npos)) {
+					//? Reset to Apple-only on Apple Silicon
+					gpus = "apple";
+					write_new = true;
+					load_warnings.push_back("Reset shown_gpus to 'apple' for Apple Silicon");
+				}
+			}
+			#endif
 		}
 	}
 

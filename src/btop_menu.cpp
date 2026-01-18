@@ -39,7 +39,12 @@ tab-size = 4
 
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
+#include <sys/mount.h>
 #include "osx/apple_silicon_gpu.hpp"
+#endif
+
+#if defined(__linux__)
+#include <mntent.h>
 #endif
 
 using std::array;
@@ -2328,6 +2333,42 @@ namespace MenuV2 {
 		return drawRadio(options, current_idx, selected ? current_idx : -1, tty_mode);
 	}
 
+	//? Draw multi-select checkboxes with disabled options
+	//? selected_mask: bitmask of which options are checked (e.g., 0b101 = options 0 and 2 checked)
+	//? disabled_mask: bitmask of which options are disabled (shown in red)
+	string drawMultiCheck(const vector<string>& options, int selected_mask, int focus_idx, int disabled_mask, bool tty_mode) {
+		string result;
+		const string checked_char = tty_mode ? "[x]" : "☑";
+		const string unchecked_char = tty_mode ? "[ ]" : "☐";
+		const string red_color = "\x1b[38;5;203m";  // Nord red
+
+		for (size_t i = 0; i < options.size(); i++) {
+			if (i > 0) result += "  ";  // Extra spacing between checkboxes
+			bool is_checked = (selected_mask & (1 << i)) != 0;
+			bool is_focused = (static_cast<int>(i) == focus_idx);
+			bool is_disabled = (disabled_mask & (1 << i)) != 0;
+
+			// Show focus with highlight background
+			if (is_focused and not is_disabled) {
+				result += Theme::c("selected_bg") + Theme::c("selected_fg");
+			}
+
+			if (is_disabled) {
+				// Disabled options shown in red
+				result += red_color + (is_checked ? checked_char : unchecked_char) + " " + options[i] + Fx::reset;
+			} else {
+				// Enabled: checkbox color based on checked state
+				string checkbox_color = is_checked ? Theme::c("hi_fg") : Theme::c("inactive_fg");
+				result += checkbox_color + (is_checked ? checked_char : unchecked_char) + Theme::c("main_fg") + " " + options[i];
+			}
+
+			if (is_focused and not is_disabled) {
+				result += Fx::reset;
+			}
+		}
+		return result;
+	}
+
 	string drawSlider(int min_val, int max_val, int current, int width, bool selected, bool tty_mode) {
 		if (width < 10) width = 10;
 
@@ -2447,25 +2488,31 @@ namespace MenuV2 {
 
 		int y_pos = 0;
 
-		// CPU always at top if enabled
-		if (preset.cpu_enabled) {
+		// Calculate space reserved for panels at bottom
+		int bottom_reserved = 0;
+		if (preset.cpu_enabled and preset.cpu_bottom) bottom_reserved += 3;
+		if (preset.gpu_enabled and preset.gpu_bottom) bottom_reserved += 3;
+		if (preset.pwr_enabled and preset.pwr_bottom) bottom_reserved += 3;
+
+		// CPU at top if enabled and not at bottom
+		if (preset.cpu_enabled and not preset.cpu_bottom) {
 			drawBox(0, y_pos, width, 3, "CPU");
 			y_pos += 3;
 		}
 
-		// GPU under CPU
-		if (preset.gpu_enabled) {
+		// GPU at top if enabled and not at bottom
+		if (preset.gpu_enabled and not preset.gpu_bottom) {
 			drawBox(0, y_pos, width, 3, "GPU");
 			y_pos += 3;
 		}
 
-		// PWR under GPU
-		if (preset.pwr_enabled) {
+		// PWR at top if enabled and not at bottom
+		if (preset.pwr_enabled and not preset.pwr_bottom) {
 			drawBox(0, y_pos, width, 3, "PWR");
 			y_pos += 3;
 		}
 
-		int remaining = height - y_pos;
+		int remaining = height - y_pos - bottom_reserved;
 		if (remaining < 3) remaining = 3;
 
 		// Panel state
@@ -2616,9 +2663,30 @@ namespace MenuV2 {
 			}
 		}
 
+		// Draw bottom panels (order from bottom: CPU at very bottom, GPU above, PWR above GPU)
+		int bottom_y = height;
+		if (preset.cpu_enabled and preset.cpu_bottom) {
+			bottom_y -= 3;
+			drawBox(0, bottom_y, width, 3, "CPU");
+		}
+		if (preset.gpu_enabled and preset.gpu_bottom) {
+			bottom_y -= 3;
+			drawBox(0, bottom_y, width, 3, "GPU");
+		}
+		if (preset.pwr_enabled and preset.pwr_bottom) {
+			bottom_y -= 3;
+			drawBox(0, bottom_y, width, 3, "PWR");
+		}
+
 		// Add layout indicator at bottom
 		string indicator;
-		indicator += "M=";
+		indicator += "C=";
+		indicator += preset.cpu_enabled ? (preset.cpu_bottom ? "B" : "T") : "-";
+		indicator += " G=";
+		indicator += preset.gpu_enabled ? (preset.gpu_bottom ? "B" : "T") : "-";
+		indicator += " W=";  // W for PWR (Power)
+		indicator += preset.pwr_enabled ? (preset.pwr_bottom ? "B" : "T") : "-";
+		indicator += " M=";
 		indicator += has_mem ? (preset.mem_type == MemType::Vertical ? "V" : "H") : "-";
 		indicator += " N=";
 		if (has_net) {
@@ -2752,7 +2820,7 @@ namespace MenuV2 {
 						{"save_config_on_exit", "Save on Exit", "Auto-save settings when exiting", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Advanced", {
-						{"cpu_core_map", "CPU Core Map", "Override CPU core detection (comma-separated)", ControlType::Text, {}, "", 0, 0, 0},
+						{"cpu_core_map", "Temp Sensor Map", "Map core temps to sensors (x:y format, Linux/BSD only)", ControlType::Text, {}, "", 0, 0, 0},
 					#ifdef __linux__
 						{"freq_mode", "Frequency Mode", "CPU frequency display mode", ControlType::Radio, {"first", "range", "lowest", "highest", "average"}, "", 0, 0, 0},
 					#endif
@@ -2813,7 +2881,6 @@ namespace MenuV2 {
 				{
 					//? ==================== CPU Sub-tab ====================
 					{"CPU | Display", {
-						{"cpu_bottom", "CPU at Bottom", "Show CPU box at bottom of screen", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"show_uptime", "Show Uptime", "Display uptime in CPU box", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"show_cpu_freq", "Show Frequency", "Display CPU frequency", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"show_cpu_watts", "Show Power", "Display CPU power consumption", ControlType::Toggle, {}, "", 0, 0, 0},
@@ -2841,7 +2908,7 @@ namespace MenuV2 {
 					{"GPU | Display", {
 						{"gpu_mirror_graph", "Mirror Graph", "Mirror GPU graph horizontally", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"nvml_measure_pcie_speeds", "Measure PCIe Speeds", "Enable PCIe bandwidth measurement (NVIDIA)", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"shown_gpus", "Shown GPUs", "Which GPU vendors to show (nvidia amd intel)", ControlType::Text, {}, "", 0, 0, 0},
+						{"shown_gpus", "GPU Vendors", "Select which GPU vendors to monitor", ControlType::MultiCheck, {"Apple", "NVIDIA", "AMD", "Intel"}, "", 0, 0, 0},
 					}},
 					{"GPU | Graphs", {
 						{"graph_symbol_gpu", "Graph Symbol", "Symbol for GPU graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
@@ -2889,7 +2956,7 @@ namespace MenuV2 {
 						{"show_io_stat", "Show I/O Stats", "Display disk I/O statistics", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"io_mode", "I/O Mode", "Toggle detailed I/O display mode", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"io_graph_combined", "Combined I/O Graph", "Combine read/write into single graph", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"io_graph_speeds", "Graph Speeds", "I/O graph speed reference (comma-separated)", ControlType::Text, {}, "", 0, 0, 0},
+						{"io_graph_speeds", "Graph Speeds", "I/O graph maximum speed (MiB/s)", ControlType::Select, {}, "io_graph_speeds", 0, 0, 0},
 					}},
 
 					//? ==================== Network Sub-tab ====================
@@ -2899,9 +2966,9 @@ namespace MenuV2 {
 						{"net_sync", "Sync Scales", "Synchronize upload/download graph scales", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"swap_upload_download", "Swap Up/Down", "Swap upload and download positions", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
-					{"Net | Reference", {
-						{"net_download", "Download Ref", "Download speed reference value (Mebibits)", ControlType::Slider, {}, "", 1, 10000, 10},
-						{"net_upload", "Upload Ref", "Upload speed reference value (Mebibits)", ControlType::Slider, {}, "", 1, 10000, 10},
+					{"NET | Reference", {
+						{"net_download", "Download Reference", "Download speed reference value (Mebibits)", ControlType::Slider, {}, "", 1, 10000, 10},
+						{"net_upload", "Upload Reference", "Upload speed reference value (Mebibits)", ControlType::Slider, {}, "", 1, 10000, 10},
 					}},
 					{"Net | Graphs", {
 						{"graph_symbol_net", "Graph Symbol", "Symbol for network graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
@@ -2976,9 +3043,10 @@ namespace MenuV2 {
 		vector<string> boxes;
 
 		// Top panels (always full width)
-		if (cpu_enabled) boxes.push_back("cpu:0:" + graph_symbol);
-		if (gpu_enabled) boxes.push_back("gpu0:0:" + graph_symbol);
-		if (pwr_enabled) boxes.push_back("pwr:0:" + graph_symbol);
+		// cpu:pos:symbol, gpu0:pos:symbol, pwr:pos:symbol where pos: 0=top, 1=bottom
+		if (cpu_enabled) boxes.push_back("cpu:" + to_string(cpu_bottom ? 1 : 0) + ":" + graph_symbol);
+		if (gpu_enabled) boxes.push_back("gpu0:" + to_string(gpu_bottom ? 1 : 0) + ":" + graph_symbol);
+		if (pwr_enabled) boxes.push_back("pwr:" + to_string(pwr_bottom ? 1 : 0) + ":" + graph_symbol);
 
 		// MEM panel: mem:type:symbol:meter:disk
 		if (mem_enabled) {
@@ -3039,12 +3107,18 @@ namespace MenuV2 {
 
 			if (box_name == "cpu") {
 				preset.cpu_enabled = true;
+				// pos: 0=top, 1=bottom
+				preset.cpu_bottom = (param1 == 1);
 			}
 			else if (box_name.starts_with("gpu")) {
 				preset.gpu_enabled = true;
+				// pos: 0=top, 1=bottom
+				preset.gpu_bottom = (param1 == 1);
 			}
 			else if (box_name == "pwr") {
 				preset.pwr_enabled = true;
+				// pos: 0=top, 1=bottom
+				preset.pwr_bottom = (param1 == 1);
 			}
 			else if (box_name == "mem") {
 				preset.mem_enabled = true;
@@ -3189,12 +3263,59 @@ namespace MenuV2 {
 		}
 		else if (choices_ref == "disks_filter") {
 			// Return available disk mountpoints for filtering
-			// Get the last collected memory data to access disks
+			// Query system directly for mounted disks (don't rely on Mem::collect which may be filtered)
 			choices.push_back("");  // Empty = show all disks
-			auto mem = Mem::collect(true);  // no_update = true to get cached data
-			for (const auto& mount : mem.disks_order) {
-				choices.push_back(mount);
+
+#if defined(__APPLE__)
+			// macOS: Use getmntinfo() to get all mounted filesystems
+			struct statfs *stfs = nullptr;
+			int count = getmntinfo(&stfs, MNT_NOWAIT);
+			for (int i = 0; i < count; i++) {
+				string mountpoint = stfs[i].f_mntonname;
+				string fstype = stfs[i].f_fstypename;
+				uint32_t flags = stfs[i].f_flags;
+
+				// Skip system/internal filesystems
+				if (fstype == "autofs" or fstype == "devfs") continue;
+				if (flags & MNT_DONTBROWSE) continue;  // Skip nobrowse volumes (internal macOS APFS)
+
+				choices.push_back(mountpoint);
 			}
+#elif defined(__linux__)
+			// Linux: Use getmntent() to read /proc/mounts
+			FILE* mtab = setmntent("/proc/mounts", "r");
+			if (mtab != nullptr) {
+				struct mntent* entry;
+				while ((entry = getmntent(mtab)) != nullptr) {
+					string mountpoint = entry->mnt_dir;
+					string fstype = entry->mnt_type;
+
+					// Skip virtual/system filesystems
+					if (fstype == "proc" or fstype == "sysfs" or fstype == "devtmpfs" or
+					    fstype == "devpts" or fstype == "tmpfs" or fstype == "cgroup" or
+					    fstype == "cgroup2" or fstype == "securityfs" or fstype == "pstore" or
+					    fstype == "debugfs" or fstype == "tracefs" or fstype == "configfs" or
+					    fstype == "fusectl" or fstype == "mqueue" or fstype == "hugetlbfs" or
+					    fstype == "binfmt_misc" or fstype == "autofs" or fstype == "rpc_pipefs" or
+					    fstype == "nfsd" or fstype == "overlay")
+						continue;
+
+					// Skip snap mounts
+					if (mountpoint.find("/snap/") != string::npos) continue;
+
+					choices.push_back(mountpoint);
+				}
+				endmntent(mtab);
+			}
+#else
+			// FreeBSD/other: Use getmntinfo() similar to macOS
+			struct statfs *stfs = nullptr;
+			int count = getmntinfo(&stfs, MNT_NOWAIT);
+			for (int i = 0; i < count; i++) {
+				string mountpoint = stfs[i].f_mntonname;
+				choices.push_back(mountpoint);
+			}
+#endif
 		}
 		else if (choices_ref == "color_theme") {
 			// Return available themes - Theme::themes is a vector<string>
@@ -3226,6 +3347,21 @@ namespace MenuV2 {
 			// Common clock format choices
 			choices = {"%X", "%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p", ""};
 		}
+		else if (choices_ref == "io_graph_speeds") {
+			// Common I/O speed presets in MiB/s
+			choices = {
+				"",           // Auto-scale (empty = auto)
+				"10",         // 10 MiB/s (slow HDD)
+				"50",         // 50 MiB/s (HDD)
+				"100",        // 100 MiB/s (default, fast HDD)
+				"250",        // 250 MiB/s (SATA SSD)
+				"500",        // 500 MiB/s (fast SATA SSD)
+				"1000",       // 1000 MiB/s (NVMe)
+				"2000",       // 2000 MiB/s (fast NVMe)
+				"5000",       // 5000 MiB/s (PCIe 4.0 NVMe)
+				"10000"       // 10000 MiB/s (PCIe 5.0 NVMe)
+			};
+		}
 
 		return choices;
 	}
@@ -3254,6 +3390,9 @@ namespace MenuV2 {
 		static int selected_preset = 0;         //? Currently selected preset (0-8)
 		static bool in_preset_editor = false;   //? Whether we're in the preset editor dialog
 		static int preset_button_focus = 0;     //? 0=list, 1=Edit, 2=Delete, 3=New
+
+		//? MultiCheck state for shown_gpus
+		static int multicheck_focus = 0;        //? Currently focused checkbox item
 
 		const int PRESETS_CATEGORY = 3;         //? Index of Presets category (0-based)
 
@@ -3607,6 +3746,27 @@ namespace MenuV2 {
 							}
 						}
 					}
+					else if (opt->control == ControlType::MultiCheck and not opt->choices.empty()) {
+						//? Move focus to next checkbox item (circular, skip disabled)
+						int num_choices = static_cast<int>(opt->choices.size());
+						int disabled_mask = 0;
+
+						//? Get disabled mask for platform-aware options
+						if (opt->key == "shown_gpus") {
+							#if defined(__APPLE__) && defined(GPU_SUPPORT)
+							bool is_apple_silicon = Gpu::apple_silicon_gpu.is_available();
+							disabled_mask = is_apple_silicon ? 0b1110 : 0b0001;
+							#else
+							disabled_mask = 0b0001;
+							#endif
+						}
+
+						//? Find next enabled item
+						int start = multicheck_focus;
+						do {
+							multicheck_focus = (multicheck_focus + 1) % num_choices;
+						} while ((disabled_mask & (1 << multicheck_focus)) and multicheck_focus != start);
+					}
 					else if (opt->control == ControlType::Slider) {
 						int current = Config::getI(opt->key);
 						int new_val = min(current + opt->step, opt->max_val);
@@ -3622,6 +3782,11 @@ namespace MenuV2 {
 								theme_refresh = true;
 								if (opt->key == "truecolor") Config::flip("lowcolor");
 								else if (opt->key == "force_tty") Config::flip("tty_mode");
+							}
+							// Enable/disable mouse reporting immediately
+							else if (opt->key == "disable_mouse") {
+								const auto is_mouse_enabled = not Config::getB("disable_mouse");
+								std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
 							}
 						}
 					}
@@ -3664,6 +3829,27 @@ namespace MenuV2 {
 							}
 						}
 					}
+					else if (opt->control == ControlType::MultiCheck and not opt->choices.empty()) {
+						//? Move focus to previous checkbox item (circular, skip disabled)
+						int num_choices = static_cast<int>(opt->choices.size());
+						int disabled_mask = 0;
+
+						//? Get disabled mask for platform-aware options
+						if (opt->key == "shown_gpus") {
+							#if defined(__APPLE__) && defined(GPU_SUPPORT)
+							bool is_apple_silicon = Gpu::apple_silicon_gpu.is_available();
+							disabled_mask = is_apple_silicon ? 0b1110 : 0b0001;
+							#else
+							disabled_mask = 0b0001;
+							#endif
+						}
+
+						//? Find previous enabled item
+						int start = multicheck_focus;
+						do {
+							multicheck_focus = (multicheck_focus - 1 + num_choices) % num_choices;
+						} while ((disabled_mask & (1 << multicheck_focus)) and multicheck_focus != start);
+					}
 					else if (opt->control == ControlType::Slider) {
 						int current = Config::getI(opt->key);
 						int new_val = max(current - opt->step, opt->min_val);
@@ -3679,6 +3865,11 @@ namespace MenuV2 {
 								theme_refresh = true;
 								if (opt->key == "truecolor") Config::flip("lowcolor");
 								else if (opt->key == "force_tty") Config::flip("tty_mode");
+							}
+							// Enable/disable mouse reporting immediately
+							else if (opt->key == "disable_mouse") {
+								const auto is_mouse_enabled = not Config::getB("disable_mouse");
+								std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
 							}
 						}
 					}
@@ -3727,6 +3918,11 @@ namespace MenuV2 {
 								if (opt->key == "truecolor") Config::flip("lowcolor");
 								else if (opt->key == "force_tty") Config::flip("tty_mode");
 							}
+							// Enable/disable mouse reporting immediately
+							else if (opt->key == "disable_mouse") {
+								const auto is_mouse_enabled = not Config::getB("disable_mouse");
+								std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
+							}
 						}
 					}
 					else if (opt->control == ControlType::Text) {
@@ -3760,6 +3956,48 @@ namespace MenuV2 {
 							}
 							dropdown_key = opt->key;  //? Track which option opened the dropdown
 							dropdown_open = true;
+						}
+					}
+					else if (opt->control == ControlType::MultiCheck and not opt->choices.empty()) {
+						//? Toggle the focused checkbox item
+						int disabled_mask = 0;
+
+						//? Get disabled mask for platform-aware options
+						if (opt->key == "shown_gpus") {
+							#if defined(__APPLE__) && defined(GPU_SUPPORT)
+							bool is_apple_silicon = Gpu::apple_silicon_gpu.is_available();
+							disabled_mask = is_apple_silicon ? 0b1110 : 0b0001;
+							#else
+							disabled_mask = 0b0001;
+							#endif
+						}
+
+						//? Only toggle if not disabled
+						if (not (disabled_mask & (1 << multicheck_focus))) {
+							string current = Config::getS(opt->key);
+							string lower_choice = opt->choices[multicheck_focus];
+							std::transform(lower_choice.begin(), lower_choice.end(), lower_choice.begin(), ::tolower);
+
+							//? Toggle: add or remove from space-separated list
+							if (current.find(lower_choice) != string::npos) {
+								//? Remove the value
+								size_t pos = current.find(lower_choice);
+								current.erase(pos, lower_choice.size());
+								//? Clean up extra spaces
+								while (current.find("  ") != string::npos) {
+									current.replace(current.find("  "), 2, " ");
+								}
+								if (not current.empty() and current.front() == ' ') current.erase(0, 1);
+								if (not current.empty() and current.back() == ' ') current.pop_back();
+							} else {
+								//? Add the value
+								if (current.empty()) {
+									current = lower_choice;
+								} else {
+									current += " " + lower_choice;
+								}
+							}
+							Config::set(opt->key, current);
 						}
 					}
 				}
@@ -4054,6 +4292,42 @@ namespace MenuV2 {
 									value_str = "[" + ljust(text_val, 18) + "]";
 								}
 								break;
+							case ControlType::MultiCheck: {
+								//? Parse current value (space-separated string like "apple nvidia")
+								string current = Config::getS(opt.key);
+								int selected_mask = 0;
+								int disabled_mask = 0;
+
+								//? Check which options are selected
+								for (size_t i = 0; i < opt.choices.size(); i++) {
+									string lower_choice = opt.choices[i];
+									std::transform(lower_choice.begin(), lower_choice.end(), lower_choice.begin(), ::tolower);
+									if (current.find(lower_choice) != string::npos) {
+										selected_mask |= (1 << i);
+									}
+								}
+
+								//? Platform-aware disabled mask for GPU vendors
+								if (opt.key == "shown_gpus") {
+									#if defined(__APPLE__) && defined(GPU_SUPPORT)
+									bool is_apple_silicon = Gpu::apple_silicon_gpu.is_available();
+									if (is_apple_silicon) {
+										//? Apple Silicon: Only "Apple" is available (index 0)
+										disabled_mask = 0b1110;  // NVIDIA(1), AMD(2), Intel(3) disabled
+									} else {
+										//? Intel Mac: "Apple" is disabled
+										disabled_mask = 0b0001;  // Apple(0) disabled
+									}
+									#else
+									//? Non-Apple: "Apple" option disabled
+									disabled_mask = 0b0001;  // Apple(0) disabled
+									#endif
+								}
+
+								value_str = drawMultiCheck(opt.choices, selected_mask,
+									is_selected ? multicheck_focus : -1, disabled_mask, tty_mode);
+								break;
+							}
 							default:
 								value_str = Config::getAsString(opt.key);
 								break;
@@ -4123,19 +4397,42 @@ namespace MenuV2 {
 
 			// Draw dropdown modal if open
 			if (dropdown_open and not dropdown_choices.empty()) {
-				const int dropdown_max_height = min(15, static_cast<int>(dropdown_choices.size()) + 2);
 				const bool is_theme_dropdown = (dropdown_key == "color_theme");
-				//? Wider dropdown for themes: name (25) + preview (23) + padding (6) = 54
-				const int dropdown_width = is_theme_dropdown ? 58 : 40;
+				const bool is_disk_dropdown = (dropdown_key == "disks_filter");
+				const int dropdown_max_height = min(15, static_cast<int>(dropdown_choices.size()) + 2 + (is_disk_dropdown ? 1 : 0));
+				//? Wider dropdown for themes and disks
+				const int dropdown_width = is_theme_dropdown ? 58 : (is_disk_dropdown ? 70 : 40);
 				const int dropdown_x = x + (dialog_width - dropdown_width) / 2;
 				const int dropdown_y = y + (dialog_height - dropdown_max_height) / 2;
 
+				// Get dropdown title
+				string dropdown_title = "Select Option";
+				if (is_theme_dropdown) dropdown_title = "Select Theme";
+				else if (is_disk_dropdown) dropdown_title = "Select Disk";
+
 				// Draw dropdown background box
 				out += Draw::createBox(dropdown_x, dropdown_y, dropdown_width, dropdown_max_height,
-					Theme::c("hi_fg"), true, is_theme_dropdown ? "Select Theme" : "Select Option");
+					Theme::c("hi_fg"), true, dropdown_title);
+
+				// Get disk info map for disk dropdown
+				std::unordered_map<string, Mem::disk_info> disk_map;
+				if (is_disk_dropdown) {
+					auto mem = Mem::collect(true);  // no_update = true to get cached data
+					disk_map = mem.disks;
+				}
+
+				// Draw column headers for disk dropdown
+				int content_start_y = dropdown_y + 1;
+				if (is_disk_dropdown) {
+					out += Mv::to(content_start_y, dropdown_x + 2);
+					out += Theme::c("title") + Fx::b;
+					out += ljust("Name", 18) + ljust("Mountpoint", 25) + ljust("Device", 22);
+					out += Fx::ub + Fx::reset;
+					content_start_y++;
+				}
 
 				// Calculate visible range for scrolling - keep cursor centered
-				const int visible_items = dropdown_max_height - 2;
+				const int visible_items = dropdown_max_height - 2 - (is_disk_dropdown ? 1 : 0);
 				const int total_items = static_cast<int>(dropdown_choices.size());
 				const int half_visible = visible_items / 2;
 				int scroll_start = 0;
@@ -4156,45 +4453,80 @@ namespace MenuV2 {
 					string item_full_path = dropdown_choices[item_idx];  //? Keep full path for theme preview
 					string item_display = item_full_path;
 
-					// For color_theme, show just the theme name
-					if (item_display.find('/') != string::npos) {
-						item_display = fs::path(item_display).stem().string();
-					}
-					// For clock_format, show human-readable examples
-					else if (is_clock_dropdown) {
-						item_display = clockFormatToReadable(item_full_path);
-					}
-
-					// Empty value shows as "(auto)" or "(none)"
-					if (item_display.empty()) {
-						item_display = "(auto)";
-					}
-
-					// For theme dropdown, reserve space for color preview (8×2 chars + 7 spaces + 1 leading = 24)
-					const int preview_width = is_theme_dropdown ? 24 : 0;
-					const int max_name_width = dropdown_width - 6 - preview_width;
-
-					// Truncate if too long
-					if (static_cast<int>(item_display.size()) > max_name_width) {
-						item_display = item_display.substr(0, max_name_width - 3) + "...";
-					}
-
 					bool is_selected_item = (item_idx == dropdown_selection);
-					out += Mv::to(dropdown_y + 1 + i, dropdown_x + 2);
+					out += Mv::to(content_start_y + i, dropdown_x + 2);
 
-					if (is_selected_item) {
-						out += Theme::c("hi_fg") + Fx::b + "> " + ljust(item_display, max_name_width);
-					} else {
-						out += Theme::c("main_fg") + "  " + ljust(item_display, max_name_width);
+					if (is_disk_dropdown) {
+						//? Disk dropdown: show Name | Mountpoint | Device columns
+						string disk_name = "(All Disks)";
+						string disk_mount = "";
+						string disk_dev = "";
+
+						if (not item_full_path.empty() and disk_map.contains(item_full_path)) {
+							const auto& disk = disk_map.at(item_full_path);
+							disk_name = disk.name.empty() ? "(unnamed)" : disk.name;
+							disk_mount = item_full_path;
+							disk_dev = disk.dev.string();
+						} else if (item_full_path.empty()) {
+							disk_name = "(All Disks)";
+							disk_mount = "";
+							disk_dev = "";
+						} else {
+							disk_name = item_full_path;
+							disk_mount = item_full_path;
+						}
+
+						// Truncate long values
+						if (disk_name.size() > 16) disk_name = disk_name.substr(0, 13) + "...";
+						if (disk_mount.size() > 23) disk_mount = disk_mount.substr(0, 20) + "...";
+						if (disk_dev.size() > 20) disk_dev = disk_dev.substr(0, 17) + "...";
+
+						if (is_selected_item) {
+							out += Theme::c("hi_fg") + Fx::b + "> ";
+						} else {
+							out += Theme::c("main_fg") + "  ";
+						}
+						out += ljust(disk_name, 16) + "  " + ljust(disk_mount, 23) + "  " + ljust(disk_dev, 20);
+						if (is_selected_item) out += Fx::ub;
 					}
+					else {
+						// For color_theme, show just the theme name
+						if (item_display.find('/') != string::npos) {
+							item_display = fs::path(item_display).stem().string();
+						}
+						// For clock_format, show human-readable examples
+						else if (is_clock_dropdown) {
+							item_display = clockFormatToReadable(item_full_path);
+						}
 
-					// Add color preview for theme dropdown
-					if (is_theme_dropdown) {
-						out += " " + Theme::previewColors(item_full_path);
-					}
+						// Empty value shows as "(auto)" or "(none)"
+						if (item_display.empty()) {
+							item_display = "(auto)";
+						}
 
-					if (is_selected_item) {
-						out += Fx::ub;
+						// For theme dropdown, reserve space for color preview (8×2 chars + 7 spaces + 1 leading = 24)
+						const int preview_width = is_theme_dropdown ? 24 : 0;
+						const int max_name_width = dropdown_width - 6 - preview_width;
+
+						// Truncate if too long
+						if (static_cast<int>(item_display.size()) > max_name_width) {
+							item_display = item_display.substr(0, max_name_width - 3) + "...";
+						}
+
+						if (is_selected_item) {
+							out += Theme::c("hi_fg") + Fx::b + "> " + ljust(item_display, max_name_width);
+						} else {
+							out += Theme::c("main_fg") + "  " + ljust(item_display, max_name_width);
+						}
+
+						// Add color preview for theme dropdown
+						if (is_theme_dropdown) {
+							out += " " + Theme::previewColors(item_full_path);
+						}
+
+						if (is_selected_item) {
+							out += Fx::ub;
+						}
 					}
 				}
 
@@ -4244,14 +4576,14 @@ namespace MenuV2 {
 		// Field enumeration
 		enum Fields {
 			Name = 0,
-			CPU, GPU, PWR,
+			CPU, CPU_Pos, GPU, GPU_Pos, PWR, PWR_Pos,
 			MEM, MEM_Type, MEM_Graph, Show_Disk,
 			NET, NET_Pos,
 			PROC, PROC_Pos,
 			GraphSymbol,
 			Save, Cancel
 		};
-		const int total_fields = 15;
+		const int total_fields = 18;
 
 		// Initialize on first call
 		if (not initialized) {
@@ -4273,6 +4605,12 @@ namespace MenuV2 {
 		// Check if field is editable based on current state
 		auto isFieldEditable = [&](int field) -> bool {
 			switch (field) {
+				case CPU_Pos:
+					return current_preset.cpu_enabled;
+				case GPU_Pos:
+					return current_preset.gpu_enabled;
+				case PWR_Pos:
+					return current_preset.pwr_enabled;
 				case MEM_Type:
 				case MEM_Graph:
 				case Show_Disk:
@@ -4297,13 +4635,17 @@ namespace MenuV2 {
 
 		// Check if field is a radio type
 		auto isRadioField = [](int field) -> bool {
-			return field == MEM_Type or field == MEM_Graph or field == NET_Pos or
-			       field == PROC_Pos or field == GraphSymbol;
+			return field == CPU_Pos or field == GPU_Pos or field == PWR_Pos or
+			       field == MEM_Type or field == MEM_Graph or
+			       field == NET_Pos or field == PROC_Pos or field == GraphSymbol;
 		};
 
 		// Get number of options for radio field
 		auto getRadioMaxOptions = [](int field) -> int {
 			switch (field) {
+				case CPU_Pos: return 2;     // Top, Bottom
+				case GPU_Pos: return 2;     // Top, Bottom
+				case PWR_Pos: return 2;     // Top, Bottom
 				case MEM_Type: return 2;    // H, V
 				case MEM_Graph: return 2;   // Bar, Meter
 				case NET_Pos: return 2;     // Left, Right
@@ -4316,6 +4658,9 @@ namespace MenuV2 {
 		// Get current radio value
 		auto getRadioValue = [&](int field) -> int {
 			switch (field) {
+				case CPU_Pos: return current_preset.cpu_bottom ? 1 : 0;
+				case GPU_Pos: return current_preset.gpu_bottom ? 1 : 0;
+				case PWR_Pos: return current_preset.pwr_bottom ? 1 : 0;
 				case MEM_Type: return static_cast<int>(current_preset.mem_type);
 				case MEM_Graph: return current_preset.mem_graph_meter ? 1 : 0;
 				case NET_Pos: return static_cast<int>(current_preset.net_position);
@@ -4334,6 +4679,15 @@ namespace MenuV2 {
 		// Set radio value
 		auto setRadioValue = [&](int field, int val) {
 			switch (field) {
+				case CPU_Pos:
+					current_preset.cpu_bottom = (val == 1);
+					break;
+				case GPU_Pos:
+					current_preset.gpu_bottom = (val == 1);
+					break;
+				case PWR_Pos:
+					current_preset.pwr_bottom = (val == 1);
+					break;
 				case MEM_Type:
 					current_preset.mem_type = static_cast<MemType>(val);
 					break;
@@ -4463,6 +4817,9 @@ namespace MenuV2 {
 						current_preset.proc_enabled = not current_preset.proc_enabled;
 						current_preset.enforceConstraints();
 						break;
+					case CPU_Pos:
+					case GPU_Pos:
+					case PWR_Pos:
 					case MEM_Type:
 					case MEM_Graph:
 					case NET_Pos:
@@ -4595,8 +4952,38 @@ namespace MenuV2 {
 			row_y++;
 
 			drawField(CPU, "CPU", current_preset.cpu_enabled ? "ON" : "OFF", true);
+			if (current_preset.cpu_enabled) {
+				drawRadioField(CPU_Pos, "Position", {"Top", "Bottom"});
+			} else {
+				bool is_sel = (selected_field == CPU_Pos);
+				string fg = Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+				out += Mv::to(row_y, label_x) + fg + marker + "Position";
+				out += Mv::to(row_y, value_x) + fg + "(Top)";
+				row_y++;
+			}
 			drawField(GPU, "GPU", current_preset.gpu_enabled ? "ON" : "OFF", true);
+			if (current_preset.gpu_enabled) {
+				drawRadioField(GPU_Pos, "Position", {"Top", "Bottom"});
+			} else {
+				bool is_sel = (selected_field == GPU_Pos);
+				string fg = Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+				out += Mv::to(row_y, label_x) + fg + marker + "Position";
+				out += Mv::to(row_y, value_x) + fg + "(Top)";
+				row_y++;
+			}
 			drawField(PWR, "PWR", current_preset.pwr_enabled ? "ON" : "OFF", true);
+			if (current_preset.pwr_enabled) {
+				drawRadioField(PWR_Pos, "Position", {"Top", "Bottom"});
+			} else {
+				bool is_sel = (selected_field == PWR_Pos);
+				string fg = Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+				out += Mv::to(row_y, label_x) + fg + marker + "Position";
+				out += Mv::to(row_y, value_x) + fg + "(Top)";
+				row_y++;
+			}
 
 			// ---- MEMORY SECTION ----
 			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Memory ─" + Fx::ub;
