@@ -386,13 +386,14 @@ void init_config(bool low_color, std::optional<std::string>& filter) {
 	vector<string> load_warnings;
 	Config::load(Config::conf_file, load_warnings);
 
-	//? Try to acquire instance lock - if false, we're in read-only mode
+	//? Try to acquire instance lock
 	static bool lock_checked = false;
 	if (not lock_checked) {
 		Config::acquire_lock();
 		lock_checked = true;
-		if (Config::read_only) {
-			//? Show read-only message for 5 seconds
+		//? Only show message if another instance is running AND prevent_autosave is enabled
+		//? (no need to warn if all instances can save anyway)
+		if (Config::another_instance_running and Config::getB("prevent_autosave")) {
 			Global::read_only_msg_until = Tools::time_ms() + 5000;
 		}
 	}

@@ -1392,7 +1392,7 @@ namespace Menu {
 		return (redraw ? Changed : retval);
 	}
 
-static int optionsMenu(const string& key) {
+[[maybe_unused]] static int optionsMenu(const string& key) {
  		enum Predispositions { isBool, isInt, isString, is2D, isBrowsable, isEditable};
 		static int y{};
 		static int x{};
@@ -2880,7 +2880,7 @@ namespace MenuV2 {
 						{"save_config_on_exit", "Save on Exit", "Auto-save settings when exiting", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Multi Instance", {
-						{"prevent_autosave", "Prevent AutoSave", "Don't save config changes (read-only mode)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"prevent_autosave", "Prevent AutoSave", "Secondary instances won't save config (restart required)", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Advanced", {
 						{"cpu_core_map", "Temp Sensor Map", "Map core temps to sensors (x:y format, Linux/BSD only)", ControlType::Text, {}, "", 0, 0, 0},
@@ -4546,6 +4546,7 @@ namespace MenuV2 {
 
 		// Draw content
 		if (retval == Menu::Changed or Menu::redraw) {
+			Config::unlock();  //? Flush any pending config changes from boolsTmp/intsTmp/stringsTmp to main maps
 			out = Menu::bg;
 
 			//? Clear dynamic mouse mappings (keep tab and close_settings mappings from rebuildMenuBg)

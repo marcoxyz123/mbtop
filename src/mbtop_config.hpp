@@ -33,10 +33,6 @@ namespace Config {
 
 	extern std::filesystem::path conf_dir;
 	extern std::filesystem::path conf_file;
-	extern std::filesystem::path lock_file;
-
-	//? True if another instance owns the config (this instance is read-only)
-	extern bool read_only;
 
 	extern std::unordered_map<std::string_view, string> strings;
 	extern std::unordered_map<std::string_view, string> stringsTmp;
@@ -139,6 +135,9 @@ namespace Config {
 	void write();
 
 	auto get_log_file() -> std::optional<std::filesystem::path>;
+
+	//* True if another mbtop instance is already running
+	extern bool another_instance_running;
 
 	//* Try to acquire the instance lock. Returns true if this is the primary instance.
 	bool acquire_lock();

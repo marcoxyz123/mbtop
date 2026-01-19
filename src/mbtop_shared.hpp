@@ -71,7 +71,7 @@ namespace Global {
 	extern string overlay;
 	extern string clock;
 	extern string hostname_str;  //* Hostname display string
-	extern uint64_t read_only_msg_until;  //* Timestamp until read-only message should be shown (0 = hidden)
+	extern uint64_t read_only_msg_until;  //* Timestamp until multi-instance message should be shown (0 = hidden)
 }
 
 namespace Runner {

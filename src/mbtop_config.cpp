@@ -286,7 +286,7 @@ namespace Config {
 								"#* The level set includes all lower levels, i.e. \"DEBUG\" will show all logging info."},
 		{"save_config_on_exit",  "#* Automatically save current settings to config file on exit."},
 
-		{"prevent_autosave",	"#* Don't save config changes in this instance (read-only mode for multi-instance use)."},
+		{"prevent_autosave",	"#* If True, only the primary instance saves config. If False, all instances save (last close wins)."},
 
 		{"preview_unicode",		"#* Use Unicode box-drawing characters for preset preview. Set to false for ASCII."},
 	#ifdef GPU_SUPPORT
@@ -443,7 +443,7 @@ namespace Config {
 	#endif
 		{"terminal_sync", true},
 		{"save_config_on_exit", true},
-		{"prevent_autosave", false},
+		{"prevent_autosave", true},
 		{"preview_unicode", true},
 		{"disable_mouse", false},
 	};
@@ -543,7 +543,7 @@ namespace Config {
 	fs::path conf_file;
 	fs::path lock_file;
 
-	bool read_only = false;
+	bool another_instance_running = false;
 
 	vector<string> available_batteries = {"Auto"};
 
@@ -1141,8 +1141,8 @@ namespace Config {
 				//? Check if process is still running (kill with signal 0 just checks existence)
 				if (owner_pid > 0 and kill(owner_pid, 0) == 0) {
 					//? Lock owner is still alive - we're a secondary instance
-					read_only = true;
-					Logger::info("Another mbtop instance (PID {}) owns the config - running in read-only mode", owner_pid);
+					another_instance_running = true;
+					Logger::info("Another mbtop instance (PID {}) is running", owner_pid);
 					return false;
 				}
 				//? Lock is stale (owner process died), we can take ownership
@@ -1155,19 +1155,18 @@ namespace Config {
 		if (lock_write.good()) {
 			lock_write << getpid();
 			lock_write.close();
-			read_only = false;
+			another_instance_running = false;
 			Logger::info("Acquired config lock (PID {})", getpid());
 			return true;
 		}
 
-		//? Couldn't create lock file - assume read-only to be safe
-		read_only = true;
-		Logger::warning("Could not create lock file - running in read-only mode");
+		//? Couldn't create lock file
+		Logger::warning("Could not create lock file");
 		return false;
 	}
 
 	void release_lock() {
-		if (read_only or lock_file.empty()) return;
+		if (lock_file.empty()) return;
 
 		//? Only remove lock if we own it (check PID matches)
 		if (fs::exists(lock_file)) {
@@ -1190,8 +1189,10 @@ namespace Config {
 
 	void write() {
 		if (conf_file.empty() or not write_new) return;
-		if (read_only or getB("prevent_autosave")) {
-			Logger::debug("Skipping config write - running in read-only mode");
+		//? Primary instance (has lock) always saves
+		//? Secondary instances check prevent_autosave setting
+		if (another_instance_running and getB("prevent_autosave")) {
+			Logger::debug("Skipping config write - secondary instance with prevent_autosave enabled");
 			return;
 		}
 		Logger::debug("Writing new config file");

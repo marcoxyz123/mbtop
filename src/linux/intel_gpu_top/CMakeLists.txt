@@ -15,5 +15,5 @@ endif()
 # Disable all warnings
 target_compile_options(igt PRIVATE -w)
 
-# Link igt into btop
-target_link_libraries(libbtop $<TARGET_OBJECTS:igt>)
+# Link igt into mbtop
+target_link_libraries(libmbtop $<TARGET_OBJECTS:igt>)

@@ -162,10 +162,10 @@ namespace Draw {
 		return (centered ? Mv::to(y, Term::width / 2 - width / 2) : Mv::to(y, x)) + banner;
 	}
 
-	//* Generate a centered read-only mode message overlay
+	//* Generate a centered multi-instance mode message overlay
 	string read_only_overlay() {
-		const string line1 = "Another mbtop instance is running -";
-		const string line2 = "config changes won't be saved";
+		const string line1 = "Another mbtop instance is running";
+		const string line2 = "(use Prevent AutoSave to control which saves)";
 		const string full_msg = line1 + " " + line2;
 		
 		//? Calculate available width (leave margin on sides)
