@@ -162,6 +162,37 @@ namespace Draw {
 		return (centered ? Mv::to(y, Term::width / 2 - width / 2) : Mv::to(y, x)) + banner;
 	}
 
+	//* Generate a centered read-only mode message overlay
+	string read_only_overlay() {
+		string msg = "Another mbtop instance is running - config changes won't be saved";
+		
+		//? Calculate available width (leave margin on sides)
+		const int max_box_width = std::max(20, Term::width - 4);
+		const int min_msg_width = 10;
+		
+		//? Truncate message if terminal too narrow
+		int msg_len = static_cast<int>(ulen(msg));
+		if (msg_len + 4 > max_box_width) {
+			//? Need to truncate - leave room for "..."
+			int target_len = max_box_width - 7;  // 4 for borders + 3 for "..."
+			if (target_len < min_msg_width) target_len = min_msg_width;
+			msg = uresize(msg, target_len) + "...";
+			msg_len = static_cast<int>(ulen(msg));
+		}
+		
+		const int box_width = msg_len + 4;  // 2 for borders + 2 for padding
+		const int x = std::max(1, Term::width / 2 - box_width / 2);
+		const int y = Term::height / 2;
+
+		string out;
+		//? Draw a bordered message box with Unicode box-drawing characters
+		out += Mv::to(y - 1, x) + Theme::c("title") + Fx::b + "┌" + Symbols::h_line * (box_width - 2) + "┐";
+		out += Mv::to(y, x) + "│ " + Theme::c("hi_fg") + msg + Theme::c("title") + " │";
+		out += Mv::to(y + 1, x) + "└" + Symbols::h_line * (box_width - 2) + "┘" + Fx::ub;
+
+		return out;
+	}
+
 	TextEdit::TextEdit() {}
 	TextEdit::TextEdit(string text, bool numeric) : numeric(numeric), text(std::move(text)) {
 		pos = this->text.size();

@@ -31,6 +31,8 @@ tab-size = 4
 #include <fmt/base.h>
 #include <fmt/core.h>
 #include <sys/statvfs.h>
+#include <signal.h>
+#include <unistd.h>
 
 #include "mbtop_config.hpp"
 #include "mbtop_log.hpp"
@@ -536,6 +538,9 @@ namespace Config {
 
 	fs::path conf_dir;
 	fs::path conf_file;
+	fs::path lock_file;
+
+	bool read_only = false;
 
 	vector<string> available_batteries = {"Auto"};
 
@@ -1117,8 +1122,75 @@ namespace Config {
 		}
 	}
 
+	bool acquire_lock() {
+		if (conf_dir.empty()) return true;  //? No config dir, can't lock
+
+		lock_file = conf_dir / "mbtop.lock";
+
+		//? Check if lock file exists and if owner process is still alive
+		if (fs::exists(lock_file)) {
+			std::ifstream lock_read(lock_file);
+			if (lock_read.good()) {
+				pid_t owner_pid = 0;
+				lock_read >> owner_pid;
+				lock_read.close();
+
+				//? Check if process is still running (kill with signal 0 just checks existence)
+				if (owner_pid > 0 and kill(owner_pid, 0) == 0) {
+					//? Lock owner is still alive - we're a secondary instance
+					read_only = true;
+					Logger::info("Another mbtop instance (PID {}) owns the config - running in read-only mode", owner_pid);
+					return false;
+				}
+				//? Lock is stale (owner process died), we can take ownership
+				Logger::info("Removing stale lock file from PID {}", owner_pid);
+			}
+		}
+
+		//? Create/update lock file with our PID
+		std::ofstream lock_write(lock_file, std::ios::trunc);
+		if (lock_write.good()) {
+			lock_write << getpid();
+			lock_write.close();
+			read_only = false;
+			Logger::info("Acquired config lock (PID {})", getpid());
+			return true;
+		}
+
+		//? Couldn't create lock file - assume read-only to be safe
+		read_only = true;
+		Logger::warning("Could not create lock file - running in read-only mode");
+		return false;
+	}
+
+	void release_lock() {
+		if (read_only or lock_file.empty()) return;
+
+		//? Only remove lock if we own it (check PID matches)
+		if (fs::exists(lock_file)) {
+			std::ifstream lock_read(lock_file);
+			if (lock_read.good()) {
+				pid_t owner_pid = 0;
+				lock_read >> owner_pid;
+				lock_read.close();
+
+				if (owner_pid == getpid()) {
+					std::error_code ec;
+					fs::remove(lock_file, ec);
+					if (not ec) {
+						Logger::info("Released config lock");
+					}
+				}
+			}
+		}
+	}
+
 	void write() {
 		if (conf_file.empty() or not write_new) return;
+		if (read_only) {
+			Logger::debug("Skipping config write - running in read-only mode");
+			return;
+		}
 		Logger::debug("Writing new config file");
 		if (geteuid() != Global::real_uid and seteuid(Global::real_uid) != 0) return;
 		std::ofstream cwrite(conf_file, std::ios::trunc);

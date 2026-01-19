@@ -105,6 +105,7 @@ namespace Global {
 	string overlay;
 	string clock;
 	string hostname_str;
+	uint64_t read_only_msg_until = 0;
 
 	string bg_black = "\x1b[0;40m";
 	string fg_white = "\x1b[1;97m";
@@ -270,6 +271,7 @@ void clean_quit(int sig) {
 	if (Config::getB("save_config_on_exit")) {
 		Config::write();
 	}
+	Config::release_lock();
 
 	if (Term::initialized) {
 		Input::clear();
@@ -383,6 +385,18 @@ void init_config(bool low_color, std::optional<std::string>& filter) {
 	atomic_lock lck(Global::init_conf);
 	vector<string> load_warnings;
 	Config::load(Config::conf_file, load_warnings);
+
+	//? Try to acquire instance lock - if false, we're in read-only mode
+	static bool lock_checked = false;
+	if (not lock_checked) {
+		Config::acquire_lock();
+		lock_checked = true;
+		if (Config::read_only) {
+			//? Show read-only message for 3 seconds
+			Global::read_only_msg_until = Tools::time_ms() + 3000;
+		}
+	}
+
 	Config::set("lowcolor", (low_color ? true : not Config::getB("truecolor")));
 
 	static bool first_init = true;
@@ -860,9 +874,21 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 
 			//? If overlay isn't empty, print output without color and then print overlay on top
 			const bool term_sync = Config::getB("terminal_sync");
-			cout << (term_sync ? Term::sync_start : "") << (conf.overlay.empty()
-					? output
-					: (output.empty() ? "" : Fx::ub + Theme::c("inactive_fg") + Fx::uncolor(output)) + conf.overlay)
+
+			//? Add read-only message overlay if timer is active
+			string final_output = conf.overlay.empty()
+				? output
+				: (output.empty() ? "" : Fx::ub + Theme::c("inactive_fg") + Fx::uncolor(output)) + conf.overlay;
+
+			if (Global::read_only_msg_until > 0) {
+				if (Tools::time_ms() < Global::read_only_msg_until) {
+					final_output += Draw::read_only_overlay();
+				} else {
+					Global::read_only_msg_until = 0;  //? Clear the timer
+				}
+			}
+
+			cout << (term_sync ? Term::sync_start : "") << final_output
 				<< (term_sync ? Term::sync_end : "") << flush;
 		}
 		//* ----------------------------------------------- THREAD LOOP -----------------------------------------------

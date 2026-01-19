@@ -64,6 +64,9 @@ namespace Draw {
 	//* Generate if needed and return the btop++ banner
 	string banner_gen(int y=0, int x=0, bool centered=false, bool redraw=false);
 
+	//* Generate a centered read-only mode message overlay
+	string read_only_overlay();
+
 	//* An editable text field
 	class TextEdit {
 		size_t pos{};
