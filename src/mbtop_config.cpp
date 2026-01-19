@@ -288,6 +288,8 @@ namespace Config {
 
 		{"prevent_autosave",	"#* If True, only the primary instance saves config. If False, all instances save (last close wins)."},
 
+		{"show_instance_indicator",	"#* Show P (Primary) or S (Secondary) indicator in header for multi-instance awareness."},
+
 		{"preview_unicode",		"#* Use Unicode box-drawing characters for preset preview. Set to false for ASCII."},
 	#ifdef GPU_SUPPORT
 
@@ -444,6 +446,7 @@ namespace Config {
 		{"terminal_sync", true},
 		{"save_config_on_exit", true},
 		{"prevent_autosave", true},
+		{"show_instance_indicator", true},
 		{"preview_unicode", true},
 		{"disable_mouse", false},
 	};

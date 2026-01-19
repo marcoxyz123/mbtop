@@ -305,6 +305,10 @@ namespace Draw {
 		this->text.clear();
 	}
 
+	//* Nord Aurora colors for instance indicator
+	const string nord_orange = "\x1b[38;2;208;135;112m";  // #D08770 - Primary instance
+	const string nord_green = "\x1b[38;2;163;190;140m";   // #A3BE8C - Secondary instance
+
 	string createBox(
 			const int x, const int y, const int width, const int height, string line_color, bool fill, const std::string_view title,
 			const std::string_view title2, const int num
@@ -349,18 +353,29 @@ namespace Draw {
 			+	Mv::to(y + height - 1, x) +left_down
 			+	Mv::to(y + height - 1, x + width - 1) + right_down;
 
+		//? Check if instance indicator is shown AND this is the top panel (y == 1)
+		const bool show_indicator = Config::getB("show_instance_indicator");
+		const bool is_top_panel = (y == 1);
+		const bool draw_indicator = show_indicator and is_top_panel and not title.empty();
+		const int title_offset = draw_indicator ? 6 : 2;
+
+		//? Draw instance indicator as part of border (only for top panel at y=1)
+		if (draw_indicator) {
+			const string indicator_str = Config::another_instance_running ? "S" : "P";
+			const string& indicator_color = Config::another_instance_running ? nord_green : nord_orange;
+			out += Mv::to(y, x + 1) + line_color + Symbols::h_line + Symbols::div_left
+				+ indicator_color + Fx::b + indicator_str
+				+ line_color + Fx::ub + Symbols::div_right;
+		}
+
 		//? Draw titles if defined
 		if (not title.empty()) {
-			out += fmt::format(
-				"{}{}{}{}{}{}{}{}{}", Mv::to(y, x + 2), Symbols::title_left, Fx::b, numbering, Theme::c("title"), title, Fx::ub,
-				line_color, Symbols::title_right
-			);
+			out += Mv::to(y, x + title_offset) + line_color + Symbols::title_left + Fx::b + numbering 
+				+ Theme::c("title") + string(title) + Fx::ub + line_color + Symbols::title_right;
 		}
 		if (not title2.empty()) {
-			out += fmt::format(
-				"{}{}{}{}{}{}{}{}{}", Mv::to(y + height - 1, x + 2), Symbols::title_left_down, Fx::b, numbering, Theme::c("title"), title2, Fx::ub,
-				line_color, Symbols::title_right_down
-			);
+			out += Mv::to(y + height - 1, x + 2) + line_color + Symbols::title_left_down + Fx::b + numbering 
+				+ Theme::c("title") + string(title2) + Fx::ub + line_color + Symbols::title_right_down;
 		}
 
 		return out + Fx::reset + Mv::to(y + 1, x + 1);
@@ -369,9 +384,11 @@ namespace Draw {
 	//* Update clock display - positioned LEFT of update interval
 	bool update_clock(bool force) {
 		const auto& clock_format = Config::getS("clock_format");
+		const bool has_clock = not clock_format.empty();
 
-		if (not Cpu::shown or clock_format.empty()) {
-			if (clock_format.empty() and not Global::clock.empty()) Global::clock.clear();
+		//? Return early if CPU not shown or no clock
+		if (not Cpu::shown or not has_clock) {
+			if (not Global::clock.empty()) Global::clock.clear();
 			return false;
 		}
 
@@ -379,13 +396,14 @@ namespace Draw {
 		static size_t clock_len{};
 		static string clock_str;
 
-		if (auto n_time = time(nullptr); not force and n_time == c_time)
+		if (auto n_time = time(nullptr); not force and n_time == c_time) {
 			return false;
+		}
 		else {
 			c_time = n_time;
-			// Use clock_format directly - dropdown already has 12h/24h options
 			const auto new_clock = Tools::strf_time(clock_format);
-			if (not force and new_clock == clock_str) return false;
+			if (not force and new_clock == clock_str)
+				return false;
 			clock_str = new_clock;
 		}
 
@@ -400,21 +418,25 @@ namespace Draw {
 		// Calculate position: LEFT of update interval controls
 		const string update_str = to_string(Config::getI("update_ms")) + "ms";
 		const int update_pos = x + width - update_str.size() - 8;
-		const int clock_pos = update_pos - clock_str.size() - 4;  // 4 for spacing and borders
 
-		clock_str = uresize(clock_str, std::max(8, clock_pos - x - 30));  // Limit length to fit
 		out.clear();
 
-		if (clock_str.size() != clock_len) {
-			if (not Global::resized and clock_len > 0)
-				out = Mv::to(y, clock_pos) + Fx::ub + Theme::c("cpu_box") + Symbols::h_line * (clock_len + 2);
-			clock_len = clock_str.size();
+		// Clear old content if length changed
+		size_t new_clock_len = clock_str.size();
+		if (new_clock_len != clock_len) {
+			if (not Global::resized and clock_len > 0) {
+				int old_clock_pos = update_pos - clock_len - 4;
+				out = Mv::to(y, old_clock_pos) + Fx::ub + Theme::c("cpu_box") + Symbols::h_line * (clock_len + 2);
+			}
+			clock_len = new_clock_len;
 		}
 
-		// Position clock to the LEFT of update interval
-		const int final_clock_pos = update_pos - clock_len - 4;
-		out += Mv::to(y, final_clock_pos) + Fx::ub + Theme::c("cpu_box") + title_left
-			+ Theme::c("title") + Fx::b + clock_str + Theme::c("cpu_box") + Fx::ub + title_right;
+		// Render clock - positioned left of update interval
+		clock_str = uresize(clock_str, std::max(8, update_pos - x - 30));
+		const int clock_pos = update_pos - clock_str.size() - 4;
+		out += Mv::to(y, clock_pos) + Fx::ub + Theme::c("cpu_box") + title_left;
+		out += Theme::c("title") + Fx::b + clock_str;
+		out += Theme::c("cpu_box") + Fx::ub + title_right;
 
 		return true;
 	}
@@ -456,6 +478,45 @@ namespace Draw {
 		// Position hostname at CENTER
 		out += Mv::to(y, x + (width / 2) - (hostname_len / 2)) + Fx::ub + Theme::c("cpu_box") + title_left
 			+ Theme::c("title") + Fx::b + display_host + Theme::c("cpu_box") + Fx::ub + title_right;
+
+		return true;
+	}
+
+	//* Update instance indicator for non-CPU top panels
+	//* When CPU is at top, the clock function handles the indicator
+	//* This function handles GPU, MEM, NET, PROC when they are at top
+	bool update_instance_indicator(bool force) {
+		const bool show_indicator = Config::getB("show_instance_indicator");
+		auto& out = Global::instance_indicator;
+
+		//? Clear output - indicator is now drawn by createBox
+		if (not out.empty()) out.clear();
+
+		//? Track state changes to trigger redraws
+		static bool last_show_indicator{};
+		static bool last_another_instance{};
+
+		//? Check if state changed
+		if (not force and
+		    show_indicator == last_show_indicator and
+		    Config::another_instance_running == last_another_instance) {
+			return false;
+		}
+
+		//? State changed - trigger full redraw of all panels
+		if (show_indicator != last_show_indicator or
+		    Config::another_instance_running != last_another_instance) {
+			Cpu::redraw = true;
+			Mem::redraw = true;
+			Net::redraw = true;
+			Proc::redraw = true;
+		#ifdef GPU_SUPPORT
+			for (size_t i = 0; i < Gpu::redraw.size(); i++) Gpu::redraw[i] = true;
+		#endif
+		}
+
+		last_show_indicator = show_indicator;
+		last_another_instance = Config::another_instance_running;
 
 		return true;
 	}
@@ -702,9 +763,14 @@ namespace Cpu {
 			const int button_y = cpu_bottom ? y + height - 1 : y;
 			out += box;
 
+			//? Indicator offset for header elements (4 chars for ─┤P├)
+			//? Only apply offset when indicator is shown AND panel is at top (y==1) AND buttons are on top line
+			const bool is_top_panel = (y == 1);
+			const int ind_offset = (Config::getB("show_instance_indicator") and is_top_panel and not cpu_bottom) ? 4 : 0;
+
 			//? Buttons on title
-			out += Mv::to(button_y, x + 10) + title_left + Theme::c("hi_fg") + Fx::b + 'm' + Theme::c("title") + "enu" + Fx::ub + title_right;
-			Input::mouse_mappings["m"] = {button_y, x + 11, 1, 4};
+			out += Mv::to(button_y, x + 10 + ind_offset) + title_left + Theme::c("hi_fg") + Fx::b + 'm' + Theme::c("title") + "enu" + Fx::ub + title_right;
+			Input::mouse_mappings["m"] = {button_y, x + 11 + ind_offset, 1, 4};
 
 			//? Preset button with name
 			string preset_display;
@@ -723,12 +789,12 @@ namespace Cpu {
 				}
 			}
 			const int preset_btn_len = 7 + preset_display.size();  // "preset " + display
-			out += Mv::to(button_y, x + 16) + title_left + Theme::c("hi_fg") + Fx::b + 'p' + Theme::c("title") + "reset "
+			out += Mv::to(button_y, x + 16 + ind_offset) + title_left + Theme::c("hi_fg") + Fx::b + 'p' + Theme::c("title") + "reset "
 				+ preset_display + Fx::ub + title_right;
-			Input::mouse_mappings["p"] = {button_y, x + 17, 1, (int)preset_btn_len};
+			Input::mouse_mappings["p"] = {button_y, x + 17 + ind_offset, 1, (int)preset_btn_len};
 
 			//? Optional header elements: uptime and username
-			int next_header_pos = x + 18 + preset_btn_len;
+			int next_header_pos = x + 18 + ind_offset + preset_btn_len;
 
 			// Draw container engine name if present
 			if (Cpu::container_engine.has_value()) {
@@ -2825,8 +2891,10 @@ namespace Net {
 		}
 
 		//? IP or device address
+		//? Indicator offset only when panel is at top (y==1)
+		const int ind_offset = (Config::getB("show_instance_indicator") and y == 1) ? 4 : 0;
 		if (not ip_addr.empty() and cmp_greater(width - i_size - 36, ip_addr.size())) {
-			out += Mv::to(y, x + 8) + title_left + Theme::c("title") + Fx::b + ip_addr + title_right;
+			out += Mv::to(y, x + 8 + ind_offset) + title_left + Theme::c("title") + Fx::b + ip_addr + title_right;
 		}
 
 		//? Graphs and stats
@@ -3290,14 +3358,26 @@ namespace Proc {
 
 				//? Draw structure of details box
 				const string pid_str = to_string(detailed.entry.pid);
+				const bool show_detail_indicator = Config::getB("show_instance_indicator");
+				const int detail_ind_offset = show_detail_indicator ? 4 : 0;
 				out += Mv::to(y, x) + Theme::c("proc_box") + Symbols::div_left + Symbols::h_line + title_left + Theme::c("hi_fg") + Fx::b
 				+ (tty_mode ? "4" : Symbols::superscript.at(4)) + Theme::c("title") + "proc"
-					+ Fx::ub + title_right + Symbols::h_line * (width - 10) + Symbols::div_right
-					+ Mv::to(d_y, dgraph_x + 2) + title_left + Fx::b + Theme::c("hi_fg") + pid_str + Fx::ub + title_right
-					+ title_left + Fx::b + Theme::c("title") + uresize(detailed.entry.name, dgraph_width - pid_str.size() - 7, true) + Fx::ub + title_right;
+					+ Fx::ub + title_right + Symbols::h_line * (width - 10) + Symbols::div_right;
+
+				//? Draw instance indicator on details panel header
+				if (show_detail_indicator) {
+					const string indicator_str = Config::another_instance_running ? "S" : "P";
+					const string& indicator_color = Config::another_instance_running ? Draw::nord_green : Draw::nord_orange;
+					out += Mv::to(d_y, dgraph_x + 1) + Theme::c("proc_box") + Symbols::h_line + Symbols::div_left
+						+ indicator_color + Fx::b + indicator_str
+						+ Theme::c("proc_box") + Fx::ub + Symbols::div_right;
+				}
+
+				out += Mv::to(d_y, dgraph_x + 2 + detail_ind_offset) + title_left + Fx::b + Theme::c("hi_fg") + pid_str + Fx::ub + title_right
+					+ title_left + Fx::b + Theme::c("title") + uresize(detailed.entry.name, dgraph_width - pid_str.size() - 7 - detail_ind_offset, true) + Fx::ub + title_right;
 
 				//? Mouse mapping for clicking PID to copy to clipboard
-				Input::mouse_mappings["copy_pid"] = {d_y, dgraph_x + 3, 1, (int)pid_str.size() + 2};
+				Input::mouse_mappings["copy_pid"] = {d_y, dgraph_x + 3 + detail_ind_offset, 1, (int)pid_str.size() + 2};
 
 				out += Mv::to(d_y, d_x - 1) + Theme::c("proc_box") + Symbols::div_up + Mv::to(y, d_x - 1) + Symbols::div_down + Theme::c("div_line");
 				for (const int& i : iota(1, 8)) out += Mv::to(d_y + i, d_x - 1) + Symbols::v_line;
@@ -3362,20 +3442,23 @@ namespace Proc {
 			}
 			skip_detailed_redraw:  //? Label for skipping detailed view when dimensions are invalid
 
+			//? Indicator offset only when panel is at top (y==1)
+			const int ind_offset = (Config::getB("show_instance_indicator") and y == 1) ? 4 : 0;
+
 			//? Filter
 			auto filtering = Config::getB("proc_filtering"); // ? filter(20) : Config::getS("proc_filter"))
 			const auto filter_text = (filtering) ? filter(max(6, width - 66)) : uresize(Config::getS("proc_filter"), max(6, width - 66));
-			out += Mv::to(y, x+9) + title_left + (not filter_text.empty() ? Fx::b : "") + Theme::c("hi_fg") + 'f'
+			out += Mv::to(y, x + 9 + ind_offset) + title_left + (not filter_text.empty() ? Fx::b : "") + Theme::c("hi_fg") + 'f'
 				+ Theme::c("title") + (not filter_text.empty() ? ' ' + filter_text : "ilter")
 				+ (not filtering and not filter_text.empty() ? Theme::c("hi_fg") + " del" : "")
 				+ (filtering ? Theme::c("hi_fg") + ' ' + Symbols::enter : "") + Fx::ub + title_right;
 			if (not filtering) {
 				int f_len = (filter_text.empty() ? 6 : ulen(filter_text) + 2);
-				Input::mouse_mappings["f"] = {y, x + 10, 1, f_len};
+				Input::mouse_mappings["f"] = {y, x + 10 + ind_offset, 1, f_len};
 				if (filter_text.empty() and Input::mouse_mappings.contains("delete"))
 					Input::mouse_mappings.erase("delete");
 				else if (not filter_text.empty())
-					Input::mouse_mappings["delete"] = {y, x + 11 + f_len, 1, 3};
+					Input::mouse_mappings["delete"] = {y, x + 11 + ind_offset + f_len, 1, 3};
 			}
 
 			//? pause, per-core, reverse, tree and sorting
@@ -4081,6 +4164,7 @@ namespace Draw {
 		Net::box.clear();
 		Proc::box.clear();
 		Global::clock.clear();
+		Global::instance_indicator.clear();
 		Global::overlay.clear();
 		Runner::pause_output = false;
 		Runner::redraw = true;
@@ -4697,6 +4781,8 @@ namespace Draw {
 
 			box = createBox(x, y, width, height, Theme::c("mem_box"), true, "mem", "", 2);
 			Logger::debug("MEM panel: x={}, y={}, width={}, height={}", x, y, width, height);
+			//? Indicator offset only when panel is at top (y==1)
+			const int ind_offset = (Config::getB("show_instance_indicator") and y == 1) ? 4 : 0;
 			//? Add meter/bar toggle label only at height = min_height (13) where toggle is available
 			//? Skip in horizontal layout mode (always uses bars, toggle not needed)
 			//? Shows "Bar" (B hotkey) when meters active, "Meter" (M hotkey) when braille active
@@ -4704,14 +4790,14 @@ namespace Draw {
 			if (height <= min_height and not horizontal_mem_layout) {
 				if (mem_bar_mode) {
 					//? Meters active - show "Bar" label (press B to switch to braille bars)
-					box += Mv::to(y, x + 10) + Theme::c("mem_box") + Symbols::title_left + Fx::b
+					box += Mv::to(y, x + 10 + ind_offset) + Theme::c("mem_box") + Symbols::title_left + Fx::b
 						+ Theme::c("hi_fg") + 'B' + Theme::c("title") + "ar" + Fx::ub + Theme::c("mem_box") + Symbols::title_right;
-					Input::mouse_mappings["B"] = {y, x + 11, 1, 3};
+					Input::mouse_mappings["B"] = {y, x + 11 + ind_offset, 1, 3};
 				} else {
 					//? Braille active - show "Meter" label (press M to switch to meters)
-					box += Mv::to(y, x + 10) + Theme::c("mem_box") + Symbols::title_left + Fx::b
+					box += Mv::to(y, x + 10 + ind_offset) + Theme::c("mem_box") + Symbols::title_left + Fx::b
 						+ Theme::c("hi_fg") + 'M' + Theme::c("title") + "eter" + Fx::ub + Theme::c("mem_box") + Symbols::title_right;
-					Input::mouse_mappings["M"] = {y, x + 11, 1, 5};
+					Input::mouse_mappings["M"] = {y, x + 11 + ind_offset, 1, 5};
 				}
 			}
 			box += Mv::to(y, (show_disks ? divider + 2 : x + width - 9)) + Theme::c("mem_box") + Symbols::title_left + (show_disks ? Fx::b : "")

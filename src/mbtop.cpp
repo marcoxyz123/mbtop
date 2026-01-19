@@ -104,6 +104,7 @@ namespace Global {
 
 	string overlay;
 	string clock;
+	string instance_indicator;
 	string hostname_str;
 	uint64_t read_only_msg_until = 0;
 
@@ -523,6 +524,7 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 		bool background_update;
 		string overlay;
 		string clock;
+		string instance_indicator;
 		string hostname_str;
 	};
 
@@ -817,7 +819,7 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 				redraw = false;
 			}
 
-			if (not pause_output) output += conf.clock + conf.hostname_str;
+			if (not pause_output) output += conf.clock + conf.instance_indicator + conf.hostname_str;
 			if (not conf.overlay.empty() and not conf.background_update) pause_output = true;
 			if (output.empty() and not pause_output) {
 				if (empty_bg.empty()) {
@@ -886,6 +888,21 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 					final_output += Draw::read_only_overlay();
 				} else {
 					Global::read_only_msg_until = 0;  //? Clear the timer
+					//? Clear only the exact message box area
+					const int msg_len = 79;  //? "Another mbtop instance is running (use Prevent AutoSave to control which saves)"
+					const int max_box_width = std::max(20, Term::width - 4);
+					const bool single_line = (msg_len + 4 <= max_box_width);
+					const int box_width = single_line ? msg_len + 4 : 49;  //? 49 = max(33,45) + 4 for two-line
+					const int box_height = single_line ? 3 : 4;
+					const int x = std::max(1, Term::width / 2 - box_width / 2);
+					const int y = Term::height / 2;
+					const string clear_box = string(box_width, ' ');
+					for (int line = y - 1; line < y - 1 + box_height; line++) {
+						if (line >= 1 and line <= Term::height) {
+							final_output += Mv::to(line, x) + clear_box;
+						}
+					}
+					Global::resized = true;  //? Trigger full redraw to restore content
 				}
 			}
 
@@ -1001,6 +1018,7 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 				(not Config::getB("tty_mode") and Config::getB("background_update")),
 				Global::overlay,
 				Global::clock,
+				Global::instance_indicator,
 				Global::hostname_str
 			};
 
@@ -1380,16 +1398,18 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 				Draw::calcSizes();
 				Draw::update_clock(true);
 				Draw::update_hostname(true);
+				Draw::update_instance_indicator(true);
 				Global::resized = false;
 				if (Menu::active) Menu::process();
 				else Runner::run("all", true, true);
 				atomic_wait_for(Runner::active, true, 1000);
 			}
 
-			//? Update clock and hostname if needed
+			//? Update clock, hostname, and instance indicator if needed
 			bool clock_updated = Draw::update_clock();
 			bool hostname_updated = Draw::update_hostname();
-			if ((clock_updated or hostname_updated) and not Menu::active) {
+			bool indicator_updated = Draw::update_instance_indicator();
+			if ((clock_updated or hostname_updated or indicator_updated) and not Menu::active) {
 				Runner::run("clock");
 			}
 

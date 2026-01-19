@@ -70,6 +70,7 @@ namespace Global {
 	extern atomic<bool> init_conf;
 	extern string overlay;
 	extern string clock;
+	extern string instance_indicator;  //* P/S indicator for non-CPU top panels
 	extern string hostname_str;  //* Hostname display string
 	extern uint64_t read_only_msg_until;  //* Timestamp until multi-instance message should be shown (0 = hidden)
 }

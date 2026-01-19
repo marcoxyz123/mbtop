@@ -2927,6 +2927,7 @@ namespace MenuV2 {
 					}},
 					{"Multi Instance", {
 						{"prevent_autosave", "Prevent AutoSave", "Secondary instances won't save config (restart required)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"show_instance_indicator", "Show Indicator", "Show P (Primary) or S (Secondary) indicator in header", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Advanced", {
 						{"cpu_core_map", "Temp Sensor Map", "Map core temps to sensors (x:y format, Linux/BSD only)", ControlType::Text, {}, "", 0, 0, 0},

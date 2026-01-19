@@ -89,6 +89,7 @@ namespace Draw {
 
 	bool update_clock(bool force = false);
 	bool update_hostname(bool force = false);
+	bool update_instance_indicator(bool force = false);
 
 	//* Class holding a percentage meter
 	class Meter {
