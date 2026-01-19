@@ -2880,7 +2880,7 @@ namespace MenuV2 {
 						{"save_config_on_exit", "Save on Exit", "Auto-save settings when exiting", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Multi Instance", {
-						{"prevent_autosave", "Prevent AutoSave", "Make this instance read-only - config changes won't be saved to disk, useful when running multiple mbtop instances simultaneously", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"prevent_autosave", "Prevent AutoSave", "Don't save config changes (read-only mode)", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
 					{"Advanced", {
 						{"cpu_core_map", "Temp Sensor Map", "Map core temps to sensors (x:y format, Linux/BSD only)", ControlType::Text, {}, "", 0, 0, 0},

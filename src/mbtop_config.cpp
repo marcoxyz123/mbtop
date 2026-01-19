@@ -286,9 +286,7 @@ namespace Config {
 								"#* The level set includes all lower levels, i.e. \"DEBUG\" will show all logging info."},
 		{"save_config_on_exit",  "#* Automatically save current settings to config file on exit."},
 
-		{"prevent_autosave",	"#* Prevent automatic config saving in this instance.\n"
-								"#* Useful when running multiple mbtop instances - enable this to make this instance read-only\n"
-								"#* so it won't overwrite settings changed in another instance."},
+		{"prevent_autosave",	"#* Don't save config changes in this instance (read-only mode for multi-instance use)."},
 
 		{"preview_unicode",		"#* Use Unicode box-drawing characters for preset preview. Set to false for ASCII."},
 	#ifdef GPU_SUPPORT
