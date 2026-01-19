@@ -214,7 +214,7 @@ namespace MenuV2 {
 	void savePresets(const vector<PresetDef>& presets);
 
 	//? UI Component Renderers - return strings for drawing
-	string drawToggle(bool value, bool selected, bool tty_mode = false);
+	string drawToggle(bool value, bool selected, bool tty_mode = false, bool disabled = false);
 	//? Draw radio buttons with focus tracking: focus_idx specifies which option has keyboard focus (-1 = no focus)
 	string drawRadio(const vector<string>& options, int current_idx, int focus_idx, bool tty_mode = false);
 	//? Overload for backward compatibility (selected=true highlights current value)

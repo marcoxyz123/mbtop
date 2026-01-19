@@ -2255,9 +2255,10 @@ namespace MenuV2 {
 
 	//? ==================== UI Component Renderers ====================
 
-	string drawToggle(bool value, bool selected, bool tty_mode) {
-		const string on_char = tty_mode ? "[x]" : "[" + Theme::c("proc_misc") + "●" + Theme::c("main_fg") + "]";
-		const string off_char = tty_mode ? "[ ]" : "[" + Theme::c("inactive_fg") + " " + Theme::c("main_fg") + "]";
+	string drawToggle(bool value, bool selected, bool tty_mode, bool disabled) {
+		const string bracket_color = disabled ? Theme::c("inactive_fg") : Theme::c("main_fg");
+		const string on_char = tty_mode ? "[x]" : bracket_color + "[" + Theme::c("proc_misc") + "●" + bracket_color + "]";
+		const string off_char = tty_mode ? "[ ]" : bracket_color + "[" + Theme::c("inactive_fg") + " " + bracket_color + "]";
 
 		string result;
 		if (selected) {
@@ -5656,7 +5657,7 @@ namespace MenuV2 {
 				out += Mv::to(row_y, value_x);
 
 				if (is_toggle) {
-					out += drawToggle(value == "ON", is_sel and is_editable, tty_mode);
+					out += drawToggle(value == "ON", is_sel and is_editable, tty_mode, not is_editable);
 				} else {
 					out += fg + value;
 				}
@@ -5704,6 +5705,67 @@ namespace MenuV2 {
 				row_y++;
 			};
 
+			// Helper to draw toggle with inline position options (CPU/GPU/PWR rows)
+			// Combines toggle and position on same line to save vertical space
+			auto drawToggleWithPosition = [&](int toggle_field, const string& label, bool enabled,
+			                                  int pos_field, const vector<string>& pos_options, int current_pos) {
+				bool toggle_sel = (selected_field == toggle_field);
+				bool pos_sel = (selected_field == pos_field);
+				bool toggle_editable = isFieldEditable(toggle_field);
+				bool pos_editable = enabled && isFieldEditable(pos_field);
+
+				// Draw label with marker based on which field is selected
+				string fg = toggle_editable ? ((toggle_sel || pos_sel) ? Theme::c("hi_fg") : Theme::c("main_fg"))
+				                            : Theme::c("inactive_fg");
+				string marker = (toggle_sel || pos_sel) ? ">" : " ";
+
+				out += Mv::to(row_y, label_x) + fg + marker + label;
+				out += Mv::to(row_y, value_x);
+
+				// Reset to main_fg before toggle if only position is selected (so bracket stays white)
+				if (pos_sel && !toggle_sel) {
+					out += Theme::c("main_fg");
+				}
+
+				// Draw toggle
+				out += drawToggle(enabled, toggle_sel && toggle_editable, tty_mode);
+
+				// Draw position options inline after toggle
+				int pos_start_x = value_x + 4;  // 3 for toggle + 1 space
+				out += Mv::to(row_y, pos_start_x);
+
+				if (enabled) {
+					// Draw active radio buttons
+					int focus = pos_sel ? radio_focus : -1;
+					out += drawRadio(pos_options, current_pos, focus, tty_mode);
+				} else {
+					// Draw inactive position indicator
+					out += Theme::c("inactive_fg") + "(" + pos_options[0] + ")";
+				}
+
+				// Mouse mapping for toggle field (label + toggle area)
+				Menu::mouse_mappings["pe_field_" + to_string(toggle_field)] = {row_y, label_x, 1, pos_start_x - label_x};
+
+				// Mouse mappings for position options
+				if (pos_editable) {
+					int radio_x = pos_start_x;
+					for (size_t ri = 0; ri < pos_options.size(); ri++) {
+						int option_width = 2 + static_cast<int>(pos_options[ri].size());
+						Menu::mouse_mappings["pe_radio_" + to_string(pos_field) + "_" + to_string(ri)] = {
+							row_y, radio_x, 1, option_width
+						};
+						radio_x += option_width + 1;
+					}
+					// Note: Don't add pe_field_ mapping here as it would overlap with pe_radio_ mappings
+					// The pe_radio_ handler already sets selected_field when clicked
+				} else {
+					// Map disabled position area (clicking shows it's disabled)
+					Menu::mouse_mappings["pe_field_" + to_string(pos_field)] = {row_y, pos_start_x, 1, 10};
+				}
+
+				row_y++;
+			};
+
 			// ==================== LEFT COLUMN: OPTIONS ====================
 
 			// ---- NAME ----
@@ -5723,46 +5785,16 @@ namespace MenuV2 {
 				row_y++;
 			}
 
-			// ---- TOP PANELS (compact: all on one line concept, but separate rows) ----
+			// ---- TOP PANELS (compact: toggle + position on same line) ----
 			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Top ─" + Fx::ub;
 			row_y++;
 
-			drawField(CPU, "CPU", current_preset.cpu_enabled ? "ON" : "OFF", true);
-			if (current_preset.cpu_enabled) {
-				drawRadioField(CPU_Pos, "Position", {"Top", "Bottom"});
-			} else {
-				bool is_sel = (selected_field == CPU_Pos);
-				string fg = Theme::c("inactive_fg");
-				string marker = is_sel ? ">" : " ";
-				out += Mv::to(row_y, label_x) + fg + marker + "Position";
-				out += Mv::to(row_y, value_x) + fg + "(Top)";
-				Menu::mouse_mappings["pe_field_" + to_string(CPU_Pos)] = {row_y, label_x, 1, left_col_width - 2};
-				row_y++;
-			}
-			drawField(GPU, "GPU", current_preset.gpu_enabled ? "ON" : "OFF", true);
-			if (current_preset.gpu_enabled) {
-				drawRadioField(GPU_Pos, "Position", {"Top", "Bottom"});
-			} else {
-				bool is_sel = (selected_field == GPU_Pos);
-				string fg = Theme::c("inactive_fg");
-				string marker = is_sel ? ">" : " ";
-				out += Mv::to(row_y, label_x) + fg + marker + "Position";
-				out += Mv::to(row_y, value_x) + fg + "(Top)";
-				Menu::mouse_mappings["pe_field_" + to_string(GPU_Pos)] = {row_y, label_x, 1, left_col_width - 2};
-				row_y++;
-			}
-			drawField(PWR, "PWR", current_preset.pwr_enabled ? "ON" : "OFF", true);
-			if (current_preset.pwr_enabled) {
-				drawRadioField(PWR_Pos, "Position", {"Top", "Bottom"});
-			} else {
-				bool is_sel = (selected_field == PWR_Pos);
-				string fg = Theme::c("inactive_fg");
-				string marker = is_sel ? ">" : " ";
-				out += Mv::to(row_y, label_x) + fg + marker + "Position";
-				out += Mv::to(row_y, value_x) + fg + "(Top)";
-				Menu::mouse_mappings["pe_field_" + to_string(PWR_Pos)] = {row_y, label_x, 1, left_col_width - 2};
-				row_y++;
-			}
+			drawToggleWithPosition(CPU, "CPU", current_preset.cpu_enabled,
+			                       CPU_Pos, {"Top", "Bottom"}, getRadioValue(CPU_Pos));
+			drawToggleWithPosition(GPU, "GPU", current_preset.gpu_enabled,
+			                       GPU_Pos, {"Top", "Bottom"}, getRadioValue(GPU_Pos));
+			drawToggleWithPosition(PWR, "PWR", current_preset.pwr_enabled,
+			                       PWR_Pos, {"Top", "Bottom"}, getRadioValue(PWR_Pos));
 
 			// ---- MEMORY SECTION ----
 			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Memory ─" + Fx::ub;
