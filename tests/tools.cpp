@@ -6,7 +6,7 @@
 
 #include <gtest/gtest.h>
 
-#include "btop_tools.hpp"
+#include "mbtop_tools.hpp"
 
 TEST(tools, string_split) {
 	EXPECT_EQ(Tools::ssplit(""), std::vector<std::string> {});
