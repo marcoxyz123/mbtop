@@ -273,13 +273,16 @@ package:macos-pkg:
   script:
     - echo "Building macOS .pkg installer"
     - |
-      # Determine version
+      # Determine version (macOS-compatible grep without -P flag)
       if [ -n "${CI_COMMIT_TAG}" ]; then
         VERSION="${CI_COMMIT_TAG}"
       else
-        VERSION=$(grep -oP 'Version = "\K[^"]+' src/btop.cpp || echo "1.0.0")
+        VERSION=$(grep 'Version = "' src/btop.cpp | sed -E 's/.*Version = "([^"]+)".*/\1/' || echo "1.0.0")
       fi
       echo "Package version: ${VERSION}"
+    - |
+      # Clean any old pkg files from previous builds
+      rm -rf dist/*.pkg 2>/dev/null || true
     - ./packaging/macos/build-pkg.sh "${VERSION:-1.0.0}"
   artifacts:
     name: mbtop-macos-pkg-${CI_COMMIT_SHORT_SHA}
