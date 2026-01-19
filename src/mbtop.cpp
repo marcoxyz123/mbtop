@@ -392,8 +392,8 @@ void init_config(bool low_color, std::optional<std::string>& filter) {
 		Config::acquire_lock();
 		lock_checked = true;
 		if (Config::read_only) {
-			//? Show read-only message for 3 seconds
-			Global::read_only_msg_until = Tools::time_ms() + 3000;
+			//? Show read-only message for 5 seconds
+			Global::read_only_msg_until = Tools::time_ms() + 5000;
 		}
 	}
 
