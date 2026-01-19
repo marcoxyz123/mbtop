@@ -90,10 +90,10 @@ theme[download_start]="#2E4558"
 theme[download_mid]="#5E8595"
 theme[download_end]="#88C0D0"
 
-# Upload graph colors - Nord Violet gradient (bottom chart - bright at line, dark at edge)
-theme[upload_start]="#D8B4D8"
+# Upload graph colors - Nord Violet gradient (bottom chart - dark at line, light at edge)
+theme[upload_start]="#3B2540"
 theme[upload_mid]="#B48EAD"
-theme[upload_end]="#3B2540"
+theme[upload_end]="#D8B4D8"
 
 # Process box color gradient for threads, mem and cpu usage - Nord Frost (original)
 theme[process_start]="#81A1C1"
