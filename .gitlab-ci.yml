@@ -272,7 +272,15 @@ package:macos-pkg:
       artifacts: true
   script:
     - echo "Building macOS .pkg installer"
-    - ./packaging/macos/build-pkg.sh "${CI_COMMIT_TAG:-1.0.0}"
+    - |
+      # Determine version
+      if [ -n "${CI_COMMIT_TAG}" ]; then
+        VERSION="${CI_COMMIT_TAG}"
+      else
+        VERSION=$(grep -oP 'Version = "\K[^"]+' src/btop.cpp || echo "1.0.0")
+      fi
+      echo "Package version: ${VERSION}"
+    - ./packaging/macos/build-pkg.sh "${VERSION:-1.0.0}"
   artifacts:
     name: mbtop-macos-pkg-${CI_COMMIT_SHORT_SHA}
     paths:

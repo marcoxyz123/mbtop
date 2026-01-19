@@ -23,12 +23,32 @@ echo "=== Building mbtop ${VERSION} macOS Package ==="
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}" "${STAGE_DIR}" "${OUTPUT_DIR}"
 
-# Build mbtop if not already built
-if [ ! -f "${PROJECT_ROOT}/bin/mbtop" ]; then
-    echo "Building mbtop..."
-    cd "${PROJECT_ROOT}"
-    make clean && make -j$(sysctl -n hw.ncpu)
+# Verify binary exists and has correct config paths
+BINARY="${PROJECT_ROOT}/bin/mbtop"
+NEEDS_BUILD=false
+
+if [ ! -f "${BINARY}" ]; then
+    echo "Binary not found, building..."
+    NEEDS_BUILD=true
+elif ! strings "${BINARY}" | grep -q "\.config/mbtop"; then
+    echo "Binary has incorrect config paths, rebuilding..."
+    NEEDS_BUILD=true
 fi
+
+if [ "$NEEDS_BUILD" = true ]; then
+    cd "${PROJECT_ROOT}"
+    make distclean || make clean || true
+    make -j$(sysctl -n hw.ncpu)
+fi
+
+# Verify the binary is correct before packaging
+echo "Verifying binary config paths..."
+if ! strings "${BINARY}" | grep -q "\.config/mbtop"; then
+    echo "ERROR: Binary still has incorrect config paths after build!"
+    strings "${BINARY}" | grep -E "\.config/(btop|mbtop)" || echo "No config paths found"
+    exit 1
+fi
+echo "Binary verification passed: config paths are correct"
 
 # Create staging directory structure
 echo "Creating staging directory..."
