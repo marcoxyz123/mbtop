@@ -1932,6 +1932,7 @@ namespace Menu {
 	static int vramAllocMenu(const string& key) {
 		static int x{};
 		static int y{};
+		static int box_width{};
 		static int selected_option = 0;
 		static string custom_value;
 		static vector<std::pair<string, long long>> options;  // {label, value_mb}
@@ -1962,8 +1963,8 @@ namespace Menu {
 		int retval = Changed;
 
 		if (redraw) {
-			int box_width = 40;
-			int box_height = static_cast<int>(options.size()) + 8;
+			box_width = 40;
+			int box_height = static_cast<int>(options.size()) + 10;  // +2 for Save/Cancel buttons
 			x = Term::width/2 - box_width/2;
 			y = Term::height/2 - box_height/2;
 			bg = Draw::createBox(x, y, box_width, box_height, Theme::c("hi_fg"), true, "GPU Memory Allocation");
@@ -1976,11 +1977,14 @@ namespace Menu {
 				? fmt::format("{:.1f} GiB", static_cast<double>(current_limit_mb) / 1024.0)
 				: "System default";
 			bg += Mv::to(y+2, x+2) + Theme::c("title") + Fx::b + cjust("Current: " + current_str, box_width - 4) + Fx::ub;
+
+			//? Clear mouse mappings for this menu
+			mouse_mappings.clear();
 		}
-		else if (is_in(key, "escape", "q")) {
+		else if (is_in(key, "escape", "q", "vram_cancel")) {
 			return Closed;
 		}
-		else if (is_in(key, "enter", "space")) {
+		else if (is_in(key, "enter", "space", "vram_save")) {
 			if (selected_option >= 0 and selected_option < static_cast<int>(options.size())) {
 				long long value_mb = options[selected_option].second;
 
@@ -2001,6 +2005,30 @@ namespace Menu {
 			}
 			Logger::debug("Returning Closed from vramAllocMenu");
 			return Closed;
+		}
+		//? Handle mouse clicks on option lines
+		else if (key.starts_with("vram_opt")) {
+			int opt_num = stoi_safe(key.substr(8), -1);
+			if (opt_num >= 0 and opt_num < static_cast<int>(options.size())) {
+				if (selected_option == opt_num) {
+					//? Double-click behavior: if already selected, apply it
+					if (options[opt_num].second != -1 or not custom_value.empty()) {
+						//? Trigger save action for non-custom or custom with value
+						long long value_mb = options[selected_option].second;
+						if (value_mb == -1 and not custom_value.empty()) {
+							value_mb = stoi_safe(custom_value, 0) * 1024;
+						}
+						if (value_mb >= 0) {
+							Logger::debug("Calling set_gpu_memory_limit({})", value_mb);
+							Gpu::set_gpu_memory_limit(value_mb);
+							return Closed;
+						}
+					}
+				} else {
+					selected_option = opt_num;
+					custom_value.clear();
+				}
+			}
 		}
 		else if (key.size() == 1 and isdigit(key.at(0))) {
 			//? Allow number input for custom value
@@ -2027,7 +2055,7 @@ namespace Menu {
 			int cy = y + 4;
 			out = bg;
 
-			//? Draw options
+			//? Draw options with mouse mappings
 			for (size_t i = 0; i < options.size(); ++i) {
 				bool is_selected = (static_cast<int>(i) == selected_option);
 				string prefix = is_selected ? Theme::c("hi_fg") + Fx::b + "> " : "  ";
@@ -2036,16 +2064,34 @@ namespace Menu {
 				if (options[i].second == -1 and is_selected) {
 					//? Custom option with input field
 					string input_display = custom_value.empty() ? "_" : custom_value + " GiB" + Fx::bl + "█" + Fx::ubl;
-					out += Mv::to(cy++, x+2) + prefix + "Custom: " + input_display + suffix;
+					out += Mv::to(cy, x+2) + prefix + "Custom: " + input_display + suffix;
 				} else {
-					out += Mv::to(cy++, x+2) + prefix + options[i].first + suffix;
+					out += Mv::to(cy, x+2) + prefix + options[i].first + suffix;
 				}
+
+				//? Add mouse mapping for this option line
+				mouse_mappings["vram_opt" + to_string(i)] = Input::Mouse_loc{cy, x+2, 1, box_width - 4};
+				cy++;
 			}
 
+			//? Draw separator line
 			cy++;
-			out += Mv::to(++cy, x+2) + Theme::c("hi_fg") + Fx::b + "↑↓" + Fx::ub + Theme::c("main_fg") + " Navigate  "
-				+ Theme::c("hi_fg") + Fx::b + "Enter" + Fx::ub + Theme::c("main_fg") + " Apply  "
-				+ Theme::c("hi_fg") + Fx::b + "Esc" + Fx::ub + Theme::c("main_fg") + " Cancel";
+
+			//? Draw Save and Cancel buttons
+			int btn_y = ++cy;
+			int save_x = x + 6;
+			int cancel_x = x + box_width - 16;
+
+			//? Save button
+			out += Mv::to(btn_y, save_x) + Theme::c("hi_fg") + "[" + Theme::c("title") + Fx::b + " Save " + Fx::ub + Theme::c("hi_fg") + "]";
+			mouse_mappings["vram_save"] = Input::Mouse_loc{btn_y, save_x, 1, 8};
+
+			//? Cancel button
+			out += Mv::to(btn_y, cancel_x) + Theme::c("hi_fg") + "[" + Theme::c("main_fg") + Fx::b + " Cancel " + Fx::ub + Theme::c("hi_fg") + "]";
+			mouse_mappings["vram_cancel"] = Input::Mouse_loc{btn_y, cancel_x, 1, 10};
+
+			//? Help text
+			out += Mv::to(++cy, x+2) + Theme::c("inactive_fg") + "↑↓/Click Navigate  Enter/Save Apply  Esc Cancel";
 
 			out += Fx::reset;
 		}
