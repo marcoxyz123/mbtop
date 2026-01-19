@@ -21,6 +21,8 @@ tab-size = 4
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <set>
+#include <sstream>
 #include <fmt/format.h>
 #include <signal.h>
 #include <sys/select.h>
@@ -1008,9 +1010,16 @@ namespace Input {
 						//? No filter - use all interfaces
 						filtered_ifaces = Net::interfaces;
 					} else {
-						//? Filter is set - only include interfaces in the filter
+						//? Filter is set - parse space-separated interface names
+						//? and only include interfaces that exactly match
+						std::set<string> filter_set;
+						std::istringstream iss(filter);
+						string filter_iface;
+						while (iss >> filter_iface) {
+							filter_set.insert(filter_iface);
+						}
 						for (const auto& iface : Net::interfaces) {
-							if (filter.find(iface) != string::npos) {
+							if (filter_set.contains(iface)) {
 								filtered_ifaces.push_back(iface);
 							}
 						}
