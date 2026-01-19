@@ -113,6 +113,7 @@ namespace MenuV2 {
 		Slider,      // Numeric range with visual slider
 		Text,        // Free text input
 		MultiCheck,  // Multi-select checkboxes ☑/☐ (space-separated values)
+		ToggleRow,   // Multiple toggles on single row: "Mem  [x] Used [x] Available [x] Cached [x] Free"
 		Special      // Custom handling (presets)
 	};
 
@@ -182,6 +183,16 @@ namespace MenuV2 {
 		MemType mem_type = MemType::Vertical;     // H or V - controls bar orientation
 		bool mem_graph_meter = false;             // false=Bar, true=Meter (only editable if type=V)
 		bool show_disk = true;                    // Show disk section (only editable if type=V)
+
+		//? Memory chart visibility
+		bool mem_show_used = true;
+		bool mem_show_available = true;
+		bool mem_show_cached = true;
+		bool mem_show_free = true;
+		bool swap_show_used = true;
+		bool swap_show_free = true;
+		bool vram_show_used = true;
+		bool vram_show_free = true;
 
 		//? NET panel
 		bool net_enabled = true;

@@ -2370,6 +2370,37 @@ namespace MenuV2 {
 		return result;
 	}
 
+	//? Draw multiple toggles on a single row: "[●] Used  [ ] Available  [●] Cached  [●] Free"
+	//? options: list of labels for each toggle
+	//? values: list of boolean values (true = on, false = off) for each toggle
+	//? focus_idx: which toggle has keyboard focus (-1 = none)
+	string drawToggleRow(const vector<string>& options, const vector<bool>& values, int focus_idx, bool tty_mode) {
+		string result;
+		for (size_t i = 0; i < options.size(); i++) {
+			if (i > 0) result += "  ";  // Spacing between toggles
+
+			bool is_checked = (i < values.size()) ? values[i] : false;
+			bool is_focused = (static_cast<int>(i) == focus_idx);
+
+			// Toggle bracket styling
+			const string bracket_color = Theme::c("main_fg");
+			string on_char = tty_mode ? "[x]" : bracket_color + "[" + Theme::c("proc_misc") + "●" + bracket_color + "]";
+			string off_char = tty_mode ? "[ ]" : bracket_color + "[" + Theme::c("inactive_fg") + " " + bracket_color + "]";
+
+			// Show focus with highlight background
+			if (is_focused) {
+				result += Theme::c("selected_bg") + Theme::c("selected_fg");
+			}
+
+			result += (is_checked ? on_char : off_char) + " " + Theme::c("main_fg") + options[i];
+
+			if (is_focused) {
+				result += Fx::reset;
+			}
+		}
+		return result;
+	}
+
 	string drawSlider(int min_val, int max_val, int current, int width, bool selected, bool tty_mode) {
 		if (width < 10) width = 10;
 
@@ -2954,15 +2985,10 @@ namespace MenuV2 {
 						{"show_swap", "Show Swap", "Display swap memory info", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"swap_disk", "Swap as Disk", "Show swap as disk entry", ControlType::Toggle, {}, "", 0, 0, 0},
 					}},
-					{"Mem | Items", {
-						{"mem_show_used", "Show Used", "Display used memory", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"mem_show_available", "Show Available", "Display available memory", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"mem_show_cached", "Show Cached", "Display cached memory", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"mem_show_free", "Show Free", "Display free memory", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"swap_show_used", "Swap Used", "Display swap used", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"swap_show_free", "Swap Free", "Display swap free", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"vram_show_used", "VRAM Used", "Display VRAM used", ControlType::Toggle, {}, "", 0, 0, 0},
-						{"vram_show_free", "VRAM Free", "Display VRAM free", ControlType::Toggle, {}, "", 0, 0, 0},
+					{"Mem | Charts", {
+						{"Mem", "Mem", "Select memory charts to display", ControlType::ToggleRow, {"Used", "Available", "Cached", "Free"}, "mem_show_", 0, 0, 0},
+						{"Swap", "Swap", "Select swap charts to display", ControlType::ToggleRow, {"Used", "Free"}, "swap_show_", 0, 0, 0},
+						{"Vram", "Vram", "Select VRAM charts to display", ControlType::ToggleRow, {"Used", "Free"}, "vram_show_", 0, 0, 0},
 					}},
 					{"Mem | Graphs", {
 						{"graph_symbol_mem", "Graph Symbol", "Symbol for memory graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
@@ -3078,13 +3104,21 @@ namespace MenuV2 {
 		if (gpu_enabled) boxes.push_back("gpu0:" + to_string(gpu_bottom ? 1 : 0) + ":" + graph_symbol);
 		if (pwr_enabled) boxes.push_back("pwr:" + to_string(pwr_bottom ? 1 : 0) + ":" + graph_symbol);
 
-		// MEM panel: mem:type:symbol:meter:disk
+		// MEM panel: mem:type:symbol:meter:disk:mem_vis:swap_vis:vram_vis
+		// mem_vis bitmask: bit0=used, bit1=available, bit2=cached, bit3=free
+		// swap_vis bitmask: bit0=used, bit1=free
+		// vram_vis bitmask: bit0=used, bit1=free
 		if (mem_enabled) {
 			int type_val = (mem_type == MemType::Vertical) ? 1 : 0;
 			int meter_val = mem_graph_meter ? 1 : 0;
 			int disk_val = show_disk ? 1 : 0;
+			int mem_vis = (mem_show_used ? 1 : 0) | (mem_show_available ? 2 : 0) |
+			              (mem_show_cached ? 4 : 0) | (mem_show_free ? 8 : 0);
+			int swap_vis = (swap_show_used ? 1 : 0) | (swap_show_free ? 2 : 0);
+			int vram_vis = (vram_show_used ? 1 : 0) | (vram_show_free ? 2 : 0);
 			boxes.push_back("mem:" + to_string(type_val) + ":" + graph_symbol + ":" +
-			                to_string(meter_val) + ":" + to_string(disk_val));
+			                to_string(meter_val) + ":" + to_string(disk_val) + ":" +
+			                to_string(mem_vis) + ":" + to_string(swap_vis) + ":" + to_string(vram_vis));
 		}
 
 		// NET panel: net:pos:symbol
@@ -3161,6 +3195,26 @@ namespace MenuV2 {
 				// disk (field 4): 0=hidden, 1=shown
 				if (box_parts.size() > 4) {
 					preset.show_disk = (stoi_safe(box_parts[4], 0) == 1);
+				}
+				// mem_vis (field 5): bitmask for mem chart visibility (default 15 = all visible)
+				if (box_parts.size() > 5) {
+					int mem_vis = stoi_safe(box_parts[5], 15);
+					preset.mem_show_used = (mem_vis & 1) != 0;
+					preset.mem_show_available = (mem_vis & 2) != 0;
+					preset.mem_show_cached = (mem_vis & 4) != 0;
+					preset.mem_show_free = (mem_vis & 8) != 0;
+				}
+				// swap_vis (field 6): bitmask for swap chart visibility (default 3 = all visible)
+				if (box_parts.size() > 6) {
+					int swap_vis = stoi_safe(box_parts[6], 3);
+					preset.swap_show_used = (swap_vis & 1) != 0;
+					preset.swap_show_free = (swap_vis & 2) != 0;
+				}
+				// vram_vis (field 7): bitmask for vram chart visibility (default 3 = all visible)
+				if (box_parts.size() > 7) {
+					int vram_vis = stoi_safe(box_parts[7], 3);
+					preset.vram_show_used = (vram_vis & 1) != 0;
+					preset.vram_show_free = (vram_vis & 2) != 0;
 				}
 			}
 			else if (box_name == "net") {
@@ -3436,6 +3490,9 @@ namespace MenuV2 {
 
 		//? MultiCheck state for shown_gpus
 		static int multicheck_focus = 0;        //? Currently focused checkbox item
+
+		//? ToggleRow state for memory chart visibility
+		static int togglerow_focus = 0;         //? Currently focused toggle item in row
 
 		const int PRESETS_CATEGORY = 3;         //? Index of Presets category (0-based)
 
@@ -3988,6 +4045,11 @@ namespace MenuV2 {
 							multicheck_focus = (multicheck_focus + 1) % num_choices;
 						} while ((disabled_mask & (1 << multicheck_focus)) and multicheck_focus != start);
 					}
+					else if (opt->control == ControlType::ToggleRow and not opt->choices.empty()) {
+						//? Move focus to next toggle in row (circular)
+						int num_choices = static_cast<int>(opt->choices.size());
+						togglerow_focus = (togglerow_focus + 1) % num_choices;
+					}
 					else if (opt->control == ControlType::Slider) {
 						int current = Config::getI(opt->key);
 						int new_val = min(current + opt->step, opt->max_val);
@@ -4070,6 +4132,11 @@ namespace MenuV2 {
 						do {
 							multicheck_focus = (multicheck_focus - 1 + num_choices) % num_choices;
 						} while ((disabled_mask & (1 << multicheck_focus)) and multicheck_focus != start);
+					}
+					else if (opt->control == ControlType::ToggleRow and not opt->choices.empty()) {
+						//? Move focus to previous toggle in row (circular)
+						int num_choices = static_cast<int>(opt->choices.size());
+						togglerow_focus = (togglerow_focus - 1 + num_choices) % num_choices;
 					}
 					else if (opt->control == ControlType::Slider) {
 						int current = Config::getI(opt->key);
@@ -4248,6 +4315,17 @@ namespace MenuV2 {
 							Config::set(opt->key, current);
 						}
 					}
+					else if (opt->control == ControlType::ToggleRow and not opt->choices.empty()) {
+						//? Toggle the focused item in the row
+						//? Build config key: prefix + lowercase choice
+						if (togglerow_focus >= 0 and togglerow_focus < static_cast<int>(opt->choices.size())) {
+							string config_key = opt->choices_ref;
+							string lower_choice = opt->choices[togglerow_focus];
+							std::transform(lower_choice.begin(), lower_choice.end(), lower_choice.begin(), ::tolower);
+							config_key += lower_choice;
+							Config::flip(config_key);
+						}
+					}
 				}
 			}
 			//? Handle close button click
@@ -4406,6 +4484,40 @@ namespace MenuV2 {
 									int choice_idx = std::stoi(idx_str);
 									if (choice_idx >= 0 and choice_idx < static_cast<int>(opt.choices.size())) {
 										Config::set(opt.key, opt.choices[choice_idx]);
+										found = true;
+									}
+								} catch (...) {
+									// Invalid index, ignore
+								}
+								break;
+							}
+						}
+					}
+				}
+			}
+			//? Handle ToggleRow clicks (format: "togglerow_prefix_N" where N is toggle index)
+			else if (key.starts_with("togglerow_")) {
+				// Parse key format: "togglerow_config_prefix_index"
+				string remainder = key.substr(10);  // Skip "togglerow_"
+				bool found = false;
+				for (const auto& cat : cats) {
+					if (found) break;
+					for (const auto& subcat : cat.subcats) {
+						if (found) break;
+						for (const auto& opt : subcat.options) {
+							if (opt.control == ControlType::ToggleRow and remainder.starts_with(opt.choices_ref)) {
+								// Found matching option, extract index
+								string idx_str = remainder.substr(opt.choices_ref.size());
+								try {
+									int toggle_idx = std::stoi(idx_str);
+									if (toggle_idx >= 0 and toggle_idx < static_cast<int>(opt.choices.size())) {
+										// Build config key and toggle it
+										string config_key = opt.choices_ref;
+										string lower_choice = opt.choices[toggle_idx];
+										std::transform(lower_choice.begin(), lower_choice.end(), lower_choice.begin(), ::tolower);
+										config_key += lower_choice;
+										Config::flip(config_key);
+										togglerow_focus = toggle_idx;
 										found = true;
 									}
 								} catch (...) {
@@ -4754,6 +4866,24 @@ namespace MenuV2 {
 									is_selected ? multicheck_focus : -1, disabled_mask, tty_mode);
 								break;
 							}
+							case ControlType::ToggleRow: {
+								//? ToggleRow: multiple toggles on single row
+								//? opt.key = row label (e.g., "Mem")
+								//? opt.choices = toggle labels ["Used", "Available", "Cached", "Free"]
+								//? opt.choices_ref = config key prefix (e.g., "mem_show_")
+								vector<bool> toggle_values;
+								for (const auto& choice : opt.choices) {
+									// Build config key: prefix + lowercase choice
+									string config_key = opt.choices_ref;
+									string lower_choice = choice;
+									std::transform(lower_choice.begin(), lower_choice.end(), lower_choice.begin(), ::tolower);
+									config_key += lower_choice;
+									toggle_values.push_back(Config::getB(config_key));
+								}
+								value_str = drawToggleRow(opt.choices, toggle_values,
+									is_selected ? togglerow_focus : -1, tty_mode);
+								break;
+							}
 							default:
 								value_str = Config::getAsString(opt.key);
 								break;
@@ -4799,6 +4929,21 @@ namespace MenuV2 {
 									opt_row_y, radio_x, 1, option_width
 								};
 								radio_x += option_width + 1;  // +1 for space between options
+							}
+						} else if (opt.control == ControlType::ToggleRow and not opt.choices.empty()) {
+							// Only map label area for ToggleRow
+							Menu::mouse_mappings["opt_" + to_string(sc_idx) + "_" + to_string(opt_idx)] = {
+								opt_row_y, content_x, 1, label_width
+							};
+							// Add mouse mappings for each toggle: "[●] Used  [ ] Available ..."
+							int toggle_x = content_x + label_width;
+							for (size_t ti = 0; ti < opt.choices.size(); ti++) {
+								// Each toggle: bracket(3) + space(1) + text + double-space separator(2)
+								int toggle_width = 4 + static_cast<int>(opt.choices[ti].size());
+								Menu::mouse_mappings["togglerow_" + opt.choices_ref + to_string(ti)] = {
+									opt_row_y, toggle_x, 1, toggle_width
+								};
+								toggle_x += toggle_width + 2;  // +2 for double-space between toggles
 							}
 						} else {
 							Menu::mouse_mappings["opt_" + to_string(sc_idx) + "_" + to_string(opt_idx)] = {
@@ -5129,6 +5274,7 @@ namespace MenuV2 {
 		static Draw::TextEdit name_editor;
 		static bool editing_name = false;
 		static int radio_focus = 0;
+		static int togglerow_editor_focus = 0;  //? Focus index within ToggleRow fields
 
 		auto tty_mode = Config::getB("tty_mode");
 
@@ -5137,12 +5283,13 @@ namespace MenuV2 {
 			Name = 0,
 			CPU, CPU_Pos, GPU, GPU_Pos, PWR, PWR_Pos,
 			MEM, MEM_Type, MEM_Graph, Show_Disk,
+			Mem_Charts, Swap_Charts, Vram_Charts,  //? Memory chart visibility toggles
 			NET, NET_Pos,
 			PROC, PROC_Pos,
 			GraphSymbol,
 			Save, Cancel
 		};
-		const int total_fields = 18;
+		const int total_fields = 21;  //? Updated for 3 new fields
 
 		// Initialize on first call
 		if (not initialized) {
@@ -5173,6 +5320,9 @@ namespace MenuV2 {
 				case MEM_Type:
 				case MEM_Graph:
 				case Show_Disk:
+				case Mem_Charts:
+				case Swap_Charts:
+				case Vram_Charts:
 					return current_preset.mem_enabled;
 				case NET_Pos:
 					return current_preset.net_enabled && current_preset.mem_enabled;
@@ -5199,6 +5349,31 @@ namespace MenuV2 {
 			return field == CPU_Pos or field == GPU_Pos or field == PWR_Pos or
 			       field == MEM_Type or field == MEM_Graph or
 			       field == NET_Pos or field == PROC_Pos or field == GraphSymbol;
+		};
+
+		//? Check if field is a ToggleRow type (multiple toggles on one row)
+		auto isToggleRowField = [](int field) -> bool {
+			return field == Mem_Charts or field == Swap_Charts or field == Vram_Charts;
+		};
+
+		//? Get number of toggles in a ToggleRow field
+		auto getToggleRowCount = [](int field) -> int {
+			switch (field) {
+				case Mem_Charts: return 4;   // Used, Available, Cached, Free
+				case Swap_Charts: return 2;  // Used, Free
+				case Vram_Charts: return 2;  // Used, Free
+				default: return 0;
+			}
+		};
+
+		//? Get toggle labels for a ToggleRow field
+		auto getToggleRowLabels = [](int field) -> vector<string> {
+			switch (field) {
+				case Mem_Charts: return {"Used", "Available", "Cached", "Free"};
+				case Swap_Charts: return {"Used", "Free"};
+				case Vram_Charts: return {"Used", "Free"};
+				default: return {};
+			}
 		};
 
 		// Get number of options for radio field
@@ -5291,6 +5466,9 @@ namespace MenuV2 {
 			if (isRadioField(selected_field)) {
 				radio_focus = getRadioValue(selected_field);
 			}
+			if (isToggleRowField(selected_field)) {
+				togglerow_editor_focus = 0;  // Reset to first toggle when entering a ToggleRow
+			}
 		};
 
 		// ============ DIALOG LAYOUT - 2 COLUMN DESIGN ============
@@ -5380,6 +5558,10 @@ namespace MenuV2 {
 					setRadioValue(selected_field, radio_focus);
 					current_preset.enforceConstraints();
 				}
+				else if (isToggleRowField(selected_field) and current_preset.mem_enabled) {
+					int max_toggles = getToggleRowCount(selected_field);
+					togglerow_editor_focus = (togglerow_editor_focus - 1 + max_toggles) % max_toggles;
+				}
 			}
 			else if (is_in(key, "right", "l")) {
 				if (isRadioField(selected_field) and isFieldEditable(selected_field)) {
@@ -5387,6 +5569,10 @@ namespace MenuV2 {
 					radio_focus = (radio_focus + 1) % max_opts;
 					setRadioValue(selected_field, radio_focus);
 					current_preset.enforceConstraints();
+				}
+				else if (isToggleRowField(selected_field) and current_preset.mem_enabled) {
+					int max_toggles = getToggleRowCount(selected_field);
+					togglerow_editor_focus = (togglerow_editor_focus + 1) % max_toggles;
 				}
 			}
 			else if (is_in(key, "enter", "space") or key == "\r" or key == "\n") {
@@ -5411,6 +5597,31 @@ namespace MenuV2 {
 					case Show_Disk:
 						if (isMemOptionEditable(Show_Disk)) {
 							current_preset.show_disk = not current_preset.show_disk;
+						}
+						break;
+					case Mem_Charts:
+					case Swap_Charts:
+					case Vram_Charts:
+						//? Toggle the focused toggle within the ToggleRow (modifies preset, not live config)
+						if (current_preset.mem_enabled) {
+							if (selected_field == Mem_Charts) {
+								switch (togglerow_editor_focus) {
+									case 0: current_preset.mem_show_used = not current_preset.mem_show_used; break;
+									case 1: current_preset.mem_show_available = not current_preset.mem_show_available; break;
+									case 2: current_preset.mem_show_cached = not current_preset.mem_show_cached; break;
+									case 3: current_preset.mem_show_free = not current_preset.mem_show_free; break;
+								}
+							} else if (selected_field == Swap_Charts) {
+								switch (togglerow_editor_focus) {
+									case 0: current_preset.swap_show_used = not current_preset.swap_show_used; break;
+									case 1: current_preset.swap_show_free = not current_preset.swap_show_free; break;
+								}
+							} else if (selected_field == Vram_Charts) {
+								switch (togglerow_editor_focus) {
+									case 0: current_preset.vram_show_used = not current_preset.vram_show_used; break;
+									case 1: current_preset.vram_show_free = not current_preset.vram_show_free; break;
+								}
+							}
 						}
 						break;
 					case NET:
@@ -5599,6 +5810,48 @@ namespace MenuV2 {
 					retval = Menu::NoChange;
 				}
 			}
+			//? Handle mouse click on ToggleRow toggles (pe_togglerow_FIELD_N)
+			else if (key.starts_with("pe_togglerow_")) {
+				try {
+					string remainder = key.substr(13);  // Skip "pe_togglerow_"
+					size_t underscore = remainder.find('_');
+					if (underscore != string::npos) {
+						int field = std::stoi(remainder.substr(0, underscore));
+						int toggle_idx = std::stoi(remainder.substr(underscore + 1));
+
+						// Verify ToggleRow field is editable (MEM must be enabled)
+						if (isToggleRowField(field) and current_preset.mem_enabled) {
+							selected_field = field;
+							togglerow_editor_focus = toggle_idx;
+
+							// Toggle the clicked toggle (modifies preset, not live config)
+							if (field == Mem_Charts) {
+								switch (toggle_idx) {
+									case 0: current_preset.mem_show_used = not current_preset.mem_show_used; break;
+									case 1: current_preset.mem_show_available = not current_preset.mem_show_available; break;
+									case 2: current_preset.mem_show_cached = not current_preset.mem_show_cached; break;
+									case 3: current_preset.mem_show_free = not current_preset.mem_show_free; break;
+								}
+							} else if (field == Swap_Charts) {
+								switch (toggle_idx) {
+									case 0: current_preset.swap_show_used = not current_preset.swap_show_used; break;
+									case 1: current_preset.swap_show_free = not current_preset.swap_show_free; break;
+								}
+							} else if (field == Vram_Charts) {
+								switch (toggle_idx) {
+									case 0: current_preset.vram_show_used = not current_preset.vram_show_used; break;
+									case 1: current_preset.vram_show_free = not current_preset.vram_show_free; break;
+								}
+							}
+							retval = Menu::Changed;
+						} else {
+							retval = Menu::NoChange;
+						}
+					}
+				} catch (...) {
+					retval = Menu::NoChange;
+				}
+			}
 			else {
 				retval = Menu::NoChange;
 			}
@@ -5766,6 +6019,96 @@ namespace MenuV2 {
 				row_y++;
 			};
 
+			//? Helper to draw a ToggleRow field (multiple toggles on one row, or two rows for Mem_Charts)
+			auto drawToggleRowField = [&](int field, const string& label) {
+				bool is_sel = (selected_field == field);
+				bool is_editable = current_preset.mem_enabled;  // Only editable when MEM is enabled
+
+				string fg = is_editable ? (is_sel ? Theme::c("hi_fg") : Theme::c("main_fg"))
+				                         : Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+
+				// Get toggle values from preset (not live config)
+				vector<string> labels = getToggleRowLabels(field);
+				vector<bool> values;
+				if (field == Mem_Charts) {
+					values = {current_preset.mem_show_used, current_preset.mem_show_available,
+					          current_preset.mem_show_cached, current_preset.mem_show_free};
+				} else if (field == Swap_Charts) {
+					values = {current_preset.swap_show_used, current_preset.swap_show_free};
+				} else if (field == Vram_Charts) {
+					values = {current_preset.vram_show_used, current_preset.vram_show_free};
+				}
+
+				int focus_idx = (is_sel && is_editable) ? togglerow_editor_focus : -1;
+
+				// Mouse mapping for field label
+				Menu::mouse_mappings["pe_field_" + to_string(field)] = {row_y, label_x, 1, value_x - label_x};
+
+				//? Special handling for Mem_Charts: split across two lines
+				if (field == Mem_Charts) {
+					// Line 1: Label + Used, Available
+					out += Mv::to(row_y, label_x) + fg + marker + label;
+					out += Mv::to(row_y, value_x);
+					vector<string> line1_labels = {"Used", "Available"};
+					vector<bool> line1_values = {values[0], values[1]};
+					int line1_focus = (focus_idx >= 0 && focus_idx <= 1) ? focus_idx : -1;
+					out += drawToggleRow(line1_labels, line1_values, line1_focus, tty_mode);
+
+					// Mouse mappings for first two toggles
+					if (is_editable) {
+						int toggle_x = value_x;
+						for (size_t ti = 0; ti < 2; ti++) {
+							int toggle_width = 4 + static_cast<int>(line1_labels[ti].size());
+							Menu::mouse_mappings["pe_togglerow_" + to_string(field) + "_" + to_string(ti)] = {
+								row_y, toggle_x, 1, toggle_width
+							};
+							toggle_x += toggle_width + 2;
+						}
+					}
+					row_y++;
+
+					// Line 2: Cached, Free (indented, no label)
+					out += Mv::to(row_y, value_x);
+					vector<string> line2_labels = {"Cached", "Free"};
+					vector<bool> line2_values = {values[2], values[3]};
+					int line2_focus = (focus_idx >= 2 && focus_idx <= 3) ? (focus_idx - 2) : -1;
+					out += drawToggleRow(line2_labels, line2_values, line2_focus, tty_mode);
+
+					// Mouse mappings for last two toggles
+					if (is_editable) {
+						int toggle_x = value_x;
+						for (size_t ti = 0; ti < 2; ti++) {
+							int toggle_width = 4 + static_cast<int>(line2_labels[ti].size());
+							Menu::mouse_mappings["pe_togglerow_" + to_string(field) + "_" + to_string(ti + 2)] = {
+								row_y, toggle_x, 1, toggle_width
+							};
+							toggle_x += toggle_width + 2;
+						}
+					}
+					row_y++;
+				}
+				else {
+					// Standard single-line rendering for other ToggleRow fields
+					out += Mv::to(row_y, label_x) + fg + marker + label;
+					out += Mv::to(row_y, value_x);
+					out += drawToggleRow(labels, values, focus_idx, tty_mode);
+
+					// Mouse mappings for each toggle in the row
+					if (is_editable) {
+						int toggle_x = value_x;
+						for (size_t ti = 0; ti < labels.size(); ti++) {
+							int toggle_width = 4 + static_cast<int>(labels[ti].size());  // [x] + label
+							Menu::mouse_mappings["pe_togglerow_" + to_string(field) + "_" + to_string(ti)] = {
+								row_y, toggle_x, 1, toggle_width
+							};
+							toggle_x += toggle_width + 2;  // spacing between toggles
+						}
+					}
+					row_y++;
+				}
+			};
+
 			// ==================== LEFT COLUMN: OPTIONS ====================
 
 			// ---- NAME ----
@@ -5804,6 +6147,10 @@ namespace MenuV2 {
 			drawRadioField(MEM_Type, "Type", {"Horizontal", "Vertical"});
 			drawRadioField(MEM_Graph, "Graph", {"Bar", "Meter"});
 			drawField(Show_Disk, "Disk", current_preset.show_disk ? "ON" : "OFF", true);
+			//? Memory chart visibility toggles
+			drawToggleRowField(Mem_Charts, "Mem");
+			drawToggleRowField(Swap_Charts, "Swap");
+			drawToggleRowField(Vram_Charts, "Vram");
 
 			// ---- NETWORK SECTION ----
 			out += Mv::to(row_y, label_x) + Theme::c("title") + Fx::b + "─ Network ─" + Fx::ub;

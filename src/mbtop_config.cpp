@@ -562,11 +562,11 @@ namespace Config {
 					return false;
 				}
 				const auto& vals = ssplit(box, ':');
-				// mem can have 3-6 fields (position, symbol, show_disk, mem_graph, disk_graph)
+				// mem can have 3-8 fields: type, symbol, meter, disk, mem_vis, swap_vis, vram_vis
 				// other boxes have exactly 3 fields
 				bool is_mem = (vals.size() > 0 && vals.at(0) == "mem");
 				if (is_mem) {
-					if (vals.size() < 3 || vals.size() > 6) {
+					if (vals.size() < 3 || vals.size() > 8) {
 						validError = "Malformatted mem preset in config value presets!";
 						return false;
 					}
@@ -681,6 +681,32 @@ namespace Config {
 				if (vals.size() > 4) {
 					show_disk = (vals.at(4) == "1");
 				}
+
+				// mem_vis (field 5): bitmask for mem chart visibility (default 15 = all visible)
+				int mem_vis = 15;
+				if (vals.size() > 5) {
+					mem_vis = stoi_safe(vals.at(5), 15);
+				}
+				set("mem_show_used", (mem_vis & 1) != 0);
+				set("mem_show_available", (mem_vis & 2) != 0);
+				set("mem_show_cached", (mem_vis & 4) != 0);
+				set("mem_show_free", (mem_vis & 8) != 0);
+
+				// swap_vis (field 6): bitmask for swap chart visibility (default 3 = all visible)
+				int swap_vis = 3;
+				if (vals.size() > 6) {
+					swap_vis = stoi_safe(vals.at(6), 3);
+				}
+				set("swap_show_used", (swap_vis & 1) != 0);
+				set("swap_show_free", (swap_vis & 2) != 0);
+
+				// vram_vis (field 7): bitmask for vram chart visibility (default 3 = all visible)
+				int vram_vis = 3;
+				if (vals.size() > 7) {
+					vram_vis = stoi_safe(vals.at(7), 3);
+				}
+				set("vram_show_used", (vram_vis & 1) != 0);
+				set("vram_show_free", (vram_vis & 2) != 0);
 
 				// Apply MEM settings
 				set("mem_horizontal", !is_vertical);  // H=true for horizontal bars
@@ -907,11 +933,17 @@ namespace Config {
 	}
 
 	void flip(const std::string_view name) {
+		//? First find the key in bools to get a stable string_view (pointing to static storage)
+		auto it = bools.find(name);
+		if (it == bools.end()) return;  // Key not found, do nothing
+
+		const auto& stable_key = it->first;  // Use the stable key from bools map
+
 		if (_locked(name)) {
-			if (boolsTmp.contains(name)) boolsTmp.at(name) = not boolsTmp.at(name);
-			else boolsTmp.insert_or_assign(name, (not bools.at(name)));
+			if (boolsTmp.contains(stable_key)) boolsTmp.at(stable_key) = not boolsTmp.at(stable_key);
+			else boolsTmp.insert_or_assign(stable_key, (not it->second));
 		}
-		else bools.at(name) = not bools.at(name);
+		else it->second = not it->second;
 	}
 
 	void unlock() {
