@@ -60,12 +60,12 @@ theme[temp_start]="#A3BE8C"
 theme[temp_mid]="#EBCB8B"
 theme[temp_end]="#BF616A"
 
-# CPU graph colors - Green → Yellow → Red gradient
-theme[cpu_start]="#A3BE8C"
-theme[cpu_mid]="#EBCB8B"
-theme[cpu_end]="#BF616A"
+# CPU graph colors - Nord Frost (blue → cyan → white) - same as original Nord
+theme[cpu_start]="#81A1C1"
+theme[cpu_mid]="#88C0D0"
+theme[cpu_end]="#ECEFF4"
 
-# Mem/Disk free meter - Nord Green shades
+# Mem free braille graph - Nord Green shades
 theme[free_start]="#3B4525"
 theme[free_mid]="#A3BE8C"
 theme[free_end]="#C9E5A0"
@@ -80,10 +80,20 @@ theme[available_start]="#4E4520"
 theme[available_mid]="#EBCB8B"
 theme[available_end]="#F5DBA8"
 
-# Mem/Disk used meter - Nord Red shades
+# Mem used braille graph - Nord Red shades
 theme[used_start]="#5E3535"
 theme[used_mid]="#BF616A"
 theme[used_end]="#D08080"
+
+# Disk used meter bars - Nord Frost (blue shades)
+theme[disk_used_start]="#5E81AC"
+theme[disk_used_mid]="#81A1C1"
+theme[disk_used_end]="#E5E9F0"
+
+# Disk free meter bars - Nord Frost (light to blue)
+theme[disk_free_start]="#E5E9F0"
+theme[disk_free_mid]="#81A1C1"
+theme[disk_free_end]="#81A1C1"
 
 # Download graph colors - Nord Frost/Cyan gradient (top chart)
 theme[download_start]="#2E4558"

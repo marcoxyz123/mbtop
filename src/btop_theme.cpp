@@ -68,9 +68,9 @@ namespace Theme {
 		{ "temp_start", "#A3BE8C" },
 		{ "temp_mid", "#EBCB8B" },
 		{ "temp_end", "#BF616A" },
-		{ "cpu_start", "#A3BE8C" },
-		{ "cpu_mid", "#EBCB8B" },
-		{ "cpu_end", "#BF616A" },
+		{ "cpu_start", "#81A1C1" },
+		{ "cpu_mid", "#88C0D0" },
+		{ "cpu_end", "#ECEFF4" },
 		{ "free_start", "#3B4525" },
 		{ "free_mid", "#A3BE8C" },
 		{ "free_end", "#C9E5A0" },
@@ -83,6 +83,12 @@ namespace Theme {
 		{ "used_start", "#5E3535" },
 		{ "used_mid", "#BF616A" },
 		{ "used_end", "#D08080" },
+		{ "disk_used_start", "#5E81AC" },
+		{ "disk_used_mid", "#81A1C1" },
+		{ "disk_used_end", "#E5E9F0" },
+		{ "disk_free_start", "#E5E9F0" },
+		{ "disk_free_mid", "#81A1C1" },
+		{ "disk_free_end", "#81A1C1" },
 		{ "download_start", "#2E4558" },
 		{ "download_mid", "#5E8595" },
 		{ "download_end", "#88C0D0" },
@@ -134,6 +140,12 @@ namespace Theme {
 		{ "used_start", "\x1b[31m" },
 		{ "used_mid", "" },
 		{ "used_end", "\x1b[91m" },
+		{ "disk_used_start", "" },
+		{ "disk_used_mid", "" },
+		{ "disk_used_end", "" },
+		{ "disk_free_start", "" },
+		{ "disk_free_mid", "" },
+		{ "disk_free_end", "" },
 		{ "download_start", "\x1b[34m" },
 		{ "download_mid", "" },
 		{ "download_end", "\x1b[94m" },
@@ -301,6 +313,23 @@ namespace Theme {
 			if (not colors.contains("graph_text")) {
 				colors["graph_text"] = colors.at("inactive_fg");
 				rgbs["graph_text"] = rgbs.at("inactive_fg");
+			}
+			//? Disk meter colors - fallback to used/free if not defined
+			if (not colors.contains("disk_used_start") or colors.at("disk_used_start").empty()) {
+				colors["disk_used_start"] = colors.at("used_start");
+				colors["disk_used_mid"] = colors.at("used_mid");
+				colors["disk_used_end"] = colors.at("used_end");
+				rgbs["disk_used_start"] = rgbs.at("used_start");
+				rgbs["disk_used_mid"] = rgbs.at("used_mid");
+				rgbs["disk_used_end"] = rgbs.at("used_end");
+			}
+			if (not colors.contains("disk_free_start") or colors.at("disk_free_start").empty()) {
+				colors["disk_free_start"] = colors.at("free_start");
+				colors["disk_free_mid"] = colors.at("free_mid");
+				colors["disk_free_end"] = colors.at("free_end");
+				rgbs["disk_free_start"] = rgbs.at("free_start");
+				rgbs["disk_free_mid"] = rgbs.at("free_mid");
+				rgbs["disk_free_end"] = rgbs.at("free_end");
 			}
 		}
 

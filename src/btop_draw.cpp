@@ -822,15 +822,17 @@ namespace Cpu {
 				}
 			}
 
-			//? ANE meter for Apple Silicon - extended +3 chars to match VRAM bar length
+			//? ANE meter for Apple Silicon - same width as GPU meter
 			if (Shared::aneCoreCount > 0 and b_columns > 1) {
-				ane_meter = Draw::Meter{brief_meter_width + 3, "cpu"};
+				int ane_meter_width = Pwr::shown ? brief_meter_width : (brief_meter_width - 4);
+				ane_meter = Draw::Meter{ane_meter_width, "cpu"};
 			}
 
 			//? VRAM meter for GPU memory usage (Apple Silicon unified memory or discrete VRAM)
-			//? Extended +5 chars (from -2) to match ANE bar length
+			//? Same width as GPU/ANE meters for alignment
 			if (Shared::gpuMemTotal.load(std::memory_order_acquire) > 0 and b_columns > 1) {
-				vram_meter = Draw::Meter{brief_meter_width + 3, "used"};  //? "used" gradient: red-based for memory
+				int vram_meter_width = Pwr::shown ? brief_meter_width : (brief_meter_width - 4);
+				vram_meter = Draw::Meter{vram_meter_width, "used"};  //? "used" gradient: red-based for memory
 			}
 			#endif
 
@@ -1178,22 +1180,11 @@ namespace Cpu {
 				out += vram_meter(static_cast<int>(vram_percent));
 			}
 
-			//? Percentage with 4-step color: green (0-25), yellow (25-50), orange (50-75), red (75-100)
-			string vram_color;
-			if (vram_percent <= 25) {
-				vram_color = "\033[38;2;100;200;100m";  //? Green
-			} else if (vram_percent <= 50) {
-				vram_color = "\033[38;2;200;200;80m";   //? Yellow
-			} else if (vram_percent <= 75) {
-				vram_color = "\033[38;2;230;140;60m";   //? Orange
-			} else {
-				vram_color = "\033[38;2;220;80;80m";    //? Red
-			}
-
 			//? Format: "XX% YY.Y GB Max" - offset 17 to avoid overlap with bar
+			//? Use theme temp gradient for hot colors (Aurora: green → yellow → red)
 			double total_gb = static_cast<double>(gpu_mem_total) / 1024.0 / 1024.0 / 1024.0;
 			out += Mv::to(b_y + cy, b_x + b_width - 17)
-				+ vram_color + rjust(to_string(vram_percent), 3) + Theme::c("main_fg") + "% "
+				+ Theme::g("temp").at(clamp(vram_percent, 0ll, 100ll)) + rjust(to_string(vram_percent), 3) + Theme::c("main_fg") + "% "
 				+ fmt::format("{:.1f}", total_gb) + " GB Max";
 		}
 	#endif
@@ -2098,9 +2089,9 @@ namespace Mem {
 
 				for (int i = 0; const auto& [name, ignored] : mem.disks) {
 					if (i * 2 > height - 2) break;
-					disk_meters_used[name] = Draw::Meter{disk_meter, "used"};
+					disk_meters_used[name] = Draw::Meter{disk_meter, "disk_used"};
 					//? Always create Free meters - scrolling handles overflow
-					disk_meters_free[name] = Draw::Meter{disk_meter, "free"};
+					disk_meters_free[name] = Draw::Meter{disk_meter, "disk_free"};
 				}
 
 				out += Mv::to(y, x + width - 6) + Fx::ub + Theme::c("mem_box") + Symbols::title_left + (io_mode ? Fx::b : "") + Theme::c("hi_fg")
@@ -4736,18 +4727,20 @@ namespace Draw {
 			else {
 				//? Original stacked layout
 				width = round((double)Term::width * (Proc::shown ? width_p : 100) / 100);
-				if (Proc::shown) {
-					//? Proc-priority: Net uses bare minimum height (6)
+				if (Proc::shown and Mem::shown) {
+					//? Proc-priority with Mem shown: Net uses bare minimum height (6)
 					height = min_height;
 				} else {
+					//? Net expands when Mem is hidden or Proc is not shown
 				#ifdef GPU_SUPPORT
-					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - Mem::height;
+					height = Term::height - (cpu_bottom ? 0 : Cpu::height) - gpu_top_offset - pwr_offset - total_bottom_height - (Mem::shown ? Mem::height : 0);
 				#else
-					height = Term::height - Cpu::height - Mem::height;
+					height = Term::height - Cpu::height - (Mem::shown ? Mem::height : 0);
 				#endif
 				}
 				x = (proc_left and Proc::shown) ? Term::width - width + 1 : 1;
-				if (mem_below_net and Mem::shown)
+				//? When Mem is hidden OR mem_below_net, Net starts at top
+				if ((mem_below_net and Mem::shown) or not Mem::shown)
 				#ifdef GPU_SUPPORT
 					y = 1 + (cpu_bottom ? 0 : Cpu::height) + gpu_top_offset + pwr_offset;
 				#else
