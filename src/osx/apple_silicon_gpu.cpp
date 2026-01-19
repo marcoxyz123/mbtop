@@ -36,6 +36,7 @@ tab-size = 4
 #include <IOKit/IOKitLib.h>
 #include <IOKit/hidsystem/IOHIDEventSystemClient.h>
 #include <Security/Authorization.h>
+#include <Security/AuthorizationDB.h>
 #include <dispatch/dispatch.h>
 #include <chrono>
 
@@ -1297,6 +1298,70 @@ namespace Gpu {
 		return 0;
 	}
 
+	//? Custom authorization right name for mbtop GPU operations
+	static constexpr const char* kMbtopGpuRight = "com.mbtop.gpu.setlimit";
+
+	//? Ensure our custom authorization right exists with timeout=0 (always prompt)
+	static void ensure_authorization_right_exists(AuthorizationRef authRef) {
+		//? Check if right already exists
+		CFDictionaryRef rightDefinition = nullptr;
+		OSStatus status = AuthorizationRightGet(kMbtopGpuRight, &rightDefinition);
+
+		if (status == errAuthorizationSuccess && rightDefinition) {
+			CFRelease(rightDefinition);
+			return;  //? Right already exists
+		}
+
+		//? Create right definition with timeout=0 (always require authentication)
+		//? This ensures Touch ID/password is always prompted
+		CFStringRef keys[] = {
+			CFSTR("class"),
+			CFSTR("group"),
+			CFSTR("timeout"),
+			CFSTR("shared"),
+			CFSTR("comment"),
+			CFSTR("authenticate-user")
+		};
+
+		static const int zero = 0;
+		CFTypeRef values[] = {
+			CFSTR("user"),           //? class: user authentication required
+			CFSTR("admin"),          //? group: admin group membership required
+			CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &zero),  //? timeout: 0 = always prompt
+			kCFBooleanFalse,         //? shared: false = don't share credentials
+			CFSTR("mbtop wants to change GPU memory allocation"),
+			kCFBooleanTrue           //? authenticate-user: true
+		};
+
+		CFDictionaryRef definition = CFDictionaryCreate(
+			kCFAllocatorDefault,
+			(const void**)keys,
+			(const void**)values,
+			6,
+			&kCFTypeDictionaryKeyCallBacks,
+			&kCFTypeDictionaryValueCallBacks
+		);
+
+		if (definition) {
+			status = AuthorizationRightSet(
+				authRef,
+				kMbtopGpuRight,
+				definition,
+				CFSTR("mbtop wants to change GPU memory allocation"),  //? Prompt description
+				nullptr,
+				nullptr
+			);
+
+			if (status != errAuthorizationSuccess) {
+				Logger::debug("Could not create custom auth right ({}), using default", static_cast<int>(status));
+			}
+
+			//? Release the CFNumber we created
+			CFRelease(values[2]);
+			CFRelease(definition);
+		}
+	}
+
 	bool set_gpu_memory_limit(long long limit_mb) {
 		Logger::debug("Executing GPU memory limit change to {} MB", limit_mb);
 
@@ -1314,6 +1379,36 @@ namespace Gpu {
 			Logger::error("Failed to create authorization: {}", static_cast<int>(status));
 			apple_silicon_gpu.init();
 			return false;
+		}
+
+		//? Try to register our custom right with timeout=0 (may fail if not admin, that's OK)
+		ensure_authorization_right_exists(authRef);
+
+		//? Request authorization using our custom right (with timeout=0)
+		//? This forces the authentication dialog every time
+		AuthorizationItem rightItems[] = {{kMbtopGpuRight, 0, nullptr, 0}};
+		AuthorizationRights rights = {1, rightItems};
+
+		status = AuthorizationCopyRights(
+			authRef,
+			&rights,
+			kAuthorizationEmptyEnvironment,
+			kAuthorizationFlagInteractionAllowed | kAuthorizationFlagExtendRights,
+			nullptr
+		);
+
+		if (status != errAuthorizationSuccess) {
+			if (status == errAuthorizationCanceled) {
+				Logger::debug("User cancelled authorization");
+			} else {
+				Logger::debug("Custom right auth failed ({}), trying default", static_cast<int>(status));
+			}
+			//? If custom right fails and wasn't cancelled, fall through to try default auth
+			if (status == errAuthorizationCanceled) {
+				AuthorizationFree(authRef, kAuthorizationFlagDestroyRights);
+				apple_silicon_gpu.init();
+				return false;
+			}
 		}
 
 		//? Build the sysctl command argument

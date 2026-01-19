@@ -1522,7 +1522,10 @@ namespace Gpu {
 			#if defined(__APPLE__) && defined(GPU_SUPPORT)
 				//? Apple Silicon: Show VRAM allocation option with clickable 'A' key
 				if (Gpu::apple_silicon_gpu.is_available()) {
-					out += Mv::d(1) + Mv::l(b_width/2-1) + Theme::c("main_fg") + "Allocate: " + Theme::c("hi_fg") + Fx::b + "[A]" + Fx::ub;
+					int alloc_row = b_y + rows_used + 2;  //? Header row + 1 (graph) + 1 (allocate line)
+					int alloc_col = b_x + b_width/2 + 1;  //? Start of right half
+					out += Mv::to(alloc_row, alloc_col) + Theme::c("main_fg") + "Allocate: " + Theme::c("hi_fg") + Fx::b + "[A]" + Fx::ub;
+					Input::mouse_mappings["A"] = {alloc_row, alloc_col + 10, 1, 3};  //? "[A]" starts after "Allocate: " (10 chars)
 				}
 			#endif
 
