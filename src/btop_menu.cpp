@@ -4312,6 +4312,31 @@ namespace MenuV2 {
 											break;
 										}
 									}
+
+									//? For disk filter, initialize multi-select state from config
+									if (opt.key == "disks_filter") {
+										disk_filter_selections.clear();
+										string current_filter = Config::getS("disks_filter");
+										if (not current_filter.empty()) {
+											std::istringstream iss(current_filter);
+											string disk_path;
+											while (iss >> disk_path) {
+												disk_filter_selections.insert(disk_path);
+											}
+										}
+									}
+									//? For net interface filter, initialize multi-select state from config
+									else if (opt.key == "net_iface_filter") {
+										net_iface_filter_selections.clear();
+										string current_filter = Config::getS("net_iface_filter");
+										if (not current_filter.empty()) {
+											std::istringstream iss(current_filter);
+											string iface_name;
+											while (iss >> iface_name) {
+												net_iface_filter_selections.insert(iface_name);
+											}
+										}
+									}
 								}
 							}
 						}
