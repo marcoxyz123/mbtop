@@ -286,6 +286,10 @@ namespace Config {
 								"#* The level set includes all lower levels, i.e. \"DEBUG\" will show all logging info."},
 		{"save_config_on_exit",  "#* Automatically save current settings to config file on exit."},
 
+		{"prevent_autosave",	"#* Prevent automatic config saving in this instance.\n"
+								"#* Useful when running multiple mbtop instances - enable this to make this instance read-only\n"
+								"#* so it won't overwrite settings changed in another instance."},
+
 		{"preview_unicode",		"#* Use Unicode box-drawing characters for preset preview. Set to false for ASCII."},
 	#ifdef GPU_SUPPORT
 
@@ -441,6 +445,7 @@ namespace Config {
 	#endif
 		{"terminal_sync", true},
 		{"save_config_on_exit", true},
+		{"prevent_autosave", false},
 		{"preview_unicode", true},
 		{"disable_mouse", false},
 	};
@@ -1187,7 +1192,7 @@ namespace Config {
 
 	void write() {
 		if (conf_file.empty() or not write_new) return;
-		if (read_only) {
+		if (read_only or getB("prevent_autosave")) {
 			Logger::debug("Skipping config write - running in read-only mode");
 			return;
 		}
