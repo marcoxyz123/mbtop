@@ -164,31 +164,43 @@ namespace Draw {
 
 	//* Generate a centered read-only mode message overlay
 	string read_only_overlay() {
-		string msg = "Another mbtop instance is running - config changes won't be saved";
+		const string line1 = "Another mbtop instance is running -";
+		const string line2 = "config changes won't be saved";
+		const string full_msg = line1 + " " + line2;
 		
 		//? Calculate available width (leave margin on sides)
 		const int max_box_width = std::max(20, Term::width - 4);
-		const int min_msg_width = 10;
+		const int full_msg_len = static_cast<int>(ulen(full_msg));
 		
-		//? Truncate message if terminal too narrow
-		int msg_len = static_cast<int>(ulen(msg));
-		if (msg_len + 4 > max_box_width) {
-			//? Need to truncate - leave room for "..."
-			int target_len = max_box_width - 7;  // 4 for borders + 3 for "..."
-			if (target_len < min_msg_width) target_len = min_msg_width;
-			msg = uresize(msg, target_len) + "...";
-			msg_len = static_cast<int>(ulen(msg));
-		}
-		
-		const int box_width = msg_len + 4;  // 2 for borders + 2 for padding
-		const int x = std::max(1, Term::width / 2 - box_width / 2);
-		const int y = Term::height / 2;
-
 		string out;
-		//? Draw a bordered message box with Unicode box-drawing characters
-		out += Mv::to(y - 1, x) + Theme::c("title") + Fx::b + "┌" + Symbols::h_line * (box_width - 2) + "┐";
-		out += Mv::to(y, x) + "│ " + Theme::c("hi_fg") + msg + Theme::c("title") + " │";
-		out += Mv::to(y + 1, x) + "└" + Symbols::h_line * (box_width - 2) + "┘" + Fx::ub;
+		
+		if (full_msg_len + 4 <= max_box_width) {
+			//? Single line fits - use it
+			const int box_width = full_msg_len + 4;
+			const int x = std::max(1, Term::width / 2 - box_width / 2);
+			const int y = Term::height / 2;
+			
+			out += Mv::to(y - 1, x) + Theme::c("title") + Fx::b + "┌" + Symbols::h_line * (box_width - 2) + "┐";
+			out += Mv::to(y, x) + "│ " + Theme::c("hi_fg") + full_msg + Theme::c("title") + " │";
+			out += Mv::to(y + 1, x) + "└" + Symbols::h_line * (box_width - 2) + "┘" + Fx::ub;
+		}
+		else {
+			//? Two-line layout - break after the dash
+			const int line1_len = static_cast<int>(ulen(line1));
+			const int line2_len = static_cast<int>(ulen(line2));
+			const int box_width = std::max(line1_len, line2_len) + 4;
+			const int x = std::max(1, Term::width / 2 - box_width / 2);
+			const int y = Term::height / 2;
+			
+			//? Center each line within the box
+			const int line1_pad = (box_width - 4 - line1_len) / 2;
+			const int line2_pad = (box_width - 4 - line2_len) / 2;
+			
+			out += Mv::to(y - 1, x) + Theme::c("title") + Fx::b + "┌" + Symbols::h_line * (box_width - 2) + "┐";
+			out += Mv::to(y, x) + "│ " + string(line1_pad, ' ') + Theme::c("hi_fg") + line1 + string(box_width - 4 - line1_len - line1_pad, ' ') + Theme::c("title") + " │";
+			out += Mv::to(y + 1, x) + "│ " + string(line2_pad, ' ') + Theme::c("hi_fg") + line2 + string(box_width - 4 - line2_len - line2_pad, ' ') + Theme::c("title") + " │";
+			out += Mv::to(y + 2, x) + "└" + Symbols::h_line * (box_width - 2) + "┘" + Fx::ub;
+		}
 
 		return out;
 	}
