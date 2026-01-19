@@ -9,8 +9,9 @@ stages:
   - release
 
 variables:
-  GIT_DEPTH: 50
-  GIT_STRATEGY: fetch
+  GIT_DEPTH: 0
+  GIT_STRATEGY: clone
+  GIT_CLEAN_FLAGS: -ffdx
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/mbtop"
 
 # Default settings
@@ -45,9 +46,15 @@ build:macos-arm64:
   stage: build
   script:
     - echo "Building mbtop for macOS ARM64 with Apple Silicon GPU support"
+    - echo "=== Git status ==="
+    - git log --oneline -3
+    - git status
+    - echo "=== Building ==="
     - make distclean || make clean || true
     - make -j$(sysctl -n hw.ncpu)
     - ./bin/mbtop --version || echo "Version check skipped"
+    - echo "=== Verify config paths ==="
+    - strings bin/mbtop | grep -E "\.config/(btop|mbtop)" || echo "No matches"
     - |
       GIT_HASH=$(git rev-parse --short HEAD)
       ARTIFACT_NAME="mbtop-macos-arm64-${GIT_HASH}"
