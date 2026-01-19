@@ -142,10 +142,15 @@ namespace Cli {
 
 				auto arg = *it;
 				try {
-					auto preset_id = std::clamp(std::stoi(arg.data()), 0, 9);
-					cli.preset = std::make_optional(preset_id);
+					auto preset_num = std::stoi(arg.data());
+					//? Accept human-readable 1-10, convert to internal 0-9
+					if (preset_num < 1 || preset_num > 10) {
+						error("Preset must be a number between 1 and 10");
+						return std::unexpected { 1 };
+					}
+					cli.preset = std::make_optional(preset_num - 1);
 				} catch (std::invalid_argument& e) {
-					error("Preset must be a positive number");
+					error("Preset must be a number between 1 and 10");
 					return std::unexpected { 1 };
 				} catch (std::out_of_range& e) {
 					error(fmt::format("Preset argument is out of range: {}", arg.data()));
@@ -254,7 +259,7 @@ namespace Cli {
 			"  {2}-f, --filter{1} <filter>   Set an initial process filter\n"
 			"  {2}    --force-utf{1}         Override automatic UTF locale detection\n"
 			"  {2}-l, --low-color{1}         Disable true color, 256 colors only\n"
-			"  {2}-p, --preset{1} <id>       Start with a preset (0-9)\n"
+			"  {2}-p, --preset{1} <id>       Start with a preset (1-10)\n"
 			"  {2}-t, --tty{1}               Force tty mode with ANSI graph symbols and 16 colors only\n"
 			"  {2}    --themes-dir{1} <dir>  Path to a custom themes directory\n"
 			"  {2}    --no-tty{1}            Force disable tty mode\n"

@@ -4133,7 +4133,9 @@ namespace Draw {
 		#ifdef GPU_SUPPORT
 			if (only_top_panels and (Gpu::shown > 0 or Pwr::shown)) {
 				//? When only top panels shown, CPU gets remaining space after GPU and Pwr
-				height = Term::height - Gpu::total_height - Pwr::height - gpus_extra_height - ane_extra_height;
+				//? Note: gpus_extra_height and ane_extra_height are for content WITHIN the CPU panel,
+				//? not separate panels, so they should NOT be subtracted from the allocated space
+				height = Term::height - Gpu::total_height - Pwr::height;
 			} else {
 				height = max(min_height, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100 : height_p/(Gpu::shown+1) + (Gpu::shown != 0)*5) / 100));
 				//? Always add extra height for GPU info when GPU panel is hidden

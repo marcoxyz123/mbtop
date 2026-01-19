@@ -771,6 +771,12 @@ namespace Config {
 			}
 		}
 
+		// PROC alone (no MEM, no NET) - always use full width layout
+		if (has_proc and not has_mem and not has_net) {
+			set("proc_left", false);
+			set("proc_full_width", true);  //? Proc alone = always wide/full width
+		}
+
 		// Three panel layouts (8-11)
 		// Reset stacked_layout by default (only Layout 9 uses it)
 		set("stacked_layout", false);
