@@ -11,7 +11,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_library(libmbtop_test)
 target_include_directories(libmbtop_test PUBLIC ${PROJECT_SOURCE_DIR}/src)
-target_link_libraries(libmbtop_test libbtop GTest::gtest_main)
+target_link_libraries(libmbtop_test libmbtop GTest::gtest_main)
 
 add_executable(mbtop_test tools.cpp)
 target_link_libraries(mbtop_test libmbtop_test)

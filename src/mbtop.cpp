@@ -16,7 +16,7 @@ indent = tab
 tab-size = 4
 */
 
-#include "btop.hpp"
+#include "mbtop.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -59,15 +59,15 @@ tab-size = 4
 #include <fmt/core.h>
 #include <fmt/ostream.h>
 
-#include "btop_cli.hpp"
-#include "btop_config.hpp"
-#include "btop_draw.hpp"
-#include "btop_input.hpp"
-#include "btop_log.hpp"
-#include "btop_menu.hpp"
-#include "btop_shared.hpp"
-#include "btop_theme.hpp"
-#include "btop_tools.hpp"
+#include "mbtop_cli.hpp"
+#include "mbtop_config.hpp"
+#include "mbtop_draw.hpp"
+#include "mbtop_input.hpp"
+#include "mbtop_log.hpp"
+#include "mbtop_menu.hpp"
+#include "mbtop_shared.hpp"
+#include "mbtop_theme.hpp"
+#include "mbtop_tools.hpp"
 
 using std::atomic;
 using std::cout;

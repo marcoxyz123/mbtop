@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#include "btop_cli.hpp"
+#include "mbtop_cli.hpp"
 
 #include <algorithm>
 #include <expected>
@@ -18,8 +18,8 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 
-#include "btop_config.hpp"
-#include "btop_shared.hpp"
+#include "mbtop_config.hpp"
+#include "mbtop_shared.hpp"
 #include "config.h"
 
 using namespace std::string_view_literals;

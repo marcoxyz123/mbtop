@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# CMake configuration for btop
+# CMake configuration for mbtop
 #
 
 cmake_minimum_required(VERSION 3.25)
@@ -10,9 +10,9 @@ if("${CMAKE_CURRENT_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_BINARY_DIR}")
   message(FATAL_ERROR "In-source builds are not allowed")
 endif()
 
-project("btop"
+project("mbtop"
   DESCRIPTION "A monitor of resources"
-  HOMEPAGE_URL "https://github.com/aristocratos/btop"
+  HOMEPAGE_URL "https://github.com/marcoxyz123/mbtop"
   LANGUAGES CXX
 )
 
@@ -28,55 +28,55 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BTOP_STATIC "Link btop statically" OFF)
-option(BTOP_GPU "Enable GPU support" ON)
-cmake_dependent_option(BTOP_RSMI_STATIC "Link statically to ROCm SMI" OFF "BTOP_GPU" OFF)
+option(MBTOP_STATIC "Link mbtop statically" OFF)
+option(MBTOP_GPU "Enable GPU support" ON)
+cmake_dependent_option(MBTOP_RSMI_STATIC "Link statically to ROCm SMI" OFF "MBTOP_GPU" OFF)
 
 # Enable LTO in release builds by default
 if(CMAKE_BUILD_TYPE MATCHES "Rel(ease|WithDebInfo)")
-  option(BTOP_LTO "Enable LTO" ON)
+  option(MBTOP_LTO "Enable LTO" ON)
 else()
-  option(BTOP_LTO "Enable LTO" OFF)
+  option(MBTOP_LTO "Enable LTO" OFF)
 endif()
 
-if(BTOP_STATIC AND NOT APPLE)
+if(MBTOP_STATIC AND NOT APPLE)
   # Set this before calling find_package
   set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 endif()
 
-add_executable(btop src/main.cpp)
-add_library(libbtop OBJECT
-  src/btop.cpp
-  src/btop_cli.cpp
-  src/btop_config.cpp
-  src/btop_draw.cpp
-  src/btop_input.cpp
-  src/btop_log.cpp
-  src/btop_menu.cpp
-  src/btop_shared.cpp
-  src/btop_theme.cpp
-  src/btop_tools.cpp
+add_executable(mbtop src/main.cpp)
+add_library(libmbtop OBJECT
+  src/mbtop.cpp
+  src/mbtop_cli.cpp
+  src/mbtop_config.cpp
+  src/mbtop_draw.cpp
+  src/mbtop_input.cpp
+  src/mbtop_log.cpp
+  src/mbtop_menu.cpp
+  src/mbtop_shared.cpp
+  src/mbtop_theme.cpp
+  src/mbtop_tools.cpp
 )
 
-target_link_libraries(btop libbtop)
+target_link_libraries(mbtop libmbtop)
 
-if(BTOP_LTO)
+if(MBTOP_LTO)
   check_ipo_supported()
-  set_target_properties(btop PROPERTIES INTERPROCEDURAL_OPTIMIZATION ON)
-  set_target_properties(libbtop PROPERTIES INTERPROCEDURAL_OPTIMIZATION ON)
+  set_target_properties(mbtop PROPERTIES INTERPROCEDURAL_OPTIMIZATION ON)
+  set_target_properties(libmbtop PROPERTIES INTERPROCEDURAL_OPTIMIZATION ON)
 endif()
 
 if(APPLE)
-  target_sources(libbtop PRIVATE src/osx/btop_collect.cpp src/osx/sensors.cpp src/osx/smc.cpp src/osx/apple_silicon_gpu.cpp)
+  target_sources(libmbtop PRIVATE src/osx/mbtop_collect.cpp src/osx/sensors.cpp src/osx/smc.cpp src/osx/apple_silicon_gpu.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "MidnightBSD")
-  target_sources(libbtop PRIVATE src/freebsd/btop_collect.cpp)
+  target_sources(libmbtop PRIVATE src/freebsd/mbtop_collect.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
-  target_sources(libbtop PRIVATE src/openbsd/btop_collect.cpp src/openbsd/sysctlbyname.cpp)
+  target_sources(libmbtop PRIVATE src/openbsd/mbtop_collect.cpp src/openbsd/sysctlbyname.cpp)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
-  target_sources(libbtop PRIVATE src/netbsd/btop_collect.cpp)
+  target_sources(libmbtop PRIVATE src/netbsd/mbtop_collect.cpp)
 elseif(LINUX)
-  target_sources(libbtop PRIVATE src/linux/btop_collect.cpp)
-  if(BTOP_GPU)
+  target_sources(libmbtop PRIVATE src/linux/mbtop_collect.cpp)
+  if(MBTOP_GPU)
     add_subdirectory(src/linux/intel_gpu_top)
   endif()
 else()
@@ -90,7 +90,7 @@ execute_process(
   OUTPUT_VARIABLE GIT_COMMIT
   OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 set(CONFIGURE_COMMAND
-    "cmake -DBTOP_STATIC=${BTOP_STATIC} -DBTOP_GPU=${BTOP_GPU}"
+    "cmake -DMBTOP_STATIC=${MBTOP_STATIC} -DMBTOP_GPU=${MBTOP_GPU}"
 )
 get_filename_component(CXX_COMPILER_BASENAME "${CMAKE_CXX_COMPILER}" NAME)
 set(COMPILER "${CXX_COMPILER_BASENAME}")
@@ -131,48 +131,48 @@ if(NOT HAS_CXX_STRING_CONTAINS)
   message(FATAL_ERROR "The compiler doesn't support std::string::contains")
 endif()
 
-target_compile_options(libbtop PUBLIC -Wall -Wextra -Wpedantic)
+target_compile_options(libmbtop PUBLIC -Wall -Wextra -Wpedantic)
 
 include(CheckCXXCompilerFlag)
 
 if(NOT APPLE)
-  target_compile_options(libbtop PUBLIC -fstack-clash-protection)
+  target_compile_options(libmbtop PUBLIC -fstack-clash-protection)
 endif()
 check_cxx_compiler_flag(-fstack-protector HAS_FSTACK_PROTECTOR)
 if(HAS_FSTACK_PROTECTOR)
-  target_compile_options(libbtop PUBLIC -fstack-protector)
+  target_compile_options(libmbtop PUBLIC -fstack-protector)
 endif()
 check_cxx_compiler_flag(-fcf-protection HAS_FCF_PROTECTION)
 if(HAS_FCF_PROTECTION)
-  target_compile_options(libbtop PUBLIC -fcf-protection)
+  target_compile_options(libmbtop PUBLIC -fcf-protection)
 endif()
 
-target_compile_definitions(libbtop PUBLIC
+target_compile_definitions(libmbtop PUBLIC
   FMT_HEADER_ONLY
   _FILE_OFFSET_BITS=64
   $<$<CONFIG:Debug>:_GLIBCXX_ASSERTIONS _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG>
 )
 
-target_include_directories(libbtop SYSTEM PUBLIC include)
+target_include_directories(libmbtop SYSTEM PUBLIC include)
 
 # Enable pthreads
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
-target_link_libraries(libbtop Threads::Threads)
+target_link_libraries(libmbtop Threads::Threads)
 
 # Enable GPU support
-if(LINUX AND BTOP_GPU)
-  target_compile_definitions(libbtop PUBLIC GPU_SUPPORT)
-elseif(APPLE AND BTOP_GPU)
+if(LINUX AND MBTOP_GPU)
+  target_compile_definitions(libmbtop PUBLIC GPU_SUPPORT)
+elseif(APPLE AND MBTOP_GPU)
   # Apple Silicon GPU support via IOReport
-  target_compile_definitions(libbtop PUBLIC GPU_SUPPORT)
+  target_compile_definitions(libmbtop PUBLIC GPU_SUPPORT)
   # Link with dl for dynamic loading of IOReport library
-  target_link_libraries(libbtop ${CMAKE_DL_LIBS})
+  target_link_libraries(libmbtop ${CMAKE_DL_LIBS})
 endif()
 
-if(LINUX AND BTOP_GPU)
+if(LINUX AND MBTOP_GPU)
 
-  if(BTOP_RSMI_STATIC)
+  if(MBTOP_RSMI_STATIC)
     # ROCm doesn't properly add it's folders to the module path if `CMAKE_MODULE_PATH` is already
     # set
     # We could also manually append ROCm's path here
@@ -180,7 +180,7 @@ if(LINUX AND BTOP_GPU)
     unset(CMAKE_MODULE_PATH)
 
     # NOTE: This might be problematic in the future if other sub projects depend on this or if
-    # btop starts producing libraries
+    # mbtop starts producing libraries
     # Build a static ROCm library
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
@@ -194,21 +194,21 @@ if(LINUX AND BTOP_GPU)
 
     set(CMAKE_MODULE_PATH _CMAKE_MODULE_PATH)
 
-    target_link_libraries(libbtop ROCm)
+    target_link_libraries(libmbtop ROCm)
   endif()
-  if(NOT BTOP_STATIC)
-    target_link_libraries(libbtop ${CMAKE_DL_LIBS})
+  if(NOT MBTOP_STATIC)
+    target_link_libraries(libmbtop ${CMAKE_DL_LIBS})
   endif()
 endif()
 
-if(BTOP_STATIC)
-  target_compile_definitions(libbtop PUBLIC STATIC_BUILD)
-  target_link_options(libbtop PUBLIC -static LINKER:--fatal-warnings)
+if(MBTOP_STATIC)
+  target_compile_definitions(libmbtop PUBLIC STATIC_BUILD)
+  target_link_options(libmbtop PUBLIC -static LINKER:--fatal-warnings)
 endif()
 
 # Other platform dependent flags
 if(APPLE)
-  target_link_libraries(libbtop
+  target_link_libraries(libmbtop
     $<LINK_LIBRARY:FRAMEWORK,CoreFoundation> $<LINK_LIBRARY:FRAMEWORK,IOKit>
   )
 elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "MidnightBSD")
@@ -216,38 +216,38 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "Midni
   # default one since all use the default ones RPATH
   if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     string(REGEX MATCH "^[0-9]+" GCC_VERSION_MAJOR "${CMAKE_CXX_COMPILER_VERSION}")
-    set_target_properties(btop PROPERTIES
+    set_target_properties(mbtop PROPERTIES
       INSTALL_RPATH "/usr/local/lib/gcc${GCC_VERSION_MAJOR}"
       BUILD_WITH_INSTALL_RPATH TRUE
     )
 
     # The gcc compiler wrapper doesn't add '--eh-frame-hdr' on FreeBSD with static builds
     # https://bugs.freebsd.org/bugzilla/show_bug.cgi?id=278551
-    if(BTOP_STATIC)
-      target_link_options(libbtop PUBLIC LINKER:--eh-frame-hdr)
+    if(MBTOP_STATIC)
+      target_link_options(libmbtop PUBLIC LINKER:--eh-frame-hdr)
     endif()
   endif()
 
   find_package(devstat REQUIRED)
   find_package(kvm REQUIRED)
-  target_link_libraries(libbtop devstat::devstat kvm::kvm)
-  if(BTOP_STATIC)
+  target_link_libraries(libmbtop devstat::devstat kvm::kvm)
+  if(MBTOP_STATIC)
     find_package(elf REQUIRED)
-    target_link_libraries(libbtop elf::elf)
+    target_link_libraries(libmbtop elf::elf)
   endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(libbtop PUBLIC -static-libstdc++)
+    target_compile_options(libmbtop PUBLIC -static-libstdc++)
   endif()
   find_package(kvm REQUIRED)
-  target_link_libraries(libbtop kvm::kvm)
+  target_link_libraries(libmbtop kvm::kvm)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(libbtop PUBLIC -static-libstdc++)
+    target_compile_options(libmbtop PUBLIC -static-libstdc++)
   endif()
   find_package(kvm REQUIRED)
   find_package(proplib REQUIRED)
-  target_link_libraries(libbtop kvm::kvm proplib::proplib)
+  target_link_libraries(libmbtop kvm::kvm proplib::proplib)
 endif()
 
 # Check if lowdown is installed
@@ -256,23 +256,23 @@ find_program(LOWDOWN_EXECUTABLE lowdown)
 if(LOWDOWN_EXECUTABLE)
   # Custom target to compile Markdown to man page using lowdown
   add_custom_command(
-    OUTPUT btop.1
-    COMMAND lowdown -s -T man -o btop.1 ${CMAKE_CURRENT_SOURCE_DIR}/manpage.md
+    OUTPUT mbtop.1
+    COMMAND lowdown -s -T man -o mbtop.1 ${CMAKE_CURRENT_SOURCE_DIR}/manpage.md
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/manpage.md
     VERBATIM
   )
-  add_custom_target(generate_manpage ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/btop.1)
+  add_custom_target(generate_manpage ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/mbtop.1)
   # Install the man page
-  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/btop.1" DESTINATION "share/man/man1")
+  install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mbtop.1" DESTINATION "share/man/man1")
 else()
-  message(STATUS "Command 'lowdown' not found: skipping generating man page btop.1")
+  message(STATUS "Command 'lowdown' not found: skipping generating man page mbtop.1")
 endif()
 
-install(TARGETS btop RUNTIME)
-install(FILES "btop.desktop" DESTINATION "share/applications")
-install(FILES "Img/icon.png" DESTINATION "share/icons/hicolor/48x48/apps" RENAME "btop.png")
-install(FILES "Img/icon.svg" DESTINATION "share/icons/hicolor/scalable/apps" RENAME "btop.svg")
-install(DIRECTORY "themes" DESTINATION "share/btop")
+install(TARGETS mbtop RUNTIME)
+install(FILES "mbtop.desktop" DESTINATION "share/applications")
+install(FILES "Img/icon.png" DESTINATION "share/icons/hicolor/48x48/apps" RENAME "mbtop.png")
+install(FILES "Img/icon.svg" DESTINATION "share/icons/hicolor/scalable/apps" RENAME "mbtop.svg")
+install(DIRECTORY "themes" DESTINATION "share/mbtop")
 
 include(CTest)
 if(BUILD_TESTING)

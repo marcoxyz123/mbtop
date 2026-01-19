@@ -1,20 +1,20 @@
-% btop(1) | User Commands
+% mbtop(1) | User Commands
 %
 % 2025-05-01
 
 # NAME
 
-btop - Resource monitor that shows usage and stats for processor, memory, disks, network, and processes.
+mbtop - Resource monitor that shows usage and stats for processor, memory, disks, network, and processes.
 
 # SYNOPSIS
 
-**btop** [**-c** _file_] [**-d**] [**-f** _filter_] [**-l**] [**-p** _id_] [**-t**] [**-u** _ms_] [**\-\-force-utf**] [**\-\-themes-dir** _dir_]
+**mbtop** [**-c** _file_] [**-d**] [**-f** _filter_] [**-l**] [**-p** _id_] [**-t**] [**-u** _ms_] [**\-\-force-utf**] [**\-\-themes-dir** _dir_]
 
-**btop** [**\-\-default-config** | {**-h** | **\-\-help**} | {**-V** | **\-\-version**}]
+**mbtop** [**\-\-default-config** | {**-h** | **\-\-help**} | {**-V** | **\-\-version**}]
 
 # DESCRIPTION
 
-**btop** is a program that shows usage and stats for processor, memory, disks, network, and processes.
+**mbtop** is a program that shows usage and stats for processor, memory, disks, network, and processes.
 
 # OPTIONS
 
@@ -62,12 +62,12 @@ starting with two dashes ('-'). A summary of options is included below.
 
 # BUGS
 
-The upstream bug tracker can be found at https://github.com/aristocratos/btop/issues.
+The bug tracker can be found at https://github.com/marcoxyz123/mbtop/issues.
 
 # SEE ALSO
 
-**top**(1), **htop**(1)
+**top**(1), **htop**(1), **btop**(1)
 
 # AUTHOR
 
-**btop** was written by Jakob P. Liljenberg a.k.a. "Aristocratos".
+**mbtop** is based on btop++ by Jakob P. Liljenberg a.k.a. "Aristocratos".

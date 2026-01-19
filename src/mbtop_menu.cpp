@@ -16,14 +16,14 @@ indent = tab
 tab-size = 4
 */
 
-#include "btop_menu.hpp"
+#include "mbtop_menu.hpp"
 
-#include "btop_config.hpp"
-#include "btop_draw.hpp"
-#include "btop_log.hpp"
-#include "btop_shared.hpp"
-#include "btop_theme.hpp"
-#include "btop_tools.hpp"
+#include "mbtop_config.hpp"
+#include "mbtop_draw.hpp"
+#include "mbtop_log.hpp"
+#include "mbtop_shared.hpp"
+#include "mbtop_theme.hpp"
+#include "mbtop_tools.hpp"
 
 #include <errno.h>
 #include <signal.h>

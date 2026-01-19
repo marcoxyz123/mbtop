@@ -29,14 +29,14 @@ tab-size = 4
 
 #include <fmt/format.h>
 
-#include "btop_config.hpp"
-#include "btop_draw.hpp"
-#include "btop_input.hpp"
-#include "btop_log.hpp"
-#include "btop_menu.hpp"
-#include "btop_shared.hpp"
-#include "btop_theme.hpp"
-#include "btop_tools.hpp"
+#include "mbtop_config.hpp"
+#include "mbtop_draw.hpp"
+#include "mbtop_input.hpp"
+#include "mbtop_log.hpp"
+#include "mbtop_menu.hpp"
+#include "mbtop_shared.hpp"
+#include "mbtop_theme.hpp"
+#include "mbtop_tools.hpp"
 
 #if defined(__APPLE__) && defined(GPU_SUPPORT)
 #include "osx/apple_silicon_gpu.hpp"

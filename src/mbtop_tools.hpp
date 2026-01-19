@@ -53,7 +53,7 @@ tab-size = 4
 #include <fmt/core.h>
 #include <fmt/format.h>
 
-#include "btop_log.hpp"
+#include "mbtop_log.hpp"
 
 using std::array;
 using std::atomic;

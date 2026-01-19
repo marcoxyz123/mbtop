@@ -63,10 +63,10 @@ tab-size = 4
 
 #include <fmt/format.h>
 
-#include "../btop_config.hpp"
-#include "../btop_log.hpp"
-#include "../btop_shared.hpp"
-#include "../btop_tools.hpp"
+#include "../mbtop_config.hpp"
+#include "../mbtop_log.hpp"
+#include "../mbtop_shared.hpp"
+#include "../mbtop_tools.hpp"
 
 using std::clamp, std::string_literals::operator""s, std::cmp_equal, std::cmp_less, std::cmp_greater;
 using std::ifstream, std::numeric_limits, std::streamsize, std::round, std::max, std::min;

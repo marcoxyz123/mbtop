@@ -51,10 +51,10 @@ tab-size = 4
 	#include <pwd.h>
 #endif
 
-#include "../btop_config.hpp"
-#include "../btop_log.hpp"
-#include "../btop_shared.hpp"
-#include "../btop_tools.hpp"
+#include "../mbtop_config.hpp"
+#include "../mbtop_log.hpp"
+#include "../mbtop_shared.hpp"
+#include "../mbtop_tools.hpp"
 
 #if defined(GPU_SUPPORT)
 	#define class class_

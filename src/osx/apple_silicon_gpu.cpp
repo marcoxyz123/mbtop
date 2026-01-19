@@ -44,9 +44,9 @@ tab-size = 4
 #include <cstring>
 #include <mutex>
 
-#include "../btop_log.hpp"
-#include "../btop_shared.hpp"
-#include "../btop_tools.hpp"
+#include "../mbtop_log.hpp"
+#include "../mbtop_shared.hpp"
+#include "../mbtop_tools.hpp"
 
 using namespace Tools;
 

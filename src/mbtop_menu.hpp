@@ -26,7 +26,7 @@ tab-size = 4
 #include <array>
 #include <functional>
 
-#include "btop_input.hpp"
+#include "mbtop_input.hpp"
 
 using std::atomic;
 using std::bitset;
