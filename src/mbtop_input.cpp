@@ -655,6 +655,13 @@ namespace Input {
 						return;
 					}
 					else if (Config::getI("proc_selected") > 0 and Config::getI("detailed_pid") != Config::getI("selected_pid")) {
+						//? Check if proc panel has enough height for detailed view (8 lines) + minimum list (5 lines)
+						//? Detailed view requires: 8 (detailed box) + 3 (header+1 process+footer) = 11 minimum
+						//? But we need at least 1 visible process line, so minimum is 13 for comfortable display
+						if (Proc::height < 13) {
+							Menu::show(Menu::Menus::SizeError);
+							return;
+						}
 						Config::set("detailed_pid", Config::getI("selected_pid"));
 						Config::set("proc_last_selected", Config::getI("proc_selected"));
 						Config::set("proc_selected", 0);

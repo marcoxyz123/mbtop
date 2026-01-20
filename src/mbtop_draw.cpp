@@ -2977,6 +2977,9 @@ namespace Proc {
 		int select_max = (Config::getB("show_detailed") ? (Config::getB("proc_banner_shown") ? Proc::select_max - 9 : Proc::select_max - 8) :
 																(Config::getB("proc_banner_shown") ? Proc::select_max - 1 : Proc::select_max));
 
+		//? Defensive check: ensure select_max is at least 1 to prevent crashes
+		select_max = std::max(1, select_max);
+
 		// Return the selection from the detailed view to the followed process before moving the selection
 		// Disengage following mode when moving the selection unless paused
 		if (Config::getB("follow_process")) {
@@ -3078,8 +3081,25 @@ namespace Proc {
 		selected = Config::getI("proc_selected");
 		const int y = show_detailed ? Proc::y + 8 : Proc::y;
 		const int height = show_detailed ? Proc::height - 8 : Proc::height;
-		int select_max = show_detailed ? (proc_banner_shown ? Proc::select_max - 9 : Proc::select_max - 8) : 
+		int select_max = show_detailed ? (proc_banner_shown ? Proc::select_max - 9 : Proc::select_max - 8) :
 												(proc_banner_shown ? Proc::select_max - 1 : Proc::select_max);
+
+		//? Defensive check: if proc panel became too small for detailed view (e.g., terminal resize),
+		//? automatically close the detailed view to prevent crashes from negative select_max
+		if (show_detailed and (height < 5 or select_max < 1)) {
+			Config::set("show_detailed", false);
+			Config::set("detailed_pid", 0);
+			if (Config::getI("proc_last_selected") > 0)
+				Config::set("proc_selected", Config::getI("proc_last_selected"));
+			Config::set("proc_last_selected", 0);
+			redraw = true;
+			//? Recalculate values without detailed view
+			return "";  //? Return empty to trigger a full redraw in the next cycle
+		}
+
+		//? Ensure select_max is at least 1 to prevent division by zero and other issues
+		select_max = std::max(1, select_max);
+
 		auto totalMem = std::max(uint64_t{1}, Mem::get_totalMem());  //? Guard against division by zero
 		int numpids = Proc::numpids;
 		if (force_redraw) redraw = true;

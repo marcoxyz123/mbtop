@@ -1217,10 +1217,17 @@ namespace Menu {
 
 	static int sizeError(const string& key) {
 		if (redraw) {
+			auto min_size = Term::get_min_size(Config::getS("shown_boxes"));
 			vector<string> cont_vec {
 				Fx::b + Theme::g("used")[100] + "Error:" + Theme::c("main_fg") + Fx::ub,
-				"Terminal size too small to" + Fx::reset,
-				"display menu or box!" + Fx::reset };
+				"Terminal size too small!" + Fx::reset,
+				"",
+				"Current:  " + to_string(Term::width) + " x " + to_string(Term::height),
+				"Required: " + to_string(min_size.at(0)) + " x " + to_string(min_size.at(1)),
+				"",
+				"Tip: Rearrange panels (keys 1-5,7)",
+				"or resize terminal window.",
+				"(Proc details needs height ≥13)" + Fx::reset };
 
 			messageBox = Menu::msgBox{45, 0, cont_vec, "error"};
 			Global::overlay = messageBox();
