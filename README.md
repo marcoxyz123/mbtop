@@ -41,7 +41,7 @@
 
 ### User Experience
 - **Redesigned Settings Menu** — Full mouse support with tabbed interface (v1.6+)
-- **Preset Builder** — 13 layout configurations with live preview
+- **Preset Builder** — 100+ layout configurations with live preview
 - **Multi-Instance Support** — Run multiple instances without config conflicts (v1.6.1+)
 - **Instance Indicators** — Visual (P)rimary/(S)econdary markers in panel headers (v1.6.3+)
 - **Themes** — 20+ built-in themes including new Nord-based default
@@ -211,7 +211,7 @@ Custom themes can be placed in `~/.config/mbtop/themes/`
 ### v1.6.0
 
 - **Redesigned Settings Menu** — Full mouse support with tabbed interface
-- **Preset Builder** — 13 layout configurations with live preview
+- **Preset Builder** — 100+ layout configurations with live preview
 - **GPU/PWR Position Controls** — Place panels at top or bottom
 - **Network Interface Filter** — Cycle through specific interfaces
 - **New Default Theme** — Nord-based color scheme
