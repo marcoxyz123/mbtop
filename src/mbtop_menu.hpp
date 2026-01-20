@@ -198,6 +198,7 @@ namespace MenuV2 {
 		//? NET panel
 		bool net_enabled = true;
 		NetPosition net_position = NetPosition::Right;  // Left/Right/Wide
+		int net_graph_direction = 0;  // 0=RTL, 1=LTR, 2=TTB, 3=BTT
 
 		//? PROC panel
 		bool proc_enabled = true;

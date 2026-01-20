@@ -622,11 +622,18 @@ namespace Config {
 				}
 				const auto& vals = ssplit(box, ':');
 				// mem can have 3-8 fields: type, symbol, meter, disk, mem_vis, swap_vis, vram_vis
+				// net can have 3-4 fields: pos, symbol, direction (direction is optional)
 				// other boxes have exactly 3 fields
 				bool is_mem = (vals.size() > 0 && vals.at(0) == "mem");
+				bool is_net = (vals.size() > 0 && vals.at(0) == "net");
 				if (is_mem) {
 					if (vals.size() < 3 || vals.size() > 8) {
 						validError = "Malformatted mem preset in config value presets!";
+						return false;
+					}
+				} else if (is_net) {
+					if (vals.size() < 3 || vals.size() > 4) {
+						validError = "Malformatted net preset in config value presets!";
 						return false;
 					}
 				} else {
@@ -696,6 +703,11 @@ namespace Config {
 			} else if (vals.at(0) == "net") {
 				has_net = true;
 				net_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 1;
+				// direction (field 4): 0=RTL, 1=LTR, 2=TTB, 3=BTT
+				if (vals.size() > 3) {
+					int dir = stoi_safe(vals.at(3), 0);
+					set("net_graph_direction", (dir >= 0 and dir <= 3) ? dir : 0);
+				}
 			} else if (vals.at(0) == "proc") {
 				has_proc = true;
 				proc_pos = (vals.size() > 1) ? stoi(vals.at(1)) : 1;
@@ -945,6 +957,44 @@ namespace Config {
 
 		else if (name == "presets" and not presetsValid(value))
 			return false;
+
+		else if (name == "preset_0" and not value.empty()) {
+			// Validate preset_0 - same logic as presetsValid but for a single preset
+			for (const auto& box : ssplit(value, ',')) {
+				const auto& vals = ssplit(box, ':');
+				bool is_mem = (vals.size() > 0 && vals.at(0) == "mem");
+				bool is_net = (vals.size() > 0 && vals.at(0) == "net");
+				if (is_mem) {
+					if (vals.size() < 3 || vals.size() > 8) {
+						validError = "Malformatted mem preset in preset_0!";
+						return false;
+					}
+				} else if (is_net) {
+					if (vals.size() < 3 || vals.size() > 4) {
+						validError = "Malformatted net preset in preset_0!";
+						return false;
+					}
+				} else {
+					if (vals.size() != 3) {
+						validError = "Malformatted preset in preset_0!";
+						return false;
+					}
+				}
+				if (not is_in(vals.at(0), "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4", "gpu5", "pwr")) {
+					validError = "Invalid box name in preset_0!";
+					return false;
+				}
+				if (not is_in(vals.at(1), "0", "1", "2")) {
+					validError = "Invalid position value in preset_0!";
+					return false;
+				}
+				if (not v_contains(valid_graph_symbols_def, vals.at(2))) {
+					validError = "Invalid graph symbol in preset_0!";
+					return false;
+				}
+			}
+			return true;
+		}
 
 		else if (name == "cpu_core_map") {
 			const auto maps = ssplit(value);

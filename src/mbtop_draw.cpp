@@ -162,43 +162,61 @@ namespace Draw {
 		return (centered ? Mv::to(y, Term::width / 2 - width / 2) : Mv::to(y, x)) + banner;
 	}
 
-	//* Generate a centered multi-instance mode message overlay
+	//* Generate a centered multi-instance mode message overlay (responsive)
 	string read_only_overlay() {
-		const string line1 = "Another mbtop instance is running";
-		const string line2 = "(use Prevent AutoSave to control which saves)";
-		const string full_msg = line1 + " " + line2;
-		
+		const string line1_full = "Another mbtop instance is running";
+		const string line2_full = "(use Prevent AutoSave to control which saves)";
+		const string full_msg = line1_full + " " + line2_full;
+
 		//? Calculate available width (leave margin on sides)
 		const int max_box_width = std::max(20, Term::width - 4);
 		const int full_msg_len = static_cast<int>(ulen(full_msg));
-		
+
 		string out;
-		
+
 		if (full_msg_len + 4 <= max_box_width) {
 			//? Single line fits - use it
 			const int box_width = full_msg_len + 4;
 			const int x = std::max(1, Term::width / 2 - box_width / 2);
 			const int y = Term::height / 2;
-			
+
 			out += Mv::to(y - 1, x) + Theme::c("title") + Fx::b + "┌" + Symbols::h_line * (box_width - 2) + "┐";
 			out += Mv::to(y, x) + "│ " + Theme::c("hi_fg") + full_msg + Theme::c("title") + " │";
 			out += Mv::to(y + 1, x) + "└" + Symbols::h_line * (box_width - 2) + "┘" + Fx::ub;
 		}
 		else {
-			//? Two-line layout - break after the dash
-			const int line1_len = static_cast<int>(ulen(line1));
-			const int line2_len = static_cast<int>(ulen(line2));
-			const int box_width = std::max(line1_len, line2_len) + 4;
+			//? Two-line layout - check if lines fit, otherwise truncate
+			const int line1_len = static_cast<int>(ulen(line1_full));
+			const int line2_len = static_cast<int>(ulen(line2_full));
+			const int content_width = max_box_width - 4;  //? Available space for text inside box
+
+			//? Truncate lines if needed to fit the terminal
+			string line1 = line1_full;
+			string line2 = line2_full;
+			int display_line1_len = line1_len;
+			int display_line2_len = line2_len;
+
+			if (line1_len > content_width) {
+				line1 = uresize(line1_full, content_width - 2) + "..";
+				display_line1_len = content_width;
+			}
+			if (line2_len > content_width) {
+				line2 = uresize(line2_full, content_width - 2) + "..";
+				display_line2_len = content_width;
+			}
+
+			const int box_width = std::min(max_box_width, std::max(display_line1_len, display_line2_len) + 4);
+			const int actual_content_width = box_width - 4;
 			const int x = std::max(1, Term::width / 2 - box_width / 2);
 			const int y = Term::height / 2;
-			
+
 			//? Center each line within the box
-			const int line1_pad = (box_width - 4 - line1_len) / 2;
-			const int line2_pad = (box_width - 4 - line2_len) / 2;
-			
+			const int line1_pad = (actual_content_width - display_line1_len) / 2;
+			const int line2_pad = (actual_content_width - display_line2_len) / 2;
+
 			out += Mv::to(y - 1, x) + Theme::c("title") + Fx::b + "┌" + Symbols::h_line * (box_width - 2) + "┐";
-			out += Mv::to(y, x) + "│ " + string(line1_pad, ' ') + Theme::c("hi_fg") + line1 + string(box_width - 4 - line1_len - line1_pad, ' ') + Theme::c("title") + " │";
-			out += Mv::to(y + 1, x) + "│ " + string(line2_pad, ' ') + Theme::c("hi_fg") + line2 + string(box_width - 4 - line2_len - line2_pad, ' ') + Theme::c("title") + " │";
+			out += Mv::to(y, x) + "│ " + string(line1_pad, ' ') + Theme::c("hi_fg") + line1 + string(actual_content_width - display_line1_len - line1_pad, ' ') + Theme::c("title") + " │";
+			out += Mv::to(y + 1, x) + "│ " + string(line2_pad, ' ') + Theme::c("hi_fg") + line2 + string(actual_content_width - display_line2_len - line2_pad, ' ') + Theme::c("title") + " │";
 			out += Mv::to(y + 2, x) + "└" + Symbols::h_line * (box_width - 2) + "┘" + Fx::ub;
 		}
 

@@ -3340,11 +3340,11 @@ namespace MenuV2 {
 			                to_string(mem_vis) + ":" + to_string(swap_vis) + ":" + to_string(vram_vis));
 		}
 
-		// NET panel: net:pos:symbol
+		// NET panel: net:pos:symbol:direction
 		if (net_enabled) {
 			int pos_val = (net_position == NetPosition::Left) ? 0 :
 			              (net_position == NetPosition::Right) ? 1 : 2;
-			boxes.push_back("net:" + to_string(pos_val) + ":" + graph_symbol);
+			boxes.push_back("net:" + to_string(pos_val) + ":" + graph_symbol + ":" + to_string(net_graph_direction));
 		}
 
 		// PROC panel: proc:pos:symbol
@@ -3441,6 +3441,11 @@ namespace MenuV2 {
 				// pos: 0=Left, 1=Right, 2=Wide
 				preset.net_position = (param1 == 0) ? NetPosition::Left :
 				                      (param1 == 1) ? NetPosition::Right : NetPosition::Wide;
+				// direction (field 4): 0=RTL, 1=LTR, 2=TTB, 3=BTT
+				if (box_parts.size() > 3) {
+					int dir = stoi_safe(box_parts[3], 0);
+					preset.net_graph_direction = (dir >= 0 and dir <= 3) ? dir : 0;
+				}
 			}
 			else if (box_name == "proc") {
 				preset.proc_enabled = true;
@@ -5504,12 +5509,12 @@ namespace MenuV2 {
 			CPU, CPU_Pos, GPU, GPU_Pos, PWR, PWR_Pos,
 			MEM, MEM_Type, MEM_Graph, Show_Disk,
 			Mem_Charts, Swap_Charts, Vram_Charts,  //? Memory chart visibility toggles
-			NET, NET_Pos,
+			NET, NET_Pos, NET_Dir,  //? NET_Dir: graph direction (RTL, LTR, TTB, BTT)
 			PROC, PROC_Pos,
 			GraphSymbol,
 			Save, Cancel
 		};
-		const int total_fields = 21;  //? Updated for 3 new fields
+		const int total_fields = 22;  //? Updated for NET_Dir field
 
 		// Initialize on first call
 		if (not initialized) {
@@ -5546,6 +5551,8 @@ namespace MenuV2 {
 					return current_preset.mem_enabled;
 				case NET_Pos:
 					return current_preset.net_enabled && current_preset.mem_enabled;
+				case NET_Dir:
+					return current_preset.net_enabled;  // Direction always editable when NET enabled
 				case PROC_Pos:
 					return current_preset.proc_enabled;
 				case GraphSymbol:
@@ -5568,7 +5575,7 @@ namespace MenuV2 {
 		auto isRadioField = [](int field) -> bool {
 			return field == CPU_Pos or field == GPU_Pos or field == PWR_Pos or
 			       field == MEM_Type or field == MEM_Graph or
-			       field == NET_Pos or field == PROC_Pos or field == GraphSymbol;
+			       field == NET_Pos or field == NET_Dir or field == PROC_Pos or field == GraphSymbol;
 		};
 
 		//? Check if field is a ToggleRow type (multiple toggles on one row)
@@ -5605,6 +5612,7 @@ namespace MenuV2 {
 				case MEM_Type: return 2;    // H, V
 				case MEM_Graph: return 2;   // Bar, Meter
 				case NET_Pos: return 2;     // Left, Right
+				case NET_Dir: return 4;     // ◀, ▶, ▼, ▲
 				case PROC_Pos: return 2;    // Right, Wide
 				case GraphSymbol: return 4; // default, braille, block, tty
 				default: return 0;
@@ -5620,6 +5628,7 @@ namespace MenuV2 {
 				case MEM_Type: return static_cast<int>(current_preset.mem_type);
 				case MEM_Graph: return current_preset.mem_graph_meter ? 1 : 0;
 				case NET_Pos: return static_cast<int>(current_preset.net_position);
+				case NET_Dir: return current_preset.net_graph_direction;
 				case PROC_Pos: return static_cast<int>(current_preset.proc_position);
 				case GraphSymbol: {
 					vector<string> syms = {"default", "braille", "block", "tty"};
@@ -5656,6 +5665,9 @@ namespace MenuV2 {
 					break;
 				case NET_Pos:
 					current_preset.net_position = static_cast<NetPosition>(val);
+					break;
+				case NET_Dir:
+					current_preset.net_graph_direction = val;
 					break;
 				case PROC_Pos:
 					current_preset.proc_position = static_cast<ProcPosition>(val);
@@ -6167,7 +6179,7 @@ namespace MenuV2 {
 				if (is_editable) {
 					int radio_x = value_x;
 					for (size_t ri = 0; ri < options.size(); ri++) {
-						int option_width = 2 + static_cast<int>(options[ri].size());
+						int option_width = 2 + static_cast<int>(ulen(options[ri]));
 						Menu::mouse_mappings["pe_radio_" + to_string(field) + "_" + to_string(ri)] = {
 							row_y, radio_x, 1, option_width
 						};
@@ -6223,7 +6235,7 @@ namespace MenuV2 {
 				if (pos_editable) {
 					int radio_x = pos_start_x;
 					for (size_t ri = 0; ri < pos_options.size(); ri++) {
-						int option_width = 2 + static_cast<int>(pos_options[ri].size());
+						int option_width = 2 + static_cast<int>(ulen(pos_options[ri]));
 						Menu::mouse_mappings["pe_radio_" + to_string(pos_field) + "_" + to_string(ri)] = {
 							row_y, radio_x, 1, option_width
 						};
@@ -6386,6 +6398,19 @@ namespace MenuV2 {
 				out += Mv::to(row_y, label_x) + fg + marker + "Position";
 				out += Mv::to(row_y, value_x) + fg + "(Wide)";
 				Menu::mouse_mappings["pe_field_" + to_string(NET_Pos)] = {row_y, label_x, 1, left_col_width - 2};
+				row_y++;
+			}
+
+			//? NET Direction control
+			if (current_preset.net_enabled) {
+				drawRadioField(NET_Dir, "Direction", {"◀", "▶", "▼", "▲"});
+			} else {
+				bool is_sel = (selected_field == NET_Dir);
+				string fg = Theme::c("inactive_fg");
+				string marker = is_sel ? ">" : " ";
+				out += Mv::to(row_y, label_x) + fg + marker + "Direction";
+				out += Mv::to(row_y, value_x) + fg + "(n/a)";
+				Menu::mouse_mappings["pe_field_" + to_string(NET_Dir)] = {row_y, label_x, 1, left_col_width - 2};
 				row_y++;
 			}
 
