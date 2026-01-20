@@ -3183,7 +3183,24 @@ namespace Proc {
 				if (Input::mouse_mappings.contains(key)) Input::mouse_mappings.erase(key);
 
 			//? Adapt sizes of text fields based on layout
+			//? Get column visibility settings from config
 			bool show_cmd = Config::getB("proc_show_cmd");
+			bool show_threads_cfg = Config::getB("proc_show_threads");
+			bool show_user_cfg = Config::getB("proc_show_user");
+			bool show_memory_cfg = Config::getB("proc_show_memory");
+			bool show_cpu_cfg = Config::getB("proc_show_cpu");
+			bool show_io_cfg = Config::getB("proc_show_io");         //? Combined IO for side layout
+			bool show_io_read_cfg = Config::getB("proc_show_io_read");   //? IO Read for bottom layout
+			bool show_io_write_cfg = Config::getB("proc_show_io_write"); //? IO Write for bottom layout
+			bool show_state_cfg = Config::getB("proc_show_state");
+			bool show_priority_cfg = Config::getB("proc_show_priority");
+			bool show_nice_cfg = Config::getB("proc_show_nice");
+			bool show_ports_cfg = Config::getB("proc_show_ports");
+			bool show_virt_cfg = Config::getB("proc_show_virt");
+			bool show_runtime_cfg = Config::getB("proc_show_runtime");
+			bool show_cputime_cfg = Config::getB("proc_show_cputime");
+			bool show_gputime_cfg = Config::getB("proc_show_gputime");
+
 			gpu_size = show_gpu ? (show_gpu_graphs ? 10 : 5) : 0;  // GPU% column width for side layout (5 graph + 5 value, or just 5 value)
 			int gpu_adjustment = show_gpu ? (show_gpu_graphs ? 11 : 6) : 0;  // Account for GPU column + space (side layout)
 
@@ -3196,43 +3213,48 @@ namespace Proc {
 				//? When Command is hidden, use lower thresholds and more generous column sizes
 				//? Priority: Data columns get comfortable space first, Program gets the rest
 				if (show_cmd) {
-					user_size = (width < 140 ? 8 : 10);
-					ports_size = (width > 120 ? 5 : 0);
-					io_read_size = (width > 100 ? 5 : 0);
-					io_write_size = (width > 100 ? 5 : 0);
-					virt_size = (width > 130 ? 6 : 0);
-					cpu_time_size = (width > 140 ? 8 : 0);
-					gpu_time_size = (show_gpu and width > 150 ? 8 : 0);
-					runtime_size = (width > 110 ? 8 : 0);
+					user_size = show_user_cfg ? (width < 140 ? 8 : 10) : 0;
+					ports_size = (show_ports_cfg and width > 120) ? 5 : 0;
+					io_read_size = (show_io_read_cfg and width > 100) ? 5 : 0;
+					io_write_size = (show_io_write_cfg and width > 100) ? 5 : 0;
+					virt_size = (show_virt_cfg and width > 130) ? 6 : 0;
+					cpu_time_size = (show_cputime_cfg and width > 140) ? 8 : 0;
+					gpu_time_size = (show_gputime_cfg and show_gpu and width > 150) ? 8 : 0;
+					runtime_size = (show_runtime_cfg and width > 110) ? 8 : 0;
 				} else {
 					//? No Command: lower thresholds, more generous sizing for data columns
-					user_size = (width < 100 ? 10 : 12);
-					ports_size = (width > 80 ? 6 : 0);      // Lower threshold, slightly wider
-					io_read_size = (width > 80 ? 6 : 0);    // Lower threshold, slightly wider
-					io_write_size = (width > 80 ? 6 : 0);   // Lower threshold, slightly wider
-					virt_size = (width > 90 ? 7 : 0);       // Lower threshold, slightly wider
-					cpu_time_size = (width > 100 ? 9 : 0);  // Lower threshold, wider for "Xd HH:MM"
-					gpu_time_size = (show_gpu and width > 110 ? 9 : 0);  // Lower threshold, wider
-					runtime_size = (width > 90 ? 9 : 0);    // Lower threshold, wider for "Xd HH:MM"
+					user_size = show_user_cfg ? (width < 100 ? 10 : 12) : 0;
+					ports_size = (show_ports_cfg and width > 80) ? 6 : 0;
+					io_read_size = (show_io_read_cfg and width > 80) ? 6 : 0;
+					io_write_size = (show_io_write_cfg and width > 80) ? 6 : 0;
+					virt_size = (show_virt_cfg and width > 90) ? 7 : 0;
+					cpu_time_size = (show_cputime_cfg and width > 100) ? 9 : 0;
+					gpu_time_size = (show_gputime_cfg and show_gpu and width > 110) ? 9 : 0;
+					runtime_size = (show_runtime_cfg and width > 90) ? 9 : 0;
 				}
 
-				state_size = 3;      // "Sta" column: R/S/I/Z/T
-				priority_size = 3;   // Priority value (0-127)
-				nice_size = 3;       // Nice value: -20 to 19
-				thread_size = 4;     // Thread count
-				io_size = 0;  // Disable combined IO
+				state_size = show_state_cfg ? 3 : 0;      // "Sta" column: R/S/I/Z/T
+				priority_size = show_priority_cfg ? 3 : 0;   // Priority value (0-127)
+				nice_size = show_nice_cfg ? 3 : 0;       // Nice value: -20 to 19
+				thread_size = show_threads_cfg ? 4 : 0;     // Thread count
+				io_size = 0;  // Disable combined IO in bottom layout
 
 				//? Calculate fixed column space (excluding prog_size and cmd_size)
-				//? Each column uses size + 2 spacing (two spaces "  " between columns)
-				int fixed_cols = 8 + 2 + user_size + 2 + state_size + 2 + priority_size + 2 + nice_size + 2 + thread_size + 2;
+				//? Each column uses size + 2 spacing (only if visible)
+				int fixed_cols = 8 + 2;  // Pid always visible
+				if (user_size > 0) fixed_cols += user_size + 2;
+				if (state_size > 0) fixed_cols += state_size + 2;
+				if (priority_size > 0) fixed_cols += priority_size + 2;
+				if (nice_size > 0) fixed_cols += nice_size + 2;
+				if (thread_size > 0) fixed_cols += thread_size + 2;
 				if (ports_size > 0) fixed_cols += ports_size + 2;
 				if (io_read_size > 0) fixed_cols += io_read_size + 2 + io_write_size + 2;
-				fixed_cols += 5 + 2;  // Mem
+				if (show_memory_cfg) fixed_cols += 5 + 2;  // Mem
 				if (virt_size > 0) fixed_cols += virt_size + 2;
 				if (cpu_time_size > 0) fixed_cols += cpu_time_size + 2;
 				if (gpu_time_size > 0) fixed_cols += gpu_time_size + 2;
 				if (runtime_size > 0) fixed_cols += runtime_size + 2;
-				fixed_cols += 5 + 2;  // Cpu% (no graph in bottom layout)
+				if (show_cpu_cfg) fixed_cols += 5 + 2;  // Cpu% (no graph in bottom layout)
 				fixed_cols += (show_gpu ? 5 + 2 : 0);  // Gpu% (7 chars if shown, 0 if not)
 				fixed_cols += 4;  // Box borders + scrollbar area
 
@@ -3285,8 +3307,8 @@ namespace Proc {
 			else {
 				//? Side layout or tree view: original compact columns
 				//? Columns: Pid | Program | Command | Threads | User | MemB | IO | Cpu% | Gpu%
-				user_size = (width < 75 ? 5 : 10);
-				thread_size = (width < 75 ? -1 : 4);
+				user_size = show_user_cfg ? (width < 75 ? 5 : 10) : 0;
+				thread_size = show_threads_cfg ? (width < 75 ? -1 : 4) : -1;
 				state_size = 0;     // Hidden in side layout
 				priority_size = 0;  // Hidden in side layout
 				nice_size = 0;      // Hidden in side layout
@@ -3297,7 +3319,7 @@ namespace Proc {
 				runtime_size = 0;   // Hidden in side layout
 				io_read_size = 0;
 				io_write_size = 0;
-				io_size = (width > 75 ? 5 : 0);  // Single combined I/O column (5 chars)
+				io_size = (show_io_cfg and width > 75) ? 5 : 0;  // Single combined I/O column (5 chars)
 				int io_adjustment = (io_size > 0 ? 6 : 0);  // Account for I/O column + space
 
 				prog_size = (width > 70 ? 16 : (width > 55 ? 8 : width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment));
@@ -3322,6 +3344,48 @@ namespace Proc {
 			prog_size = max(1, prog_size);
 			tree_size = max(1, tree_size);
 			if (cmd_size > 0) cmd_size = max(1, cmd_size);
+
+			//? Update visible sort fields based on current layout, column visibility, and config settings
+			//? This controls which sort fields are available via left/right arrow keys
+			//? Order MUST match the visual column order in the process table
+			visible_sort_fields.clear();
+			visible_sort_fields.push_back("pid");
+			visible_sort_fields.push_back("name");
+			if (bottom_layout) {
+				//? Bottom layout order: Pid | Program | User | Sta | Pri | Ni | Thr | Ports | IO/R | IO/W | Mem | Virt | CpuT | GpuT | Time | Cpu% | Gpu% | Command
+				if (show_user_cfg and user_size > 0) visible_sort_fields.push_back("user");
+				if (show_state_cfg) visible_sort_fields.push_back("state");
+				if (show_priority_cfg) visible_sort_fields.push_back("priority");
+				if (show_nice_cfg) visible_sort_fields.push_back("nice");
+				if (show_threads_cfg and thread_size > 0) visible_sort_fields.push_back("threads");
+				if (show_ports_cfg and ports_size > 0) visible_sort_fields.push_back("ports");
+				if (show_io_read_cfg and io_read_size > 0) visible_sort_fields.push_back("io read");
+				if (show_io_write_cfg and io_write_size > 0) visible_sort_fields.push_back("io write");
+				if (show_memory_cfg) visible_sort_fields.push_back("memory");
+				if (show_virt_cfg and virt_size > 0) visible_sort_fields.push_back("virt mem");
+				if (show_cputime_cfg and cpu_time_size > 0) visible_sort_fields.push_back("cpu time");
+				if (show_gputime_cfg and gpu_time_size > 0) visible_sort_fields.push_back("gpu time");
+				if (show_runtime_cfg and runtime_size > 0) visible_sort_fields.push_back("runtime");
+				if (show_cpu_cfg) {
+					visible_sort_fields.push_back("cpu direct");
+					visible_sort_fields.push_back("cpu lazy");
+				}
+				if (show_gpu) visible_sort_fields.push_back("gpu");
+				if (show_cmd and cmd_size > 0) visible_sort_fields.push_back("command");
+			}
+			else {
+				//? Side layout order: Pid | Program | Command | Threads | User | Mem | IO | Cpu% | Gpu%
+				if (show_cmd and cmd_size > 0) visible_sort_fields.push_back("command");
+				if (show_threads_cfg and thread_size > 0) visible_sort_fields.push_back("threads");
+				if (show_user_cfg and user_size > 0) visible_sort_fields.push_back("user");
+				if (show_memory_cfg) visible_sort_fields.push_back("memory");
+				if (show_io_cfg and io_size > 0) visible_sort_fields.push_back("io");
+				if (show_cpu_cfg) {
+					visible_sort_fields.push_back("cpu direct");
+					visible_sort_fields.push_back("cpu lazy");
+				}
+				if (show_gpu) visible_sort_fields.push_back("gpu");
+			}
 
 			//? Detailed box
 			if (show_detailed) {
@@ -3546,6 +3610,12 @@ namespace Proc {
 			    	hi_color, 'F', t_color, "ollow",
 			    	Fx::ub, title_right_down);
 			    if (selected > 0) Input::mouse_mappings["F"] = {y + height - 1, mouse_x, 1, 6};
+			    mouse_x += 8;
+			}
+			//? Toggle columns button (Shift+T)
+			if (width > 82) {
+			    out += title_left_down + Fx::b + Theme::c("hi_fg") + 'T' + Theme::c("title") + "oggle" + Fx::ub + title_right_down;
+			    Input::mouse_mappings["T"] = {y + height - 1, mouse_x, 1, 6};
 			}
 
 			//? Labels for fields in list
@@ -3575,20 +3645,20 @@ namespace Proc {
 						col_x += size + 2;  //? Fixed width: header + indicator/space + trailing space
 					};
 
-					//? Pid column (sortable)
+					//? Pid column (sortable) - always shown
 					add_header("Pid:", 8, "pid");
-					//? Program column (sortable by name)
+					//? Program column (sortable by name) - always shown
 					add_header("Program:", prog_size, "name", false);
-					//? User column (sortable)
-					add_header("User:", user_size, "user", false);
-					//? State column (sortable)
-					add_header("Sta", state_size, "state");
-					//? Priority column (sortable)
-					add_header("Pri", priority_size, "priority");
-					//? Nice column (sortable)
-					add_header("Ni", nice_size, "nice");
-					//? Threads column (sortable)
-					add_header("Thr", thread_size, "threads");
+					//? User column (sortable, conditional)
+					if (user_size > 0) add_header("User:", user_size, "user", false);
+					//? State column (sortable, conditional)
+					if (state_size > 0) add_header("Sta", state_size, "state");
+					//? Priority column (sortable, conditional)
+					if (priority_size > 0) add_header("Pri", priority_size, "priority");
+					//? Nice column (sortable, conditional)
+					if (nice_size > 0) add_header("Ni", nice_size, "nice");
+					//? Threads column (sortable, conditional)
+					if (thread_size > 0) add_header("Thr", thread_size, "threads");
 					//? Ports column (sortable, conditional)
 					if (ports_size > 0) add_header("Ports", ports_size, "ports");
 					//? IO Read column (sortable, conditional)
@@ -3596,8 +3666,8 @@ namespace Proc {
 						add_header("IO/R", io_read_size, "io read");
 						add_header("IO/W", io_write_size, "io write");
 					}
-					//? Memory column (sortable)
-					add_header((mem_bytes ? "MemB" : "Mem%"), 5, "memory");
+					//? Memory column (sortable, conditional)
+					if (show_memory_cfg) add_header((mem_bytes ? "MemB" : "Mem%"), 5, "memory");
 					//? Virtual memory column (sortable, conditional)
 					if (virt_size > 0) add_header("Virt", virt_size, "virt mem");
 					//? CpuT column (sortable, conditional)
@@ -3606,13 +3676,13 @@ namespace Proc {
 					if (gpu_time_size > 0) add_header("GpuT", gpu_time_size, "gpu time");
 					//? Runtime column (sortable, conditional)
 					if (runtime_size > 0) add_header("Time", runtime_size, "runtime");
-					//? CPU% column (sortable) - use "cpu direct" since we display instant cpu_p value
-					add_header("Cpu%", 5, "cpu direct");
+					//? CPU% column (sortable, conditional) - use "cpu direct" since we display instant cpu_p value
+					if (show_cpu_cfg) add_header("Cpu%", 5, "cpu direct");
 					//? GPU% column (sortable, conditional)
 					if (show_gpu) {
 						add_header("Gpu%", 5, "gpu");
 					}
-					//? Command column (not sortable per user request)
+					//? Command column (not sortable per user request, conditional)
 					if (cmd_size > 0) {
 						out += hi + "C" + title + "ommand";
 					}
@@ -3620,6 +3690,7 @@ namespace Proc {
 				}
 				else {
 					//? Side layout: original column order
+					//? Headers only shown if config enabled and size > 0
 					out += Mv::to(y+1, x+1) + Theme::c("title") + Fx::b
 						+ rjust("Pid:", 8) + ' '
 						+ ljust("Program:", prog_size) + ' ';
@@ -3629,10 +3700,10 @@ namespace Proc {
 						Input::mouse_mappings["C"] = {y+1, x+11+prog_size, 1, 1};
 					}
 					out += (thread_size > 0 ? Mv::l(4) + "Threads: " : "")
-						+ ljust("User:", user_size) + ' '
-						+ rjust((mem_bytes ? "MemB" : "Mem%"), 5) + ' '
+						+ (user_size > 0 ? ljust("User:", user_size) + ' ' : "")
+						+ (show_memory_cfg ? rjust((mem_bytes ? "MemB" : "Mem%"), 5) + ' ' : "")
 						+ (io_size > 0 ? rjust("IO", io_size) + ' ' : "")
-						+ rjust("Cpu%", (show_graphs ? 10 : 5))
+						+ (show_cpu_cfg ? rjust("Cpu%", (show_graphs ? 10 : 5)) : "")
 						+ (show_gpu ? " " + rjust("Gpu%", gpu_size) : "") + Fx::ub;
 				}
 			}
@@ -3734,6 +3805,10 @@ namespace Proc {
 			selected = select_max;
 		if (selected > numpids)
 			selected = numpids;
+
+		//? Read column visibility config settings for rendering loop
+		const bool render_show_memory = Config::getB("proc_show_memory");
+		const bool render_show_cpu = Config::getB("proc_show_cpu");
 
 		//* Iteration over processes
 		int lc = 0;
@@ -4039,34 +4114,36 @@ namespace Proc {
 				//? Use Theme gradient (green at 0% -> red at 100%) like other CPU displays
 				//? Column order: User | Sta | Pri | Ni | Thr | Ports | IO/R | IO/W | Mem | Virt | CpuT | GpuT | Time | Cpu% | Gpu% | Command
 				//? All columns use size + 2 spacing to match headers (size + space + indicator/space)
+				//? Columns only shown if config enabled and size > 0
 				string cpu_heat = Theme::g("cpu").at(clamp((long long)p.cpu_p, 0ll, 100ll));
 				string gpu_heat = Theme::g("cpu").at(clamp((long long)p.gpu_p, 0ll, 100ll));
-				out += g_color + ljust((cmp_greater(p.user.size(), user_size) ? p.user.substr(0, user_size - 1) + '+' : p.user), user_size) + "  "
-					+ rjust(state_str, state_size) + "  "
-					+ rjust(to_string(p.p_priority), priority_size) + "  "
-					+ rjust(nice_str, nice_size) + "  "
-					+ t_color + rjust(proc_threads_string, thread_size) + "  " + end
+				out += (user_size > 0 ? g_color + ljust((cmp_greater(p.user.size(), user_size) ? p.user.substr(0, user_size - 1) + '+' : p.user), user_size) + "  " : "")
+					+ (state_size > 0 ? rjust(state_str, state_size) + "  " : "")
+					+ (priority_size > 0 ? rjust(to_string(p.p_priority), priority_size) + "  " : "")
+					+ (nice_size > 0 ? rjust(nice_str, nice_size) + "  " : "")
+					+ (thread_size > 0 ? t_color + rjust(proc_threads_string, thread_size) + "  " + end : "")
 					+ (ports_size > 0 ? g_color + rjust(ports_str, ports_size) + "  " + end : "")
 					+ (io_read_size > 0 ? g_color + rjust(io_read_str, io_read_size) + "  " + rjust(io_write_str, io_write_size) + "  " + end : "")
-					+ m_color + rjust(mem_str, 5) + "  " + end
+					+ (render_show_memory ? m_color + rjust(mem_str, 5) + "  " + end : "")
 					+ (virt_size > 0 ? g_color + rjust(virt_str, virt_size) + "  " + end : "")
 					+ (cpu_time_size > 0 ? g_color + rjust(cpu_time_str, cpu_time_size) + "  " + end : "")
 					+ (gpu_time_size > 0 ? gp_color + rjust(gpu_time_str, gpu_time_size) + "  " + end : "")
 					+ (runtime_size > 0 ? g_color + rjust(runtime_str, runtime_size) + "  " + end : "")
-					+ cpu_heat + rjust(cpu_str, 5) + "  " + end
+					+ (render_show_cpu ? cpu_heat + rjust(cpu_str, 5) + "  " + end : "")
 					+ (show_gpu ? gpu_heat + rjust(gpu_str, 5) + "  " + end : "")
 					+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) : "")
 					+ Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
 			}
 			else {
 				//? Side layout or tree view: original column order
+				//? Columns only shown if config enabled and size > 0
 				out += (thread_size > 0 ? t_color + rjust(proc_threads_string, thread_size) + ' ' + end : "" )
-					+ g_color + ljust((cmp_greater(p.user.size(), user_size) ? p.user.substr(0, user_size - 1) + '+' : p.user), user_size) + ' '
-					+ m_color + rjust(mem_str, 5) + end + ' '
+					+ (user_size > 0 ? g_color + ljust((cmp_greater(p.user.size(), user_size) ? p.user.substr(0, user_size - 1) + '+' : p.user), user_size) + ' ' : "")
+					+ (render_show_memory ? m_color + rjust(mem_str, 5) + end + ' ' : "")
 					+ (io_size > 0 ? g_color + rjust(io_str, io_size) + ' ' + end : "")
-					+ (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_graphs ? graph_bg * 5: "")
-					+ (p_graphs.contains(p.pid) ? Mv::l(5) + c_color + p_graphs.at(p.pid)({scale_to_graph(p.cpu_p)}, data_same) : "") + end + ' '
-					+ c_color + rjust(cpu_str, 4)
+					+ (render_show_cpu ? (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_graphs ? graph_bg * 5: "")
+						+ (p_graphs.contains(p.pid) ? Mv::l(5) + c_color + p_graphs.at(p.pid)({scale_to_graph(p.cpu_p)}, data_same) : "") + end + ' '
+						+ c_color + rjust(cpu_str, 4) : "")
 					+ (show_gpu ? " " + (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_gpu_graphs ? graph_bg * 5 : "")
 						+ (show_gpu_graphs and p_gpu_graphs.contains(p.pid) ? Mv::l(5) + gp_color + p_gpu_graphs.at(p.pid)({scale_to_graph(p.gpu_p)}, data_same) : "") + end + ' '
 						+ gp_color + rjust(gpu_str, 4) : "")

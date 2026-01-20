@@ -497,6 +497,10 @@ namespace Proc {
 		"gpu time",
 	};
 
+	//? Currently visible sort fields based on layout and column visibility
+	//? Updated by Proc::draw() based on which columns are actually shown
+	extern vector<string> visible_sort_fields;
+
 	//? Translation from process state char to explanative string
 	const std::unordered_map<char, string> proc_states = {
 		{'R', "Running"},

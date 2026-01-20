@@ -129,6 +129,36 @@ namespace Config {
 
 		{"proc_show_cmd",       "#* Show Command column in process list. Toggle with Shift+C."},
 
+		{"proc_show_threads",   "#* Show Threads column in process list."},
+
+		{"proc_show_user",      "#* Show User column in process list."},
+
+		{"proc_show_memory",    "#* Show Memory column in process list."},
+
+		{"proc_show_cpu",       "#* Show CPU% column in process list."},
+
+		{"proc_show_io",        "#* Show combined I/O column in process list (side layout only)."},
+
+		{"proc_show_io_read",   "#* Show I/O Read column in process list (bottom layout only)."},
+
+		{"proc_show_io_write",  "#* Show I/O Write column in process list (bottom layout only)."},
+
+		{"proc_show_state",     "#* Show State column in process list (bottom layout only)."},
+
+		{"proc_show_priority",  "#* Show Priority column in process list (bottom layout only)."},
+
+		{"proc_show_nice",      "#* Show Nice column in process list (bottom layout only)."},
+
+		{"proc_show_ports",     "#* Show Ports column in process list (bottom layout only)."},
+
+		{"proc_show_virt",      "#* Show Virtual Memory column in process list (bottom layout only)."},
+
+		{"proc_show_runtime",   "#* Show Runtime column in process list (bottom layout only)."},
+
+		{"proc_show_cputime",   "#* Show CPU Time column in process list (bottom layout only)."},
+
+		{"proc_show_gputime",   "#* Show GPU Time column in process list (bottom layout only, requires GPU)."},
+
 		{"proc_info_smaps",		"#* Use /proc/[pid]/smaps for memory information in the process info box (very slow but more accurate)"},
 
 		{"proc_left",			"#* Show proc box on left side of screen instead of right."},
@@ -373,6 +403,21 @@ namespace Config {
 		{"proc_cpu_graphs", true},
 		{"proc_gpu_graphs", true},
 		{"proc_show_cmd", true},
+		{"proc_show_threads", true},
+		{"proc_show_user", true},
+		{"proc_show_memory", true},
+		{"proc_show_cpu", true},
+		{"proc_show_io", true},
+		{"proc_show_io_read", true},
+		{"proc_show_io_write", true},
+		{"proc_show_state", true},
+		{"proc_show_priority", true},
+		{"proc_show_nice", true},
+		{"proc_show_ports", true},
+		{"proc_show_virt", true},
+		{"proc_show_runtime", true},
+		{"proc_show_cputime", true},
+		{"proc_show_gputime", true},
 		{"proc_info_smaps", false},
 		{"proc_left", false},
 		{"proc_filter_kernel", false},

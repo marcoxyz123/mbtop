@@ -2112,6 +2112,167 @@ namespace Menu {
 	}
 #endif
 
+	//? Process column toggle menu - allows user to show/hide columns
+	static int procColumnToggleMenu(const string& key) {
+		static int x{};
+		static int y{};
+		static int box_width{};
+		static int selected_option = 0;
+		static int scroll_offset = 0;
+
+		//? Column definitions: {config_key, display_name, bottom_only, side_only}
+		struct ColumnDef {
+			string config_key;
+			string display_name;
+			bool bottom_only;
+			bool side_only;
+		};
+
+		static const vector<ColumnDef> columns = {
+			{"proc_show_cmd",      "Command",       false, false},
+			{"proc_show_threads",  "Threads",       false, false},
+			{"proc_show_user",     "User",          false, false},
+			{"proc_show_memory",   "Memory",        false, false},
+			{"proc_show_cpu",      "CPU%",          false, false},
+			{"proc_show_io",       "I/O (combined)", false, true},   //? Side layout only - combined IO
+			{"proc_show_io_read",  "IO/R",          true,  false},  //? Bottom layout only
+			{"proc_show_io_write", "IO/W",          true,  false},  //? Bottom layout only
+			{"proc_show_state",    "State",         true,  false},
+			{"proc_show_priority", "Priority",      true,  false},
+			{"proc_show_nice",     "Nice",          true,  false},
+			{"proc_show_ports",    "Ports",         true,  false},
+			{"proc_show_virt",     "Virtual Mem",   true,  false},
+			{"proc_show_runtime",  "Runtime",       true,  false},
+			{"proc_show_cputime",  "CPU Time",      true,  false},
+			{"proc_show_gputime",  "GPU Time",      true,  false},
+		};
+
+		auto& out = Global::overlay;
+		int retval = Changed;
+
+		bool bottom_layout = Config::getB("proc_full_width");
+		int visible_rows = 10;  //? Max visible rows in the menu
+
+		if (redraw) {
+			selected_option = 0;
+			scroll_offset = 0;
+			box_width = 36;
+			int box_height = visible_rows + 6;  //? header + footer + padding
+			x = Term::width/2 - box_width/2;
+			y = Term::height/2 - box_height/2;
+			bg = Draw::createBox(x, y, box_width, box_height, Theme::c("hi_fg"), true, "Toggle Columns");
+
+			//? Show layout indicator
+			string layout_str = bottom_layout ? "Bottom Layout (Full)" : "Side Layout (Compact)";
+			bg += Mv::to(y+2, x+2) + Theme::c("title") + Fx::b + cjust(layout_str, box_width - 4) + Fx::ub;
+
+			mouse_mappings.clear();
+		}
+		else if (is_in(key, "escape", "q", "T", "col_close")) {
+			return Closed;
+		}
+		else if (is_in(key, "up", "k")) {
+			if (--selected_option < 0) selected_option = static_cast<int>(columns.size()) - 1;
+			//? Adjust scroll to keep selection visible
+			if (selected_option < scroll_offset) scroll_offset = selected_option;
+			if (selected_option >= scroll_offset + visible_rows) scroll_offset = selected_option - visible_rows + 1;
+		}
+		else if (is_in(key, "down", "j")) {
+			if (++selected_option >= static_cast<int>(columns.size())) selected_option = 0;
+			//? Adjust scroll
+			if (selected_option < scroll_offset) scroll_offset = selected_option;
+			if (selected_option >= scroll_offset + visible_rows) scroll_offset = selected_option - visible_rows + 1;
+		}
+		else if (is_in(key, "enter", "space")) {
+			//? Toggle the selected column
+			const auto& col = columns[selected_option];
+			Config::flip(col.config_key);
+			Proc::redraw = true;
+		}
+		else if (key.starts_with("col_opt")) {
+			int opt_num = stoi_safe(key.substr(7), -1);
+			if (opt_num >= 0 and opt_num < static_cast<int>(columns.size())) {
+				if (selected_option == opt_num) {
+					//? Double-click toggles
+					const auto& col = columns[opt_num];
+					Config::flip(col.config_key);
+					Proc::redraw = true;
+				} else {
+					selected_option = opt_num;
+				}
+			}
+		}
+		else if (key == "mouse_scroll_up") {
+			if (scroll_offset > 0) scroll_offset--;
+		}
+		else if (key == "mouse_scroll_down") {
+			if (scroll_offset < static_cast<int>(columns.size()) - visible_rows) scroll_offset++;
+		}
+		else {
+			retval = NoChange;
+		}
+
+		if (retval == Changed) {
+			int cy = y + 4;
+			out = bg;
+
+			//? Draw column options
+			int end_idx = min(static_cast<int>(columns.size()), scroll_offset + visible_rows);
+			for (int i = scroll_offset; i < end_idx; ++i) {
+				const auto& col = columns[i];
+				bool is_selected = (i == selected_option);
+				bool is_enabled = Config::getB(col.config_key);
+				//? Column is applicable if: (not bottom_only OR in bottom_layout) AND (not side_only OR in side_layout)
+				bool is_applicable = (not col.bottom_only or bottom_layout) and (not col.side_only or not bottom_layout);
+
+				string prefix = is_selected ? Theme::c("hi_fg") + Fx::b + "> " : "  ";
+				string suffix = is_selected ? Fx::ub : "";
+
+				//? Checkbox indicator - use dot (•) to match Settings menu style
+				string checkbox;
+				if (not is_applicable) {
+					checkbox = Theme::c("inactive_fg") + "[-]";  //? Not applicable in this layout
+				} else if (is_enabled) {
+					checkbox = Theme::c("hi_fg") + "[•]";
+				} else {
+					checkbox = Theme::c("main_fg") + "[ ]";
+				}
+
+				string name_color = is_applicable ? Theme::c("main_fg") : Theme::c("inactive_fg");
+				string layout_indicator = col.bottom_only ? Theme::c("inactive_fg") + " (B)" :
+				                          col.side_only ? Theme::c("inactive_fg") + " (S)" : "";
+
+				out += Mv::to(cy, x+2) + prefix + checkbox + " " + name_color + col.display_name + layout_indicator + suffix;
+
+				//? Mouse mapping
+				mouse_mappings["col_opt" + to_string(i)] = Input::Mouse_loc{cy, x+2, 1, box_width - 4};
+				cy++;
+			}
+
+			//? Scroll indicators
+			if (scroll_offset > 0) {
+				out += Mv::to(y+3, x + box_width - 4) + Theme::c("hi_fg") + "▲";
+			}
+			if (scroll_offset + visible_rows < static_cast<int>(columns.size())) {
+				out += Mv::to(y + 4 + visible_rows, x + box_width - 4) + Theme::c("hi_fg") + "▼";
+			}
+
+			//? Footer
+			int btn_y = y + visible_rows + 5;
+			int close_x = x + box_width/2 - 4;
+			out += Mv::to(btn_y, close_x) + Theme::c("hi_fg") + "[" + Theme::c("title") + Fx::b + " Close " + Fx::ub + Theme::c("hi_fg") + "]";
+			mouse_mappings["col_close"] = Input::Mouse_loc{btn_y, close_x, 1, 9};
+
+			//? Help text
+			out += Mv::to(++btn_y, x+2) + Theme::c("inactive_fg") + "↑↓ Navigate  Space Toggle  Esc Close";
+			out += Mv::to(++btn_y, x+2) + Theme::c("inactive_fg") + "(B)=Bottom only  (S)=Side only";
+
+			out += Fx::reset;
+		}
+
+		return (redraw ? Changed : retval);
+	}
+
 	//* Wrapper to call the new MenuV2 options menu
 	//? Set to 1 to use the new MenuV2 options menu instead of the old one
 	#define USE_MENUV2_OPTIONS 1
@@ -2139,6 +2300,7 @@ namespace Menu {
 		ref(helpMenu),
 		ref(reniceMenu),
 		ref(vramAllocMenu),
+		ref(procColumnToggleMenu),
 		ref(mainMenu),
 	};
 	bitset<16> menuMask;

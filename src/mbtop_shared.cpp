@@ -176,6 +176,10 @@ namespace Pwr {
 }
 
 namespace Proc {
+
+	//? Currently visible sort fields - updated by draw() based on column visibility
+	vector<string> visible_sort_fields;
+
 bool set_priority(pid_t pid, int priority) {
   if (setpriority(PRIO_PROCESS, pid, priority) == 0) {
     return true;

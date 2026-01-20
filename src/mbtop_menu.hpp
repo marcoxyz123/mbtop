@@ -91,6 +91,7 @@ namespace Menu {
 		Help,
 	    Renice,
 		VramAlloc,
+		ProcColumnToggle,
 		Main
 	};
 

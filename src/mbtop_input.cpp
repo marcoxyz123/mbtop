@@ -497,17 +497,23 @@ namespace Input {
 						return;
 				}
 				else if (key == "left" or (vim_keys and key == "h")) {
-					int cur_i = v_index(Proc::sort_vector, Config::getS("proc_sorting"));
+					//? Use visible_sort_fields to only cycle through visible columns
+					const auto& fields = Proc::visible_sort_fields.empty() ? Proc::sort_vector : Proc::visible_sort_fields;
+					int cur_i = v_index(fields, Config::getS("proc_sorting"));
+					if (cur_i < 0) cur_i = 0;  //? Current sort not in visible fields, start at beginning
 					if (--cur_i < 0)
-						cur_i = Proc::sort_vector.size() - 1;
-					Config::set("proc_sorting", Proc::sort_vector.at(cur_i));
+						cur_i = fields.size() - 1;
+					Config::set("proc_sorting", fields.at(cur_i));
 					Config::set("update_following", true);
 				}
 				else if (key == "right" or (vim_keys and key == "l")) {
-					int cur_i = v_index(Proc::sort_vector, Config::getS("proc_sorting"));
-					if (std::cmp_greater(++cur_i, Proc::sort_vector.size() - 1))
+					//? Use visible_sort_fields to only cycle through visible columns
+					const auto& fields = Proc::visible_sort_fields.empty() ? Proc::sort_vector : Proc::visible_sort_fields;
+					int cur_i = v_index(fields, Config::getS("proc_sorting"));
+					if (cur_i < 0) cur_i = -1;  //? Current sort not in visible fields, will wrap to 0
+					if (std::cmp_greater(++cur_i, fields.size() - 1))
 						cur_i = 0;
-					Config::set("proc_sorting", Proc::sort_vector.at(cur_i));
+					Config::set("proc_sorting", fields.at(cur_i));
 					Config::set("update_following", true);
 				}
 				else if (is_in(key, "f", "/")) {
@@ -702,6 +708,11 @@ namespace Input {
 				else if (key == "C") {
 					Config::flip("proc_show_cmd");
 					redraw = true;
+				}
+				//? Open column toggle menu with Shift+T (Proc focus only)
+				else if (key == "T") {
+					Menu::show(Menu::Menus::ProcColumnToggle);
+					return;
 				}
 				else if (is_in(key, "t", kill_key) and (Config::getB("show_detailed") or Config::getI("selected_pid") > 0)) {
 					atomic_wait(Runner::active);
