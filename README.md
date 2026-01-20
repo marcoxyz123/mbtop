@@ -42,6 +42,8 @@
 ### User Experience
 - **Redesigned Settings Menu** — Full mouse support with tabbed interface (v1.6+)
 - **Preset Builder** — 100+ layout configurations with live preview
+- **4-Direction NET Graph** — Choose graph direction: right-to-left, left-to-right, top-down, or bottom-up (v1.6.4+)
+- **Column Toggle Menu** — Show/hide process columns via interactive menu with Shift+T (v1.6.4+)
 - **Multi-Instance Support** — Run multiple instances without config conflicts (v1.6.1+)
 - **Instance Indicators** — Visual (P)rimary/(S)econdary markers in panel headers (v1.6.3+)
 - **Themes** — 20+ built-in themes including new Nord-based default
@@ -170,6 +172,9 @@ prevent_autosave = false
 | `p` | Toggle power stats |
 | `6` | Split GPU/ANE graphs |
 | `V` | Toggle VRAM display |
+| `Shift+3` | Cycle NET graph direction (→←↓↑) |
+| `Shift+T` | Open column toggle menu (Proc focus) |
+| `Shift+C` | Toggle Command column |
 | `e` | Edit preset (in Presets tab) |
 | `q` `Esc` | Quit |
 | `?` `F1` | Help menu |
@@ -192,6 +197,13 @@ Custom themes can be placed in `~/.config/mbtop/themes/`
 ---
 
 ## What's New in v1.6
+
+### v1.6.4
+
+- **4-Direction NET Graph** — Network graphs now support four directions: right-to-left, left-to-right, top-down, and bottom-up. Cycle with `Shift+3` or configure in the preset editor
+- **Vertical Mode Support** — Top-down and bottom-up directions use a vertical graph layout optimized for tall terminal windows
+- **Column Toggle Menu** — New interactive menu to show/hide process list columns. Press `Shift+T` in Process panel focus to customize visible columns
+- **UI Responsiveness** — Improved UI responsiveness and preset validation
 
 ### v1.6.3
 
