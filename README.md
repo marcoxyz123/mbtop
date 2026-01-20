@@ -26,23 +26,28 @@
 ### Apple Silicon Exclusive
 - **GPU Monitoring** — Real-time GPU utilization, frequency, and temperature
 - **Power Monitoring** — CPU, GPU, and ANE power draw in watts
-- **Apple Neural Engine (ANE)** — Monitor ANE utilization
-- **VRAM Tracking** — Video memory usage for GPU workloads
+- **Apple Neural Engine (ANE)** — Monitor ANE utilization with dedicated graphs
+- **VRAM Allocation** — GPU memory usage with clickable allocation dialog
 - **Unified Memory** — Full memory bandwidth and pressure monitoring
+- **Per-Process GPU** — Track GPU usage per process with optional graphs
 
 ### Core Features
 - **CPU Monitoring** — Per-core usage, frequency, and temperature
-- **Memory** — Used, available, cached, with visual graphs
-- **Disk I/O** — Read/write speeds and usage per disk
-- **Network** — Upload/download speeds with graphs
-- **Process List** — Sortable, filterable, with tree view
+- **Memory** — Used, available, cached, with visual graphs and disk meters
+- **Disk I/O** — Read/write speeds and usage per disk with separate colors
+- **Network** — Upload/download speeds with interface filtering
+- **Process List** — Sortable, filterable, with tree view and GPU column
 - **Responsive UI** — Adapts gracefully to terminal size
 
 ### User Experience
-- **Themes** — Multiple built-in themes + custom theme support
-- **Mouse Support** — Full mouse interaction
+- **Redesigned Settings Menu** — Full mouse support with tabbed interface (v1.6+)
+- **Preset Builder** — 13 layout configurations with live preview
+- **Multi-Instance Support** — Run multiple instances without config conflicts (v1.6.1+)
+- **Instance Indicators** — Visual (P)rimary/(S)econdary markers in panel headers (v1.6.3+)
+- **Themes** — 20+ built-in themes including new Nord-based default
+- **Mouse Support** — Full mouse interaction throughout all menus
 - **Vim Keys** — Navigate with h/j/k/l
-- **Customizable** — Extensive configuration options
+- **Flexible Layouts** — Position CPU/GPU/PWR panels at top or bottom
 
 ---
 
@@ -127,14 +132,11 @@ Configuration file location: `~/.config/mbtop/mbtop.conf`
 ### Key Options
 
 ```ini
-# Color theme
+# Color theme (20+ built-in themes)
 color_theme = "Default"
 
 # Update time in milliseconds
-update_ms = 1000
-
-# Show CPU graph
-show_cpu_graph = true
+update_ms = 2000
 
 # Show GPU info (macOS only)
 show_gpu_info = true
@@ -145,8 +147,11 @@ show_power_stats = true
 # Process sorting
 proc_sorting = "cpu lazy"
 
-# Tree view
-proc_tree = false
+# Per-process GPU tracking
+proc_gpu = true
+
+# Multi-instance protection
+prevent_autosave = false
 ```
 
 ### Keyboard Shortcuts
@@ -156,15 +161,16 @@ proc_tree = false
 | `h` `j` `k` `l` | Vim-style navigation |
 | `↑` `↓` `←` `→` | Arrow navigation |
 | `Enter` | Expand/collapse in tree view |
+| `m` | Open settings menu |
 | `t` | Toggle tree view |
 | `r` | Reverse sort order |
 | `f` | Filter processes |
 | `c` | Toggle per-core CPU |
 | `g` | Toggle GPU info |
-| `m` | Cycle memory display |
-| `n` | Cycle network display |
-| `d` | Cycle disk display |
 | `p` | Toggle power stats |
+| `6` | Split GPU/ANE graphs |
+| `V` | Toggle VRAM display |
+| `e` | Edit preset (in Presets tab) |
 | `q` `Esc` | Quit |
 | `?` `F1` | Help menu |
 
@@ -185,6 +191,33 @@ Custom themes can be placed in `~/.config/mbtop/themes/`
 
 ---
 
+## What's New in v1.6
+
+### v1.6.3
+
+- **Instance Indicators** — (P)rimary/(S)econdary markers in panel headers
+- **Improved Multi-Instance** — Visual feedback for read-only instances
+
+### v1.6.2
+
+- **Mouse-Clickable VRAM Dialog** — Click to select allocation options
+- **Save/Cancel Buttons** — Dialog buttons for VRAM allocation
+
+### v1.6.1
+
+- **Multi-Instance Support** — Prevent AutoSave setting protects primary config
+- **Read-Only Mode** — Secondary instances won't overwrite settings
+
+### v1.6.0
+
+- **Redesigned Settings Menu** — Full mouse support with tabbed interface
+- **Preset Builder** — 13 layout configurations with live preview
+- **GPU/PWR Position Controls** — Place panels at top or bottom
+- **Network Interface Filter** — Cycle through specific interfaces
+- **New Default Theme** — Nord-based color scheme
+
+---
+
 ## Comparison with Other Tools
 
 ### System Monitoring
@@ -195,7 +228,8 @@ Custom themes can be placed in `~/.config/mbtop/themes/`
 | GPU Power (Watts) | ✅ | ❌ | ❌ | ❌ |
 | CPU Power (Watts) | ✅ | ❌ | ❌ | ❌ |
 | ANE Monitoring | ✅ | ❌ | ❌ | ❌ |
-| VRAM Tracking | ✅ | ❌ | ❌ | ❌ |
+| VRAM Allocation Dialog | ✅ | ❌ | ❌ | ❌ |
+| Per-Process GPU | ✅ | ❌ | ❌ | ❌ |
 | Per-Core CPU | ✅ | ✅ | ✅ | ✅ |
 | CPU Temperature | ✅ | ❌ | ✅ | ✅ |
 | Memory Details | ✅ | ✅ | ✅ | Basic |
@@ -222,13 +256,14 @@ Custom themes can be placed in `~/.config/mbtop/themes/`
 
 | Feature | mbtop | htop | btop | mactop |
 |---------|-------|------|------|--------|
-| Themes | ✅ | ❌ | ✅ | ❌ |
+| Themes (20+) | ✅ | ❌ | ✅ | ❌ |
 | Custom Themes | ✅ | ❌ | ✅ | ❌ |
-| Mouse Support | ✅ | ✅ | ✅ | ❌ |
+| Full Mouse Support | ✅ | Partial | ✅ | ❌ |
 | Vim Keybindings | ✅ | ❌ | ✅ | ❌ |
+| Preset Builder | ✅ | ❌ | ❌ | ❌ |
+| Multi-Instance Support | ✅ | ❌ | ❌ | ❌ |
 | Responsive Layout | ✅ | ✅ | ✅ | ❌ |
 | Unicode Graphs | ✅ | ❌ | ✅ | ❌ |
-| Box Customization | ✅ | ✅ | ✅ | ❌ |
 
 ### Platform Support
 
@@ -292,7 +327,7 @@ mbtop is a fork of [btop++](https://github.com/aristocratos/btop) by aristocrato
 [Apache License 2.0](LICENSE)
 
 ```
-Copyright 2024-2025 Marco Berger
+Copyright 2024-2026 Marco Berger
 Copyright 2021 aristocratos
 
 Licensed under the Apache License, Version 2.0
