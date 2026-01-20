@@ -1084,6 +1084,13 @@ namespace Input {
 					}
 					no_update = false;
 				}
+				else if (key == "#") {
+					//? Cycle graph direction: 0=RTL, 1=LTR, 2=TTB, 3=BTT
+					int dir = Config::getI("net_graph_direction");
+					dir = (dir + 1) % 4;  //? Cycle through all 4 directions
+					Config::set("net_graph_direction", dir);
+					Net::redraw = true;
+				}
 				else keep_going = true;
 
 				if (not keep_going) {

@@ -299,6 +299,8 @@ namespace Config {
 
 		{"net_sync", 			"#* Sync the auto scaling for download and upload to whichever currently has the highest scale."},
 
+		{"net_graph_direction", "#* Direction of the network graph. 0 = Right to Left (default, newest data on right), 1 = Left to Right (newest data on left). Cycle with Shift+3."},
+
 		{"net_iface", 			"#* Starts with the Network Interface specified here."},
 
 		{"net_iface_filter",	"#* Filter which network interfaces to show when cycling with 'b' and 'n' keys.\n"
@@ -501,6 +503,7 @@ namespace Config {
 		{"update_ms", 2000},
 		{"net_download", 100},
 		{"net_upload", 100},
+		{"net_graph_direction", 0},
 		{"detailed_pid", 0},
 		{"restore_detailed_pid", 0},
 		{"selected_pid", 0},

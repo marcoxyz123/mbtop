@@ -546,19 +546,86 @@ namespace Draw {
 	}
 
 	//* Graph class ------------------------------------------------------------------------------------------------------------>
+
+	//? Helper to reverse a graph line string for LTR direction
+	//? Handles: Mv::r(1) = 4 bytes, [color][braille] = variable+3, pure braille = 3 bytes, space = 1 byte
+	string reverse_graph_line(const string& line) {
+		if (line.empty()) return line;
+
+		vector<string> units;
+		size_t pos = 0;
+
+		while (pos < line.size()) {
+			if (line[pos] == '\033') {
+				//? Escape sequence - check if cursor move or color
+				if (pos + 3 < line.size() and line[pos + 1] == '[' and line[pos + 3] == 'C') {
+					//? Mv::r(1) = "\033[1C" (4 bytes)
+					units.push_back(line.substr(pos, 4));
+					pos += 4;
+				}
+				else {
+					//? Color code ending in 'm', followed by 3-byte braille
+					size_t m_pos = line.find('m', pos);
+					if (m_pos != string::npos and m_pos + 3 <= line.size()) {
+						units.push_back(line.substr(pos, (m_pos - pos) + 1 + 3));
+						pos = m_pos + 4;
+					}
+					else {
+						//? Malformed - just take rest
+						units.push_back(line.substr(pos));
+						break;
+					}
+				}
+			}
+			else if (line[pos] == ' ') {
+				//? Space padding (1 byte)
+				units.push_back(" ");
+				pos += 1;
+			}
+			else if ((unsigned char)line[pos] >= 0xE2) {
+				//? Pure braille character (3 bytes UTF-8)
+				if (pos + 3 <= line.size()) {
+					units.push_back(line.substr(pos, 3));
+					pos += 3;
+				}
+				else {
+					units.push_back(line.substr(pos));
+					break;
+				}
+			}
+			else {
+				//? Unknown - take single byte
+				units.push_back(line.substr(pos, 1));
+				pos += 1;
+			}
+		}
+
+		//? Reverse and rebuild
+		string result;
+		for (auto it = units.rbegin(); it != units.rend(); ++it) {
+			result += *it;
+		}
+		return result;
+	}
+
 	void Graph::_create(const deque<long long>& data, int data_offset) {
 		bool mult = (data.size() - data_offset > 1);
 		const auto& graph_symbol = Symbols::graph_symbols.at(symbol + '_' + (invert ? "down" : "up"));
 		array<int, 2> result;
 		const float mod = (height == 1) ? 0.3 : 0.1;
 		long long data_value = 0;
+
+		//? Build index list - same order for both directions
+		//? Both append, LTR reverses output at the end
+		vector<int> indices;
+		for (int i = data_offset; i < (int)data.size(); ++i) indices.push_back(i);
 		if (mult and data_offset > 0) {
 			last = data.at(data_offset - 1);
 			if (max_value > 0) last = clamp((last + offset) * 100 / max_value, 0ll, 100ll);
 		}
 
 		//? Horizontal iteration over values in <data>
-		for (const int& i : iota(data_offset, (int)data.size())) {
+		for (const int& i : indices) {
 			// if (tty_mode and mult and i % 2 != 0) continue;
 			if (not tty_mode and mult) current = not current;
 			if (i < 0) {
@@ -575,7 +642,11 @@ namespace Draw {
 				const int cur_high = (height > 1) ? round(100.0 * (height - horizon) / height) : 100;
 				const int cur_low = (height > 1) ? round(100.0 * (height - (horizon + 1)) / height) : 0;
 				//? Calculate previous + current value to fit two values in 1 braille character
-				for (int ai = 0; const auto& value : {last, data_value}) {
+				//? RTL: left=last, right=current (newest on right)
+				//? LTR: left=current, right=last (newest on left)
+				const auto value_order = (direction == 0) ? std::initializer_list<long long>{last, data_value}
+				                                          : std::initializer_list<long long>{data_value, last};
+				for (int ai = 0; const auto& value : value_order) {
 					const int clamp_min = (no_zero and horizon == height - 1 and not (mult and i == data_offset and ai == 0)) ? 1 : 0;
 					if (value >= cur_high)
 						result[ai++] = 4;
@@ -586,24 +657,130 @@ namespace Draw {
 					}
 				}
 				//? Generate graph symbol from 5x5 2D vector
+				//? RTL: append (newest at end), LTR: prepend (newest at start)
 				if (height == 1) {
-					if (result.at(0) + result.at(1) == 0 and not no_zero) graphs.at(current).at(horizon) += Mv::r(1);
+					if (result.at(0) + result.at(1) == 0 and not no_zero) {
+						if (direction == 0)
+							graphs.at(current).at(horizon) += Mv::r(1);
+						else
+							graphs.at(current).at(horizon) = Mv::r(1) + graphs.at(current).at(horizon);
+					}
 					else {
-						//? When no_zero and both results are 0, force at least one dot
 						if (no_zero and result.at(0) + result.at(1) == 0) result[1] = 1;
-						if (not color_gradient.empty()) graphs.at(current).at(horizon) += Theme::g(color_gradient).at(clamp(max(last, data_value), 0ll, 100ll));
-						graphs.at(current).at(horizon) += graph_symbol.at((result.at(0) * 5 + result.at(1)));
+						if (direction == 0) {
+							if (not color_gradient.empty()) graphs.at(current).at(horizon) += Theme::g(color_gradient).at(clamp(max(last, data_value), 0ll, 100ll));
+							graphs.at(current).at(horizon) += graph_symbol.at((result.at(0) * 5 + result.at(1)));
+						} else {
+							string new_char;
+							if (not color_gradient.empty()) new_char = Theme::g(color_gradient).at(clamp(max(last, data_value), 0ll, 100ll));
+							new_char += graph_symbol.at((result.at(0) * 5 + result.at(1)));
+							graphs.at(current).at(horizon) = new_char + graphs.at(current).at(horizon);
+						}
 					}
 				}
-				else graphs.at(current).at(horizon) += graph_symbol.at((result.at(0) * 5 + result.at(1)));
+				else {
+					if (direction == 0)
+						graphs.at(current).at(horizon) += graph_symbol.at((result.at(0) * 5 + result.at(1)));
+					else
+						graphs.at(current).at(horizon) = graph_symbol.at((result.at(0) * 5 + result.at(1))) + graphs.at(current).at(horizon);
+				}
 			}
 			if (mult and i >= 0) last = data_value;
 		}
 		last = data_value;
 		out.clear();
-		if (height == 1) {
-			//if (not color_gradient.empty())
-			//	out += (last < 1 ? Theme::c("inactive_fg") : Theme::g(color_gradient).at(clamp(last, 0ll, 100ll)));
+
+		//? Vertical graphs (direction 2=TTB, 3=BTT): build horizontal bars from raw data
+		if (direction >= 2) {
+			//? TTB: start at top, move DOWN (Mv::d), newest at top
+			//? BTT: start at bottom, move UP (Mv::u), newest at bottom (exact reverse of TTB)
+			const bool bottom_to_top = (direction == 3);
+			for (int row = 0; row < height; ++row) {
+				if (row > 0) out += (bottom_to_top ? Mv::u(1) : Mv::d(1)) + Mv::l(width);
+
+				//? Get 4 data points for this row - row 0 = newest (at cursor start position)
+				array<long long, 4> row_values = {0, 0, 0, 0};
+				for (int sub = 0; sub < 4; ++sub) {
+					int data_idx = (int)data.size() - 1 - (row * 4 + sub);
+					if (data_idx >= 0 and data_idx < (int)data.size()) {
+						long long val = data.at(data_idx);
+						if (max_value > 0) val = clamp((val + offset) * 100 / max_value, 0ll, 100ll);
+						row_values[sub] = val;
+					}
+				}
+
+				//? Build horizontal bar: each character = 2 horizontal dots (left, right)
+				//? invert=false: fill left→right, invert=true: fill right→left (mirrored)
+				//? Minimum visual: if ANY data in row, first braille char shows all 4 left dots
+				const bool row_has_data = (row_values[0] > 0 or row_values[1] > 0 or
+				                           row_values[2] > 0 or row_values[3] > 0);
+				for (int col = 0; col < width; ++col) {
+					//? For inverted, calculate thresholds from right side
+					int threshold_col = invert ? (width - 1 - col) : col;
+					const int col_mid = (threshold_col * 2 + 1) * 50 / width;
+					const int col_high = (threshold_col + 1) * 100 / width;
+
+					//? Calculate braille pattern: 4 rows, each with 0/1/2 horizontal fill
+					//? Braille dots: 1=0x01, 2=0x02, 3=0x04, 4=0x08, 5=0x10, 6=0x20, 7=0x40, 8=0x80
+					//? TTB: sub 0→top dots, sub 3→bottom dots (normal order)
+					//? BTT: sub 0→bottom dots, sub 3→top dots (reversed order)
+					int pattern = 0x2800;  //? Braille base
+
+					//? First column minimum: if row has any data, fill all 4 dots on starting edge
+					if (threshold_col == 0 and row_has_data) {
+						if (invert)
+							pattern |= 0xB8;  //? dots 4,5,6,8 (right column of braille) for inverted
+						else
+							pattern |= 0x47;  //? dots 1,2,3,7 (left column of braille) for normal
+					}
+
+					for (int sub = 0; sub < 4; ++sub) {
+						const int val = (int)row_values[sub];
+						//? For BTT, reverse dot position: sub 0→3, 1→2, 2→1, 3→0
+						const int dot_pos = bottom_to_top ? (3 - sub) : sub;
+						if (val >= col_high) {
+							//? Full: both dots (left + right)
+							if (dot_pos == 0) pattern |= 0x09;       //? dots 1,4
+							else if (dot_pos == 1) pattern |= 0x12;  //? dots 2,5
+							else if (dot_pos == 2) pattern |= 0x24;  //? dots 3,6
+							else pattern |= 0xC0;                    //? dots 7,8
+						} else if (val >= col_mid) {
+							//? Half: for normal fill left dot, for inverted fill right dot
+							if (not invert) {
+								if (dot_pos == 0) pattern |= 0x01;       //? dot 1
+								else if (dot_pos == 1) pattern |= 0x02;  //? dot 2
+								else if (dot_pos == 2) pattern |= 0x04;  //? dot 3
+								else pattern |= 0x40;                    //? dot 7
+							} else {
+								if (dot_pos == 0) pattern |= 0x08;       //? dot 4
+								else if (dot_pos == 1) pattern |= 0x10;  //? dot 5
+								else if (dot_pos == 2) pattern |= 0x20;  //? dot 6
+								else pattern |= 0x80;                    //? dot 8
+							}
+						}
+					}
+
+					//? Add color gradient based on amplitude (inverted uses opposite direction)
+					if (not color_gradient.empty()) {
+						int grad_val = invert ? ((width - col) * 100 / width) : ((col + 1) * 100 / width);
+						out += Theme::g(color_gradient).at(clamp(grad_val, 0, 100));
+					}
+
+					//? Always output braille character (even empty ⠀ U+2800 when value is 0)
+					//? UTF-8 for U+2800-U+28FF: E2 [A0-A3] [80-BF]
+					const int dots = pattern & 0xFF;  //? Extract dot pattern (0-255)
+					char utf8[4];
+					utf8[0] = 0xE2;
+					utf8[1] = 0xA0 + (dots >> 6);     //? A0 for 0-63, A1 for 64-127, A2 for 128-191, A3 for 192-255
+					utf8[2] = 0x80 + (dots & 0x3F);   //? Lower 6 bits
+					utf8[3] = 0;
+					out += utf8;
+				}
+			}
+			if (not color_gradient.empty()) out += Fx::reset;
+		}
+		//? Horizontal graphs (direction 0=RTL, 1=LTR): use buffer strings
+		else if (height == 1) {
 			out += graphs.at(current).at(0);
 		}
 		else {
@@ -614,16 +791,17 @@ namespace Draw {
 				out += (invert) ? graphs.at(current).at(height - i) : graphs.at(current).at(i-1);
 			}
 		}
-		if (not color_gradient.empty()) out += Fx::reset;
+		if (direction < 2 and not color_gradient.empty()) out += Fx::reset;
 	}
 
 	Graph::Graph() {}
 
 	Graph::Graph(int width, int height, const string& color_gradient,
 				 const deque<long long>& data, const string& symbol,
-				 bool invert, bool no_zero, long long max_value, long long offset)
+				 bool invert, bool no_zero, long long max_value, long long offset,
+				 int direction)
 	: width(width), height(height), color_gradient(color_gradient),
-	  invert(invert), no_zero(no_zero), offset(offset) {
+	  invert(invert), no_zero(no_zero), direction(direction), offset(offset) {
 		if (Config::getB("tty_mode") or symbol == "tty") this->symbol = "tty";
 		else if (symbol != "default") this->symbol = symbol;
 		else this->symbol = Config::getS("graph_symbol");
@@ -631,6 +809,7 @@ namespace Draw {
 
 		if (max_value == 0 and offset > 0) max_value = 100;
 		this->max_value = max_value;
+
 		const int value_width = (tty_mode ? data.size() : ceil((double)data.size() / 2));
 		int data_offset = (value_width > width) ? data.size() - width * (tty_mode ? 1 : 2) : 0;
 
@@ -638,7 +817,8 @@ namespace Draw {
 			data_offset--;
 		}
 
-		//? Populate the two switching graph vectors and fill empty space if data size < width
+		//? Populate graph vectors and fill empty space if data size < width
+		//? Both directions use double buffer - same logic, different output position
 		for (const int& i : iota(0, height * 2)) {
 			if (tty_mode and i % 2 != current) continue;
 			graphs[(i % 2 != 0)].push_back((value_width < width) ? ((height == 1) ? Mv::r(1) : " "s) * (width - value_width) : "");
@@ -653,16 +833,28 @@ namespace Draw {
 		//? Safety check: return empty if Graph wasn't properly initialized
 		if (graphs.empty() or height == 0 or width == 0) return out;
 
-		//? Make room for new characters on graph (use substr instead of erase for better performance)
+		//? Toggle buffers for smooth animation
 		if (not tty_mode) current = not current;
+
+		//? Make room for new characters on graph
+		//? RTL: remove from start (oldest on left), LTR: remove from end (oldest on right)
 		for (const int& i : iota(0, height)) {
 			auto& graph_line = graphs.at(current).at(i);
+			if (direction == 1) {
+				//? LTR: reverse, apply RTL removal, reverse back
+				graph_line = reverse_graph_line(graph_line);
+			}
+			//? RTL removal logic (also used for reversed LTR)
 			if (height == 1 and graph_line.at(1) == '[') {
 				if (graph_line.at(3) == 'C') graph_line = graph_line.substr(4);
 				else graph_line = graph_line.substr(graph_line.find_first_of('m') + 4);
 			}
 			else if (graph_line.at(0) == ' ') graph_line = graph_line.substr(1);
 			else graph_line = graph_line.substr(3);
+			if (direction == 1) {
+				//? LTR: reverse back
+				graph_line = reverse_graph_line(graph_line);
+			}
 		}
 		this->_create(data, (int)data.size() - 1);
 		return out;
@@ -2840,6 +3032,7 @@ namespace Net {
 		auto net_auto = Config::getB("net_auto");
 		auto tty_mode = Config::getB("tty_mode");
 		auto swap_upload_download = Config::getB("swap_upload_download");
+		auto net_graph_direction = Config::getI("net_graph_direction");
 		auto& graph_symbol = (tty_mode ? "tty" : Config::getS("graph_symbol_net"));
 		string ip_addr = (net.ipv4.empty() ? net.ipv6 : net.ipv4);
 		if (old_ip != ip_addr) {
@@ -2856,19 +3049,99 @@ namespace Net {
 
 		//* Redraw elements not needed to be updated every cycle
 		if (redraw) {
-			out = box;
+			const bool vertical_mode = (net_graph_direction >= 2);
+
+			//? Regenerate main box
+			out = Draw::createBox(x, y, width, height, Theme::c("net_box"), true, "net", "", 3);
+
+			//? Vertical mode needs minimum height (box height 4 + graph space 4 + borders 2 = 10)
+			const int vertical_min_height = 10;
+			const bool can_use_vertical = (height >= vertical_min_height);
+			const bool use_vertical = vertical_mode && can_use_vertical;
+
+			if (use_vertical) {
+				//? VERTICAL MODE (TTB=2, BTT=3): Two boxes side by side - download (left), upload (right mirrored)
+				const bool bottom_up = (net_graph_direction == 3);
+				const int available_width = width - 4;
+				const int single_box_width = std::max(18, available_width / 2);
+				const int total_width = std::min(single_box_width * 2, width - 2);
+				const int actual_single_width = total_width / 2;
+				const int info_box_height = 4;
+				const int start_x = x + 1 + (width - 2 - total_width) / 2;
+				const int info_box_y = bottom_up ? (y + height - info_box_height - 1) : (y + 1);
+
+				//? Download box (left)
+				if (bottom_up) {
+					out += Draw::createBox(start_x, info_box_y, actual_single_width, info_box_height, "", false, "", "download");
+				} else {
+					out += Draw::createBox(start_x, info_box_y, actual_single_width, info_box_height, "", false, "download");
+				}
+
+				//? Upload box (right)
+				const int upload_box_x = start_x + actual_single_width;
+				out += Draw::createBox(upload_box_x, info_box_y, actual_single_width, info_box_height, "", false, "");
+
+				//? Manually draw "upload" title on RIGHT side
+				const int upload_title_x = upload_box_x + actual_single_width - 10;
+				if (bottom_up) {
+					out += Mv::to(info_box_y + info_box_height - 1, upload_title_x) + Theme::c("net_box")
+						+ Symbols::title_left_down + Fx::b + Theme::c("title") + "upload" + Fx::ub
+						+ Theme::c("net_box") + Symbols::title_right_down;
+				} else {
+					out += Mv::to(info_box_y, upload_title_x) + Theme::c("net_box") + Symbols::title_left + Fx::b
+						+ Theme::c("title") + "upload" + Fx::ub + Theme::c("net_box") + Symbols::title_right;
+				}
+
+				//? Store for stats rendering
+				b_x = start_x;
+				b_y = info_box_y;
+				b_width = total_width;
+				b_height = info_box_height;
+			} else {
+				//? HORIZONTAL MODE (RTL=0, LTR=1): Recalculate box position for current direction
+				//? If vertical direction (2,3) is set but can't be used, treat as RTL (0)
+				const int horiz_dir = (net_graph_direction <= 1) ? net_graph_direction : 0;
+				b_width = (width > 45) ? 27 : 19;
+				b_height = (height > 10) ? 9 : height - 2;
+				b_x = (horiz_dir == 1) ? (x + 1) : (x + width - b_width - 1);
+				b_y = y + ((height - 2) / 2) - b_height / 2 + 1;
+				if (swap_upload_download)
+					out += Draw::createBox(b_x, b_y, b_width, b_height, "", false, "upload", "download");
+				else
+					out += Draw::createBox(b_x, b_y, b_width, b_height, "", false, "download", "upload");
+			}
+
 			//? Graphs
 			graphs.clear();
 			if (safeVal(net.bandwidth, "download"s).empty() or safeVal(net.bandwidth, "upload"s).empty())
 				return out + Fx::reset;
 
-			graphs["download"] = Draw::Graph{
-				width - b_width - 2, u_graph_height, "download",
-				net.bandwidth.at("download"), graph_symbol,
-				swap_upload_download, true, down_max};
-			graphs["upload"] = Draw::Graph{
-				width - b_width - 2, d_graph_height, "upload",
-				net.bandwidth.at("upload"), graph_symbol, !swap_upload_download, true, up_max};
+			if (use_vertical) {
+				//? Vertical: full width graphs, side-by-side
+				const int graph_full_width = width - 2;
+				const int graph_height = height - b_height - 2;
+				const int half_width = graph_full_width / 2;
+
+				graphs["download"] = Draw::Graph{
+					half_width, graph_height, "download",
+					net.bandwidth.at("download"), graph_symbol,
+					true, true, down_max, 0, net_graph_direction};
+				graphs["upload"] = Draw::Graph{
+					graph_full_width - half_width, graph_height, "upload",
+					net.bandwidth.at("upload"), graph_symbol, false, true, up_max, 0, net_graph_direction};
+			} else {
+				//? Horizontal: stacked layout with side info box
+				//? Force horizontal direction for graphs when using horizontal layout
+				const int horiz_dir = (net_graph_direction <= 1) ? net_graph_direction : 0;
+				const int graph_area_width = width - b_width - 2;
+				graphs["download"] = Draw::Graph{
+					graph_area_width, u_graph_height, "download",
+					net.bandwidth.at("download"), graph_symbol,
+					swap_upload_download, true, down_max, 0, horiz_dir};
+				graphs["upload"] = Draw::Graph{
+					graph_area_width, d_graph_height, "upload",
+					net.bandwidth.at("upload"), graph_symbol, !swap_upload_download, true, up_max, 0, horiz_dir};
+			}
 
 			//? Interface selector and buttons
 
@@ -2888,6 +3161,13 @@ namespace Net {
 					+ 'y' + Theme::c("title") + "nc" + title_right;
 				Input::mouse_mappings["y"] = {y, x+width - i_size - 26, 1, 4};
 			}
+			//? Graph direction indicator with #/Shift+3 to cycle (0=RTL ←, 1=LTR →, 2=TTB ↓, 3=BTT ↑)
+			if (width - i_size - 20 > 17) {
+				const string dir_arrows[] = {"←", "→", "↓", "↑"};
+				out += Mv::to(y, x+width - i_size - 31) + title_left + Theme::c("hi_fg") + Fx::b
+					+ dir_arrows[net_graph_direction % 4] + title_right;
+				Input::mouse_mappings["#"] = {y, x+width - i_size - 30, 1, 1};
+			}
 		}
 
 		//? IP or device address
@@ -2898,38 +3178,95 @@ namespace Net {
 		}
 
 		//? Graphs and stats
-		for (const string dir : {"download", "upload"}) {
-			//         |  upload  |  download  |
-			// no swap |  bottom  |     top    |
-			//  swap   |    top   |   bottom   |
-			// XNOR operation (==)
-			if ((not swap_upload_download and dir == "download") or (swap_upload_download and dir == "upload")) {
-				out += Mv::to(y+1, x + 1);
-			} else {
-				out += Mv::to(y + u_graph_height + 1 + ((height * swap_upload_download) % 2), x + 1);
-			}
-			out += graphs.at(dir)(safeVal(net.bandwidth, dir), redraw or data_same or not net.connected)
-				+ Mv::to(y+1 + (((dir == "upload") == (!swap_upload_download)) * (height - 3)), x + 1) + Fx::ub + Theme::c("graph_text")
-				+ floating_humanizer((dir == "upload" ? up_max : down_max), true);
-			const string speed = floating_humanizer(safeVal(net.stat, dir).speed, false, 0, false, true);
-			const string speed_bits = (b_width >= 20 ? floating_humanizer(safeVal(net.stat, dir).speed, false, 0, true, true) : "");
-			const string top = floating_humanizer(safeVal(net.stat, dir).top, false, 0, true, true);
-			const string total = floating_humanizer(safeVal(net.stat, dir).total);
-			const string symbol = (dir == "upload" ? "▲" : "▼");
-			if ((swap_upload_download and dir == "upload") or (not swap_upload_download and dir == "download")) {
-				// Top graph
-				out += Mv::to(b_y+1, b_x+1) + Fx::ub + Theme::c("main_fg") + symbol + ' ' + ljust(speed, 10) + (b_width >= 20 ? rjust('(' + speed_bits + ')', 13) : "");
-				if (b_height >= 8)
-					out += Mv::to(b_y+2, b_x+1) + symbol + ' ' + "Top: " + rjust('(' + top, (b_width >= 20 ? 17 : 9)) + ')';
-				if (b_height >= 6)
-					out += Mv::to(b_y+2 + (b_height >= 8), b_x+1) + symbol + ' ' + "Total: " + rjust(total, (b_width >= 20 ? 16 : 8));
-			} else {
-				// Bottom graph
-				out += Mv::to(b_y + b_height - (b_height / 2), b_x + 1) + Fx::ub + Theme::c("main_fg") + symbol + ' ' + ljust(speed, 10) + (b_width >= 20 ? rjust('(' + speed_bits + ')', 13) : "");
-				if (b_height >= 8)
-					out += Mv::to(b_y + b_height - (b_height / 2) + 1, b_x + 1) + symbol + ' ' + "Top: " + rjust('(' + top, (b_width >= 20 ? 17 : 9)) + ')';
-				if (b_height >= 6)
-					out += Mv::to(b_y + b_height - (b_height / 2) + 1 + (b_height >= 8), b_x + 1) + symbol + ' ' + "Total: " + rjust(total, (b_width >= 20 ? 16 : 8));
+		const bool vertical_mode = (net_graph_direction >= 2);
+		const int vertical_min_height = 10;
+		const bool use_vertical = vertical_mode && (height >= vertical_min_height);
+
+		if (use_vertical) {
+			//? VERTICAL MODE: graphs side-by-side, info box at top (TTB) or bottom (BTT)
+			const bool bottom_up = (net_graph_direction == 3);
+			const int graph_full_width = width - 2;
+			const int half_width = graph_full_width / 2;
+			//? TTB: box at top, graph below - start at TOP of graph area
+			//? BTT: box at bottom, graph above - start at BOTTOM of graph area (exact reverse)
+			const int graph_y = bottom_up ? (y + height - b_height - 2) : (y + b_height + 1);
+
+			//? Render download graph (left, fills right→left)
+			out += Mv::to(graph_y, x + 1);
+			out += graphs.at("download")(safeVal(net.bandwidth, "download"s), redraw or data_same or not net.connected);
+
+			//? Render upload graph (right, fills left→right)
+			out += Mv::to(graph_y, x + 1 + half_width);
+			out += graphs.at("upload")(safeVal(net.bandwidth, "upload"s), redraw or data_same or not net.connected);
+
+			//? Scale text at top of graph area (where newest data is for TTB, oldest for BTT)
+			const string down_text = floating_humanizer(down_max, true);
+			const string up_text = floating_humanizer(up_max, true);
+			out += Mv::to(graph_y, x + half_width - (int)down_text.size()) + Fx::ub + Theme::c("graph_text") + down_text;
+			out += Mv::to(graph_y, x + 1 + half_width) + Fx::ub + Theme::c("graph_text") + up_text;
+
+			//? Stats in two separate boxes: download (left box), upload (right box mirrored)
+			const int single_box_width = b_width / 2;
+			const string down_speed = floating_humanizer(safeVal(net.stat, "download"s).speed, false, 0, false, true);
+			const string up_speed = floating_humanizer(safeVal(net.stat, "upload"s).speed, false, 0, false, true);
+			const string down_total = floating_humanizer(safeVal(net.stat, "download"s).total);
+			const string up_total = floating_humanizer(safeVal(net.stat, "upload"s).total);
+
+			//? Download box (left): ▼ symbol on left, values after
+			out += Mv::to(b_y + 1, b_x + 1) + Fx::ub + Theme::c("main_fg") + "▼ " + down_speed;
+			out += Mv::to(b_y + 2, b_x + 1) + "▼ Total: " + down_total;
+
+			//? Upload box (right, mirrored): values right-aligned, ▲ symbol at end
+			const int up_box_x = b_x + single_box_width;
+			const int up_inner_width = single_box_width - 2;
+			const string up_line1 = up_speed + " ▲";
+			const string up_line2 = "Total: " + up_total + " ▲";
+			const int line1_pos = up_box_x + up_inner_width - (int)ulen(up_line1);
+			const int line2_pos = up_box_x + up_inner_width - (int)ulen(up_line2);
+			out += Mv::to(b_y + 1, line1_pos + 1) + Fx::ub + Theme::c("main_fg") + up_line1;
+			out += Mv::to(b_y + 2, line2_pos + 1) + up_line2;
+		} else {
+			//? HORIZONTAL MODE: stacked graphs with side info box
+			//? If vertical direction (2,3) is set but can't be used, treat as RTL (0)
+			const int horiz_dir = (net_graph_direction <= 1) ? net_graph_direction : 0;
+			const int graph_area_width = width - b_width - 2;
+			const int graph_x = (horiz_dir == 1) ? (x + b_width + 1) : (x + 1);
+
+			for (const string dir : {"download", "upload"}) {
+				//? Position based on swap setting
+				if ((not swap_upload_download and dir == "download") or (swap_upload_download and dir == "upload")) {
+					out += Mv::to(y+1, graph_x);
+				} else {
+					out += Mv::to(y + u_graph_height + 1 + ((height * swap_upload_download) % 2), graph_x);
+				}
+				out += graphs.at(dir)(safeVal(net.bandwidth, dir), redraw or data_same or not net.connected);
+
+				//? Scale text
+				const string max_text = floating_humanizer((dir == "upload" ? up_max : down_max), true);
+				const int text_y = y+1 + (((dir == "upload") == (!swap_upload_download)) * (height - 3));
+				const int text_x = (horiz_dir == 1) ? graph_x : (graph_x + graph_area_width - (int)max_text.size());
+				out += Mv::to(text_y, text_x) + Fx::ub + Theme::c("graph_text") + max_text;
+
+				//? Stats in info box
+				const string speed = floating_humanizer(safeVal(net.stat, dir).speed, false, 0, false, true);
+				const string speed_bits = (b_width >= 20 ? floating_humanizer(safeVal(net.stat, dir).speed, false, 0, true, true) : "");
+				const string top = floating_humanizer(safeVal(net.stat, dir).top, false, 0, true, true);
+				const string total = floating_humanizer(safeVal(net.stat, dir).total);
+				const string symbol = (dir == "upload" ? "▲" : "▼");
+
+				if ((swap_upload_download and dir == "upload") or (not swap_upload_download and dir == "download")) {
+					out += Mv::to(b_y+1, b_x+1) + Fx::ub + Theme::c("main_fg") + symbol + ' ' + ljust(speed, 10) + (b_width >= 20 ? rjust('(' + speed_bits + ')', 13) : "");
+					if (b_height >= 8)
+						out += Mv::to(b_y+2, b_x+1) + symbol + ' ' + "Top: " + rjust('(' + top, (b_width >= 20 ? 17 : 9)) + ')';
+					if (b_height >= 6)
+						out += Mv::to(b_y+2 + (b_height >= 8), b_x+1) + symbol + ' ' + "Total: " + rjust(total, (b_width >= 20 ? 16 : 8));
+				} else {
+					out += Mv::to(b_y + b_height - (b_height / 2), b_x + 1) + Fx::ub + Theme::c("main_fg") + symbol + ' ' + ljust(speed, 10) + (b_width >= 20 ? rjust('(' + speed_bits + ')', 13) : "");
+					if (b_height >= 8)
+						out += Mv::to(b_y + b_height - (b_height / 2) + 1, b_x + 1) + symbol + ' ' + "Top: " + rjust('(' + top, (b_width >= 20 ? 17 : 9)) + ')';
+					if (b_height >= 6)
+						out += Mv::to(b_y + b_height - (b_height / 2) + 1 + (b_height >= 8), b_x + 1) + symbol + ' ' + "Total: " + rjust(total, (b_width >= 20 ? 16 : 8));
+				}
 			}
 		}
 
@@ -4982,20 +5319,29 @@ namespace Draw {
 					y = Term::height - height + 1 - total_bottom_height;
 			}
 
+			//? Check for vertical mode (direction 2=TTB or 3=BTT) with sufficient height
+			auto net_graph_direction = Config::getI("net_graph_direction");
+			const bool use_vertical = (net_graph_direction >= 2) && (height >= 10);
+
 			b_width = (width > 45) ? 27 : 19;
-			b_height = (height > 10) ? 9 : height - 2;
-			b_x = x + width - b_width - 1;
+			//? Vertical mode uses smaller info box (4 rows), horizontal uses 9 (or height-2)
+			b_height = use_vertical ? 4 : ((height > 10) ? 9 : height - 2);
+			//? Box position: LTR (1) = box on left, all others (RTL/TTB/BTT) = box on right
+			b_x = (net_graph_direction == 1) ? (x + 1) : (x + width - b_width - 1);
 			b_y = y + ((height - 2) / 2) - b_height / 2 + 1;
 			d_graph_height = round((double)(height - 2) / 2);
 			u_graph_height = height - 2 - d_graph_height;
 
 			box = createBox(x, y, width, height, Theme::c("net_box"), true, "net", "", 3);
 			Logger::debug("NET panel: x={}, y={}, width={}, height={}", x, y, width, height);
-			auto swap_up_down = Config::getB("swap_upload_download");
-			if (swap_up_down)
-				box += createBox(b_x, b_y, b_width, b_height, "", false, "upload", "download");
-			else
-				box += createBox(b_x, b_y, b_width, b_height, "", false, "download", "upload");
+			//? Only create horizontal info box if NOT in vertical mode (vertical mode creates its own in draw)
+			if (not use_vertical) {
+				auto swap_up_down = Config::getB("swap_upload_download");
+				if (swap_up_down)
+					box += createBox(b_x, b_y, b_width, b_height, "", false, "upload", "download");
+				else
+					box += createBox(b_x, b_y, b_width, b_height, "", false, "download", "upload");
+			}
 		}
 
 		//* Calculate and draw proc box outlines

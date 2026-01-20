@@ -111,6 +111,7 @@ namespace Draw {
 		string color_gradient;
 		string out, symbol = "default";
 		bool invert, no_zero;
+		int direction = 0;  //? 0=RTL, 1=LTR, 2=TTB, 3=BTT
 		long long offset;
 		long long last = 0, max_value = 0;
 		bool current = true, tty_mode = false;
@@ -126,7 +127,8 @@ namespace Draw {
 			const deque<long long>& data,
 			const string& symbol="default",
 			bool invert=false, bool no_zero=false,
-			long long max_value=0, long long offset=0);
+			long long max_value=0, long long offset=0,
+			int direction=0);
 
 		//* Add last value from back of <data> and return string representation of graph
 		string& operator()(const deque<long long>& data, bool data_same=false);

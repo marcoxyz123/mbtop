@@ -1585,8 +1585,10 @@ namespace Net {
 					saved_stat.last = val;
 
 					//? Add values to graph
+					//? Buffer size: max of horizontal (width*2) and vertical (height*4) requirements
 					bandwidth.push_back(saved_stat.speed);
-					while (cmp_greater(bandwidth.size(), width * 2)) bandwidth.pop_front();
+					const size_t buffer_size = std::max(width * 2, height * 4);
+					while (cmp_greater(bandwidth.size(), buffer_size)) bandwidth.pop_front();
 
 					//? Set counters for auto scaling
 					if (net_auto and selected_iface == iface) {
