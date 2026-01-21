@@ -604,5 +604,47 @@ namespace Proc {
 	void _collect_prefixes(tree_proc& t, bool is_last, const string &header = "");
 }
 
+namespace Logs {
+	extern string box;
+	extern int x, y, width, height, min_width, min_height;
+	extern bool shown, redraw;
+	extern bool paused;           //? Pause log streaming for reading
+	extern bool live_mode;        //? true = stream, false = historical
+	extern int scroll_offset;     //? Scroll position (0 = latest)
+	extern pid_t current_pid;     //? PID being monitored
+
+	//? Log level filter bitmask: bit 0=Default, 1=Info, 2=Debug, 3=Error, 4=Fault
+	extern uint8_t level_filter;
+
+	struct LogEntry {
+		string timestamp;
+		string level;        //? Default, Info, Debug, Error, Fault
+		string subsystem;
+		string category;
+		string message;
+	};
+
+	extern deque<LogEntry> entries;  //? Ring buffer of log entries
+	extern size_t max_entries;       //? Max entries to keep
+
+	//* Collect logs from macOS unified logging for the current process
+	void collect();
+
+	//* Draw contents of logs panel
+	string draw(bool force_redraw = false, bool data_same = false);
+
+	//* Clear log buffer and reset state
+	void clear();
+
+	//* Toggle pause state
+	void toggle_pause();
+
+	//* Toggle between live streaming and historical mode
+	void toggle_mode();
+
+	//* Cycle through log level filters
+	void cycle_level_filter();
+}
+
 /// Detect container engine.
 auto detect_container() -> std::optional<std::string>;

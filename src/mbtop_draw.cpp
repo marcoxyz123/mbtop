@@ -3971,6 +3971,13 @@ namespace Proc {
 			if (width > 82) {
 			    out += title_left_down + Fx::b + Theme::c("hi_fg") + 'T' + Theme::c("title") + "oggle" + Fx::ub + title_right_down;
 			    Input::mouse_mappings["T"] = {y + height - 1, mouse_x, 1, 6};
+			    mouse_x += 8;
+			}
+			//? Logs panel button (key 8)
+			if (width > 92) {
+			    out += title_left_down + (Logs::shown ? Fx::b : "") + Theme::c("hi_fg") + '8'
+			        + Theme::c("title") + "Logs" + Fx::ub + title_right_down;
+			    Input::mouse_mappings["8"] = {y + height - 1, mouse_x, 1, 5};
 			}
 
 			//? Labels for fields in list
@@ -4596,6 +4603,155 @@ namespace Proc {
 
 }
 
+namespace Logs {
+	string box;
+	int x = 0, y = 0, width = 0, height = 0;
+	int min_width = 30, min_height = 8;
+	bool shown = false, redraw = true;
+	bool paused = false;
+	bool live_mode = true;
+	int scroll_offset = 0;
+	pid_t current_pid = 0;
+	uint8_t level_filter = 0x1F;  //? All levels enabled by default
+
+	deque<LogEntry> entries;
+	size_t max_entries = 500;
+
+	string draw(bool force_redraw, bool data_same) {
+		if (Runner::stopping) return "";
+		if (force_redraw) redraw = true;
+		if (not data_same) redraw = true;
+
+		if (redraw) {
+			string out;
+			const auto& theme = Theme::c;
+
+			out += box;
+
+			const int content_width = width - 2;
+			const int content_height = height - 2;
+
+			//? Empty state: no process selected
+			if (current_pid == 0 or Config::getI("selected_pid") == 0) {
+				string msg = "Select a process to view logs";
+				int msg_x = x + (width - static_cast<int>(msg.length())) / 2;
+				int msg_y = y + height / 2;
+				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
+				redraw = false;
+				return out + Fx::reset;
+			}
+
+			//? No logs available
+			if (entries.empty()) {
+				string msg = "No logs for PID " + std::to_string(current_pid);
+				int msg_x = x + (width - static_cast<int>(msg.length())) / 2;
+				int msg_y = y + height / 2;
+				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
+				redraw = false;
+				return out + Fx::reset;
+			}
+
+			//? Calculate visible range
+			int visible_rows = content_height - 1;  //? Reserve 1 row for status bar
+			int total_entries = static_cast<int>(entries.size());
+			int max_scroll = std::max(0, total_entries - visible_rows);
+
+			//? Clamp scroll offset
+			if (scroll_offset > max_scroll) scroll_offset = max_scroll;
+			if (scroll_offset < 0) scroll_offset = 0;
+
+			//? Start index (from the end, since newest logs are at the back)
+			int start_idx = std::max(0, total_entries - visible_rows - scroll_offset);
+			int end_idx = std::min(total_entries, start_idx + visible_rows);
+
+			//? Draw log entries
+			for (int i = start_idx; i < end_idx; i++) {
+				const auto& entry = entries[static_cast<size_t>(i)];
+				int row = y + 1 + (i - start_idx);
+
+				//? Color based on log level
+				string level_color;
+				char level_char = 'D';
+				if (entry.level == "Error") {
+					level_color = theme("proc_misc");
+					level_char = 'E';
+				} else if (entry.level == "Fault") {
+					level_color = Fx::b + theme("proc_misc");
+					level_char = 'F';
+				} else if (entry.level == "Debug") {
+					level_color = theme("inactive_fg");
+					level_char = 'd';
+				} else if (entry.level == "Info") {
+					level_color = theme("main_fg");
+					level_char = 'I';
+				} else {
+					level_color = theme("main_fg");
+					level_char = 'D';
+				}
+
+				//? Format: [L] HH:MM:SS message
+				string timestamp_short;
+				if (entry.timestamp.length() >= 19) {
+					//? Extract HH:MM:SS from "YYYY-MM-DD HH:MM:SS..."
+					timestamp_short = entry.timestamp.substr(11, 8);
+				} else {
+					timestamp_short = "??:??:??";
+				}
+
+				//? Build log line
+				string line = "[" + string(1, level_char) + "] " + timestamp_short + " " + entry.message;
+
+				//? Truncate to fit width
+				if (static_cast<int>(line.length()) > content_width) {
+					line = line.substr(0, static_cast<size_t>(content_width - 3)) + "...";
+				}
+
+				out += Mv::to(row, x + 1) + level_color + line + Fx::ub + theme("main_fg");
+			}
+
+			//? Clear remaining rows
+			for (int row = y + 1 + (end_idx - start_idx); row < y + content_height; row++) {
+				out += Mv::to(row, x + 1) + string(static_cast<size_t>(content_width), ' ');
+			}
+
+			//? Status bar at bottom
+			string status;
+			if (paused) {
+				status = "[PAUSED]";
+			} else if (live_mode) {
+				status = "[LIVE]";
+			} else {
+				status = "[HIST]";
+			}
+
+			//? Level filter indicator
+			string filter_str;
+			if (level_filter == 0x1F) {
+				filter_str = "All";
+			} else if (level_filter == 0x18) {
+				filter_str = "Err";
+			} else {
+				filter_str = "Info+";
+			}
+
+			string status_line = status + " " + filter_str + " | " +
+				std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries) +
+				" | P:Pause L:Mode F:Filter";
+
+			//? Truncate status line if needed
+			if (static_cast<int>(status_line.length()) > content_width) {
+				status_line = status_line.substr(0, static_cast<size_t>(content_width));
+			}
+
+			out += Mv::to(y + height - 1, x + 1) + theme("inactive_fg") + status_line;
+
+			redraw = false;
+			return out + Fx::reset;
+		}
+		return "";
+	}
+}
+
 namespace Draw {
 	void calcSizes() {
 		atomic_wait(Runner::active);
@@ -4615,6 +4771,7 @@ namespace Draw {
 		Mem::box.clear();
 		Net::box.clear();
 		Proc::box.clear();
+		Logs::box.clear();
 		Global::clock.clear();
 		Global::instance_indicator.clear();
 		Global::overlay.clear();
@@ -4628,11 +4785,11 @@ namespace Draw {
 
 		Input::mouse_mappings.clear();
 
-		Cpu::x = Mem::x = Net::x = Proc::x = 1;
-		Cpu::y = Mem::y = Net::y = Proc::y = 1;
-		Cpu::width = Mem::width = Net::width = Proc::width = 0;
-		Cpu::height = Mem::height = Net::height = Proc::height = 0;
-		Cpu::redraw = Mem::redraw = Net::redraw = Proc::redraw = true;
+		Cpu::x = Mem::x = Net::x = Proc::x = Logs::x = 1;
+		Cpu::y = Mem::y = Net::y = Proc::y = Logs::y = 1;
+		Cpu::width = Mem::width = Net::width = Proc::width = Logs::width = 0;
+		Cpu::height = Mem::height = Net::height = Proc::height = Logs::height = 0;
+		Cpu::redraw = Mem::redraw = Net::redraw = Proc::redraw = Logs::redraw = true;
 
 		Cpu::shown = boxes.contains("cpu");
 
@@ -5432,6 +5589,57 @@ namespace Draw {
 
 			select_max = height - 3;
 			box = createBox(x, y, width, height, Theme::c("proc_box"), true, "proc", "", 4);
+
+		}
+
+		//? If Logs panel is shown, adjust Proc dimensions and set Logs dimensions
+		if (Logs::shown and Proc::shown) {
+			auto logs_below = Config::getB("logs_below_proc");
+
+			if (logs_below) {
+				//? Horizontal split: Logs below Proc
+				int logs_height = std::max(Logs::min_height, Proc::height / 3);
+				if (Proc::height - logs_height < Proc::min_height) {
+					logs_height = Proc::height - Proc::min_height;
+				}
+				if (logs_height >= Logs::min_height) {
+					Proc::height -= logs_height;
+					Proc::select_max = Proc::height - 3;
+
+					Logs::width = Proc::width;
+					Logs::x = Proc::x;
+					Logs::y = Proc::y + Proc::height;
+					Logs::height = logs_height;
+
+					//? Recreate Proc box with new height
+					Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
+					Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
+				} else {
+					//? Not enough space for Logs panel
+					Logs::shown = false;
+				}
+			} else {
+				//? Vertical split: Logs right of Proc
+				int logs_width = std::max(Logs::min_width, Proc::width / 3);
+				if (Proc::width - logs_width - 1 < Proc::min_width) {
+					logs_width = Proc::width - Proc::min_width - 1;
+				}
+				if (logs_width >= Logs::min_width) {
+					Proc::width -= logs_width + 1;  //? +1 for divider
+
+					Logs::width = logs_width;
+					Logs::x = Proc::x + Proc::width + 1;
+					Logs::y = Proc::y;
+					Logs::height = Proc::height;
+
+					//? Recreate Proc box with new width
+					Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
+					Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
+				} else {
+					//? Not enough space for Logs panel
+					Logs::shown = false;
+				}
+			}
 		}
 	}
 }

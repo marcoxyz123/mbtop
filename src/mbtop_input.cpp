@@ -268,6 +268,20 @@ namespace Input {
 						Runner::run("all", false, true);
 						return;
 					}
+					//? Key "8" toggles Logs panel (shows logs for selected process)
+					if (intKey == 8 and Proc::shown) {
+						atomic_wait(Runner::active);
+						Logs::shown = not Logs::shown;
+						if (Logs::shown) {
+							//? Initialize with currently selected PID
+							Logs::current_pid = Config::getI("selected_pid");
+							Logs::clear();
+						}
+						Config::current_preset = -1;
+						Draw::calcSizes();
+						Runner::run("all", false, true);
+						return;
+					}
 					static const array<string, 10> boxes = {"gpu5", "cpu", "mem", "net", "proc", "gpu0", "gpu1", "gpu2", "gpu3", "gpu4"};
 					if ((intKey == 0 and Gpu::count < 5) or (intKey >= 5 and intKey - 4 > Gpu::count))
 						return;
@@ -1095,6 +1109,61 @@ namespace Input {
 
 				if (not keep_going) {
 					Runner::run("net", no_update, redraw);
+					return;
+				}
+			}
+
+			//? Input actions for logs panel
+			if (Logs::shown) {
+				bool keep_going = false;
+				bool redraw = true;
+
+				if (is_in(key, "up", "k", "mouse_scroll_up")) {
+					//? Scroll up (older logs)
+					Logs::scroll_offset++;
+					Logs::redraw = true;
+				}
+				else if (is_in(key, "down", "j", "mouse_scroll_down")) {
+					//? Scroll down (newer logs)
+					if (Logs::scroll_offset > 0) Logs::scroll_offset--;
+					Logs::redraw = true;
+				}
+				else if (key == "home" or key == "g") {
+					//? Jump to oldest logs
+					Logs::scroll_offset = static_cast<int>(Logs::entries.size());
+					Logs::redraw = true;
+				}
+				else if (key == "end" or key == "G") {
+					//? Jump to newest logs
+					Logs::scroll_offset = 0;
+					Logs::redraw = true;
+				}
+				else if (key == "P") {
+					//? Toggle pause
+					Logs::toggle_pause();
+				}
+				else if (key == "l") {
+					//? Toggle live/historical mode
+					Logs::toggle_mode();
+				}
+				else if (key == "f") {
+					//? Cycle log level filter
+					Logs::cycle_level_filter();
+				}
+				else if (key == "page_up") {
+					//? Scroll up by page
+					Logs::scroll_offset += (Logs::height - 3);
+					Logs::redraw = true;
+				}
+				else if (key == "page_down") {
+					//? Scroll down by page
+					Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
+					Logs::redraw = true;
+				}
+				else keep_going = true;
+
+				if (not keep_going) {
+					Runner::run("all", true, redraw);
 					return;
 				}
 			}

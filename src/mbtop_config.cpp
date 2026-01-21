@@ -247,6 +247,8 @@ namespace Config {
 
 		{"proc_full_width",		"#* When net_beside_mem is active, show proc panel full width under both mem+net. Pressing '4' cycles: hidden -> under net -> full width."},
 
+		{"logs_below_proc",		"#* Position the logs panel below proc panel instead of beside it. Pressing '8' toggles the logs panel."},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -443,6 +445,7 @@ namespace Config {
 		{"mem_below_net", false},
 		{"net_beside_mem", true},
 		{"proc_full_width", false},
+		{"logs_below_proc", false},
 		{"stacked_layout", false},
 		{"zfs_arc_cached", true},
 		{"show_swap", true},

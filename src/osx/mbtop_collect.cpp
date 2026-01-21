@@ -46,6 +46,7 @@ tab-size = 4
 #include <sys/types.h>
 #include <netinet/in.h> // for inet_ntop
 #include <unistd.h>
+#include <fcntl.h> // for fcntl, O_NONBLOCK
 #include <stdexcept>
 #include <utility>
 
@@ -2320,6 +2321,265 @@ namespace Proc {
 		return current_procs;
 	}
 }  // namespace Proc
+
+namespace Logs {
+	//? Pipe handle for streaming logs (file-local)
+	static FILE* log_pipe = nullptr;
+	static pid_t streaming_pid = 0;
+
+	//? Parse a single JSON log entry from ndjson output
+	static bool parse_log_entry(const string& json_line, LogEntry& entry) {
+		//? Simple JSON parsing for known fields
+		//? Format: {"timestamp":"...","messageType":"...","subsystem":"...","category":"...","eventMessage":"..."}
+
+		auto extract_value = [&json_line](const string& key) -> string {
+			string search_key = "\"" + key + "\":";
+			size_t pos = json_line.find(search_key);
+			if (pos == string::npos) return "";
+
+			pos += search_key.length();
+			//? Skip whitespace
+			while (pos < json_line.length() && (json_line[pos] == ' ' || json_line[pos] == '\t')) pos++;
+
+			if (pos >= json_line.length()) return "";
+
+			//? Check if value is a string (starts with ")
+			if (json_line[pos] == '"') {
+				pos++;  //? Skip opening quote
+				string value;
+				while (pos < json_line.length() && json_line[pos] != '"') {
+					if (json_line[pos] == '\\' && pos + 1 < json_line.length()) {
+						//? Handle escape sequences
+						pos++;
+						switch (json_line[pos]) {
+							case 'n': value += '\n'; break;
+							case 't': value += '\t'; break;
+							case 'r': value += '\r'; break;
+							case '"': value += '"'; break;
+							case '\\': value += '\\'; break;
+							case '/': value += '/'; break;
+							default: value += json_line[pos]; break;
+						}
+					} else {
+						value += json_line[pos];
+					}
+					pos++;
+				}
+				return value;
+			}
+			//? For non-string values, read until comma or closing brace
+			string value;
+			while (pos < json_line.length() && json_line[pos] != ',' && json_line[pos] != '}') {
+				value += json_line[pos];
+				pos++;
+			}
+			return value;
+		};
+
+		entry.timestamp = extract_value("timestamp");
+		entry.level = extract_value("messageType");
+		entry.subsystem = extract_value("subsystem");
+		entry.category = extract_value("category");
+		entry.message = extract_value("eventMessage");
+
+		//? Validate that we got at least a message
+		return not entry.message.empty() or not entry.timestamp.empty();
+	}
+
+	//? Get log level bit from level string
+	static uint8_t level_to_bit(const string& level) {
+		if (level == "Default") return 0x01;
+		if (level == "Info") return 0x02;
+		if (level == "Debug") return 0x04;
+		if (level == "Error") return 0x08;
+		if (level == "Fault") return 0x10;
+		return 0x01;  //? Default
+	}
+
+	//? Check if level passes the current filter
+	static bool passes_filter(const string& level) {
+		return (level_filter & level_to_bit(level)) != 0;
+	}
+
+	//? Stop any existing log stream
+	static void stop_stream() {
+		if (log_pipe != nullptr) {
+			pclose(log_pipe);
+			log_pipe = nullptr;
+		}
+		streaming_pid = 0;
+	}
+
+	//? Start a new log stream for the given PID
+	static bool start_stream(pid_t pid) {
+		stop_stream();
+
+		if (pid <= 0) return false;
+
+		//? Build the log command
+		string cmd = "/usr/bin/log stream --process " + std::to_string(pid) + " --style ndjson --level debug 2>/dev/null";
+
+		log_pipe = popen(cmd.c_str(), "r");
+		if (log_pipe == nullptr) {
+			Logger::warning("Failed to start log stream for PID {}", pid);
+			return false;
+		}
+
+		//? Set non-blocking mode
+		int fd = fileno(log_pipe);
+		int flags = fcntl(fd, F_GETFL, 0);
+		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+		streaming_pid = pid;
+		return true;
+	}
+
+	//? Load historical logs for a PID
+	static void load_historical(pid_t pid) {
+		if (pid <= 0) return;
+
+		//? Build the log show command (last 5 minutes)
+		string cmd = "/usr/bin/log show --predicate 'processIdentifier == " + std::to_string(pid) + "' --last 5m --style ndjson 2>/dev/null";
+
+		FILE* pipe = popen(cmd.c_str(), "r");
+		if (pipe == nullptr) {
+			Logger::warning("Failed to load historical logs for PID {}", pid);
+			return;
+		}
+
+		char buffer[4096];
+		while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+			string line(buffer);
+			//? Remove trailing newline
+			if (not line.empty() && line.back() == '\n') {
+				line.pop_back();
+			}
+
+			//? Skip the count/finished summary line
+			if (line.find("\"count\":") != string::npos && line.find("\"finished\":") != string::npos) {
+				continue;
+			}
+
+			LogEntry entry;
+			if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
+				entries.push_back(std::move(entry));
+				if (entries.size() > max_entries) {
+					entries.pop_front();
+				}
+			}
+		}
+
+		pclose(pipe);
+	}
+
+	void collect() {
+		if (not shown) return;
+
+		//? Get the currently selected PID from Proc
+		pid_t selected_pid = Config::getI("selected_pid");
+
+		//? Check if we need to switch to a new process
+		if (selected_pid != current_pid) {
+			clear();
+			current_pid = selected_pid;
+
+			if (current_pid > 0) {
+				//? Load historical logs first
+				load_historical(current_pid);
+
+				//? Start streaming if in live mode
+				if (live_mode && not paused) {
+					start_stream(current_pid);
+				}
+			}
+			redraw = true;
+		}
+
+		//? Read from the stream if active and not paused
+		if (live_mode && not paused && log_pipe != nullptr && current_pid > 0) {
+			char buffer[4096];
+			int lines_read = 0;
+			const int max_lines_per_collect = 50;  //? Limit lines per update to avoid blocking
+
+			while (lines_read < max_lines_per_collect && fgets(buffer, sizeof(buffer), log_pipe) != nullptr) {
+				string line(buffer);
+				if (not line.empty() && line.back() == '\n') {
+					line.pop_back();
+				}
+
+				//? Skip empty lines and summary lines
+				if (line.empty() || (line.find("\"count\":") != string::npos && line.find("\"finished\":") != string::npos)) {
+					continue;
+				}
+
+				LogEntry entry;
+				if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
+					entries.push_back(std::move(entry));
+					if (entries.size() > max_entries) {
+						entries.pop_front();
+					}
+					redraw = true;
+				}
+				lines_read++;
+			}
+		}
+	}
+
+	void clear() {
+		stop_stream();
+		entries.clear();
+		scroll_offset = 0;
+		current_pid = 0;
+		redraw = true;
+	}
+
+	void toggle_pause() {
+		paused = not paused;
+
+		if (live_mode) {
+			if (paused) {
+				//? Stop the stream when paused
+				stop_stream();
+			} else if (current_pid > 0) {
+				//? Resume streaming
+				start_stream(current_pid);
+			}
+		}
+		redraw = true;
+	}
+
+	void toggle_mode() {
+		live_mode = not live_mode;
+
+		if (current_pid > 0) {
+			if (live_mode && not paused) {
+				//? Switch to live mode - start streaming
+				start_stream(current_pid);
+			} else {
+				//? Switch to historical mode - stop streaming
+				stop_stream();
+				//? Reload historical logs
+				entries.clear();
+				load_historical(current_pid);
+			}
+		}
+		redraw = true;
+	}
+
+	void cycle_level_filter() {
+		//? Cycle through filter modes:
+		//? All (0x1F) -> Errors only (0x18) -> Info+ (0x1B) -> All (0x1F)
+		if (level_filter == 0x1F) {
+			level_filter = 0x18;  //? Error + Fault only
+		} else if (level_filter == 0x18) {
+			level_filter = 0x1B;  //? Default + Info + Error + Fault (no Debug)
+		} else {
+			level_filter = 0x1F;  //? All levels
+		}
+		redraw = true;
+	}
+
+}  // namespace Logs
 
 namespace Tools {
 	double system_uptime() {

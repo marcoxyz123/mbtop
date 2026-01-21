@@ -802,6 +802,20 @@ atomic<bool> should_terminate (false);  //? Flag for cooperative thread terminat
 					}
 				}
 
+				//? Logs panel (tied to Proc, shown via key 8)
+				if (Logs::shown) {
+					try {
+						//? Collect logs from macOS unified logging
+						Logs::collect();
+
+						//? Draw logs panel
+						if (not pause_output) output += Logs::draw(conf.force_redraw, conf.no_update);
+					}
+					catch (const std::exception& e) {
+						throw std::runtime_error("Logs:: -> " + string{e.what()});
+					}
+				}
+
 			}
 			catch (const std::exception& e) {
 				Global::exit_error_msg = "Exception in runner thread -> " + string{e.what()};
