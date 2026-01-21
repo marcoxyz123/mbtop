@@ -518,7 +518,14 @@ namespace Input {
 				bool keep_going = false;
 				bool redraw = true;
 
-				//? Handle filter modal input first if active
+				//? Handle error modal input first - any key closes it
+				if (Logs::error_modal_active) {
+					Logs::error_modal_input(key);
+					Runner::run("all", true, true);
+					return;
+				}
+
+				//? Handle filter modal input if active
 				if (Logs::filter_modal_active) {
 					if (Logs::filter_modal_input(key)) {
 						Runner::run("all", true, true);

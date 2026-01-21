@@ -4971,6 +4971,46 @@ namespace Logs {
 				out += theme("inactive_fg") + "1-7/Enter/Esc" + Fx::reset;
 			}
 
+			//? Draw error modal if active
+			if (error_modal_active) {
+				//? Calculate modal size based on message
+				vector<string> lines;
+				string line;
+				for (char c : error_modal_message) {
+					if (c == '\n') {
+						lines.push_back(line);
+						line.clear();
+					} else {
+						line += c;
+					}
+				}
+				if (not line.empty()) lines.push_back(line);
+				
+				int max_line_len = 10;
+				for (const auto& l : lines) {
+					max_line_len = std::max(max_line_len, static_cast<int>(l.length()));
+				}
+				
+				const int modal_w = std::min(width - 4, max_line_len + 6);
+				const int modal_h = static_cast<int>(lines.size()) + 5;
+				const int modal_x = x + (width - modal_w) / 2;
+				const int modal_y = y + (height - modal_h) / 2;
+				
+				//? Draw modal box with error styling
+				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("log_fault"), true, "Export Error");
+				
+				//? Draw message lines
+				int line_y = modal_y + 2;
+				for (const auto& l : lines) {
+					out += Mv::to(line_y++, modal_x + 3);
+					out += theme("main_fg") + l;
+				}
+				
+				//? Instructions
+				out += Mv::to(modal_y + modal_h - 2, modal_x + (modal_w - 18) / 2);
+				out += theme("inactive_fg") + "Press any key..." + Fx::reset;
+			}
+
 			redraw = false;
 			return out + Fx::reset;
 		}

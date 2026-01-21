@@ -688,6 +688,16 @@ namespace Logs {
 
 	//* Set buffer size directly
 	void set_buffer_size(size_t size);
+
+	//? Error modal state
+	extern bool error_modal_active;
+	extern string error_modal_message;
+
+	//* Show error modal with message
+	void show_error_modal(const string& message);
+
+	//* Handle error modal input (any key closes it)
+	bool error_modal_input(const std::string_view key);
 }
 
 /// Detect container engine.

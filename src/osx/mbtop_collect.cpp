@@ -2603,8 +2603,7 @@ namespace Logs {
 	void start_export() {
 		if (exporting) return;  //? Already exporting
 		if (current_pid <= 0) {
-			export_error = "No process followed";
-			redraw = true;
+			show_error_modal("No process being followed.\nFollow a process first (F key).");
 			return;
 		}
 
@@ -2631,8 +2630,7 @@ namespace Logs {
 		struct stat st;
 		if (stat(export_path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
 			Logger::warning("Export path does not exist or is not a directory: {}", export_path);
-			export_error = "Invalid path: " + export_path;
-			redraw = true;
+			show_error_modal("Invalid export path:\n" + Config::getS("log_export_path") + "\n\nCheck: Settings > Panels > Proc | Logs");
 			return;
 		}
 
@@ -2660,14 +2658,10 @@ namespace Logs {
 		export_file_handle = fopen(export_filename.c_str(), "w");
 		if (export_file_handle == nullptr) {
 			Logger::warning("Failed to open log export file: {}", export_filename);
-			export_error = "Cannot write to: " + export_path;
+			show_error_modal("Cannot write to path:\n" + export_path + "\n\nCheck permissions.");
 			export_filename.clear();
-			redraw = true;
 			return;
 		}
-		
-		//? Clear any previous error
-		export_error.clear();
 
 		//? Write header
 		fprintf(export_file_handle, "# mbtop Log Export\n");
@@ -2930,6 +2924,24 @@ namespace Logs {
 			}
 		}
 		return false;
+	}
+
+	//? Error modal state
+	bool error_modal_active = false;
+	string error_modal_message;
+
+	void show_error_modal(const string& message) {
+		error_modal_message = message;
+		error_modal_active = true;
+		redraw = true;
+	}
+
+	bool error_modal_input(const std::string_view key) {
+		(void)key;  //? Any key closes the modal
+		error_modal_active = false;
+		error_modal_message.clear();
+		redraw = true;
+		return true;
 	}
 
 }  // namespace Logs
