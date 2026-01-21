@@ -286,6 +286,11 @@ namespace Input {
 						//? This happens when proc_full_width=true OR when Mem/Net are hidden
 						bool proc_is_full_width = (Proc::width == Term::width);
 						
+						//? Calculate minimums for error messages
+						int proc_min_for_logs = 60;
+						int min_combined_width = proc_min_for_logs + Logs::min_width;  //? 60 + 50 = 110
+						int min_combined_height = Proc::min_height + Logs::min_height;
+						
 						if (not Logs::shown) {
 							//? State: Hidden -> Show Logs
 							//? Auto-follow the selected process if not already following
@@ -304,24 +309,24 @@ namespace Input {
 							//? Full-width view: show beside (right)
 							//? Compact view: show below only (beside too small)
 							if (proc_is_full_width) {
-								//? Proc can shrink to ~60 chars by hiding optional columns when Logs beside
-								int proc_min_for_logs = 60;
-								int min_combined_width = proc_min_for_logs + Logs::min_width;
 								bool has_space = (Proc::width >= min_combined_width);
 								
 								if (not has_space) {
-									Menu::show(Menu::Menus::SizeError);
+									Menu::logs_min_width_required = min_combined_width;
+									Menu::logs_error_is_height = false;
+									Menu::show(Menu::Menus::LogsSizeError);
 									Logs::shown = false;
 									return;
 								}
 								Config::set("logs_below_proc", false);  //? Show beside
 							} else {
 								//? Compact view: only below mode allowed
-								int min_combined_height = Proc::min_height + Logs::min_height;
 								bool has_space = (Proc::height >= min_combined_height);
 								
 								if (not has_space) {
-									Menu::show(Menu::Menus::SizeError);
+									Menu::logs_min_height_required = min_combined_height;
+									Menu::logs_error_is_height = true;
+									Menu::show(Menu::Menus::LogsSizeError);
 									Logs::shown = false;
 									return;
 								}
@@ -330,12 +335,15 @@ namespace Input {
 						} else if (not logs_below) {
 							//? State: Beside (right) -> Move to below
 							//? This only happens in full-width view
-							int min_combined_height = Proc::min_height + Logs::min_height;
 							bool has_space = (Proc::height >= min_combined_height);
 							
 							if (not has_space) {
-								//? Not enough height for below, skip to hidden
-								Logs::shown = false;
+								//? Not enough height for below, show error
+								Menu::logs_min_height_required = min_combined_height;
+								Menu::logs_error_is_height = true;
+								Menu::show(Menu::Menus::LogsSizeError);
+								//? Don't hide Logs, just stay in beside mode
+								return;
 							} else {
 								Config::set("logs_below_proc", true);
 							}

@@ -70,6 +70,11 @@ namespace Menu {
    msgBox messageBox;
    int signalToSend{};
    int signalKillRet{};
+   
+   //? Logs panel size error info
+   int logs_min_width_required{110};
+   int logs_min_height_required{26};
+   bool logs_error_is_height{false};
 
    const array<string, 32> P_Signals = {
 	   "0",
@@ -1248,6 +1253,39 @@ namespace Menu {
 		return NoChange;
 	}
 
+	static int logsSizeError(const string& key) {
+		if (redraw) {
+			string error_type = logs_error_is_height ? "height" : "width";
+			int required = logs_error_is_height ? logs_min_height_required : logs_min_width_required;
+			int current = logs_error_is_height ? Term::height : Term::width;
+			
+			vector<string> cont_vec {
+				Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
+				"Not enough " + error_type + " for Logs panel!" + Fx::reset,
+				"",
+				"Current " + error_type + ":  " + to_string(current),
+				"Required " + error_type + ": " + to_string(required),
+				"",
+				logs_error_is_height 
+					? "Tip: Increase terminal height"
+					: "Tip: Increase terminal width",
+				"or press 8 to hide Logs panel." + Fx::reset };
+
+			messageBox = Menu::msgBox{45, 0, cont_vec, "error"};
+			Global::overlay = messageBox();
+		}
+
+		auto ret = messageBox.input(key);
+		if (ret == msgBox::Ok_Yes or ret == msgBox::No_Esc) {
+			messageBox.clear();
+			return Closed;
+		}
+		else if (redraw) {
+			return Changed;
+		}
+		return NoChange;
+	}
+
 	static int signalSend(const string& key) {
 		auto s_pid = (Config::getB("show_detailed") and Config::getI("selected_pid") == 0 ? Config::getI("detailed_pid") : Config::getI("selected_pid"));
 		if (s_pid == 0) return Closed;
@@ -2297,6 +2335,7 @@ namespace Menu {
 	//* Add menus here and update enum Menus in header
 	const auto menuFunc = vector{
 		ref(sizeError),
+		ref(logsSizeError),
 		ref(signalChoose),
 		ref(signalSend),
 		ref(signalReturn),
