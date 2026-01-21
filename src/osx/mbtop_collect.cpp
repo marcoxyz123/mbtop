@@ -2614,6 +2614,23 @@ namespace Logs {
 				export_path = "/tmp";
 			}
 		}
+		
+		//? Expand ~ to home directory if present
+		if (export_path.size() > 0 && export_path[0] == '~') {
+			const char* home = getenv("HOME");
+			if (home) {
+				export_path = string(home) + export_path.substr(1);
+			}
+		}
+		
+		//? Check if directory exists
+		struct stat st;
+		if (stat(export_path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+			Logger::warning("Export path does not exist or is not a directory: {}", export_path);
+			export_error = "Invalid path: " + export_path;
+			redraw = true;
+			return;
+		}
 
 		//? Get process name
 		string proc_name = "unknown";
@@ -2639,9 +2656,14 @@ namespace Logs {
 		export_file_handle = fopen(export_filename.c_str(), "w");
 		if (export_file_handle == nullptr) {
 			Logger::warning("Failed to open log export file: {}", export_filename);
+			export_error = "Cannot write to: " + export_path;
 			export_filename.clear();
+			redraw = true;
 			return;
 		}
+		
+		//? Clear any previous error
+		export_error.clear();
 
 		//? Write header
 		fprintf(export_file_handle, "# mbtop Log Export\n");

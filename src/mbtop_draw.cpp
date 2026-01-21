@@ -4618,6 +4618,7 @@ namespace Logs {
 	bool paused = false;
 	bool exporting = false;
 	string export_filename;
+	string export_error;          //? Error message when export fails
 	bool reverse_order = false;   //? true = oldest first, false = newest first
 	int scroll_offset = 0;
 	pid_t current_pid = 0;
@@ -4819,8 +4820,13 @@ namespace Logs {
 			//? Build status line with colors and mouse mappings
 			out += Mv::to(status_y, cur_x);
 			
-			//? [LIVE], [PAUSED], or [REC] status
-			if (exporting) {
+			//? [LIVE], [PAUSED], [REC], or [ERR] status
+			if (not export_error.empty()) {
+				//? Show error briefly - truncate if needed
+				string err_display = export_error.length() > 20 ? export_error.substr(0, 17) + "..." : export_error;
+				out += theme("log_fault") + Fx::b + "[ERR] " + err_display + Fx::ub + fg + " ";
+				cur_x += 7 + static_cast<int>(err_display.length());
+			} else if (exporting) {
 				out += theme("log_error") + Fx::b + "[REC]" + Fx::ub + fg + " ";
 				cur_x += 6;
 			} else if (paused) {

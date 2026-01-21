@@ -570,7 +570,8 @@ namespace Input {
 					Logs::toggle_pause();
 				}
 				else if (key == "logs_export") {
-					//? Toggle export to file
+					//? Toggle export to file - clear any previous error first
+					Logs::export_error.clear();
 					if (Logs::exporting) {
 						Logs::stop_export();
 					} else {
@@ -593,7 +594,8 @@ namespace Input {
 						Logs::toggle_pause();
 					}
 					else if (key == "E") {
-						//? Shift+E = Toggle export to file
+						//? Shift+E = Toggle export to file - clear any previous error first
+						Logs::export_error.clear();
 						if (Logs::exporting) {
 							Logs::stop_export();
 						} else {

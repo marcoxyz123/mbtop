@@ -612,6 +612,7 @@ namespace Logs {
 	extern bool paused;           //? Pause log streaming for reading
 	extern bool exporting;        //? true when exporting logs to file
 	extern string export_filename; //? Current export filename
+	extern string export_error;   //? Error message when export fails
 	extern bool reverse_order;    //? true = oldest first, false = newest first (default)
 	extern int scroll_offset;     //? Scroll position (0 = latest)
 	extern pid_t current_pid;     //? PID being monitored
