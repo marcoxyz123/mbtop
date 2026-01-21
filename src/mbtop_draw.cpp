@@ -3651,8 +3651,9 @@ namespace Proc {
 				if (show_cmd) {
 					//? Split remaining space between Program and Command
 					//? Give Program ~25% minimum, rest to Command
+					//? Account for "  " (2 spaces) between Program and Command in the output
 					prog_size = max(PROG_MIN, min(18, remaining / 4));
-					cmd_size = max(1, remaining - prog_size - 1);
+					cmd_size = max(1, remaining - prog_size - 2);
 				} else {
 					//? Command hidden: all remaining space to Program
 					cmd_size = -1;
@@ -3699,6 +3700,11 @@ namespace Proc {
 			prog_size = max(1, prog_size);
 			tree_size = max(1, tree_size);
 			if (cmd_size > 0) cmd_size = max(1, cmd_size);
+
+			if (Logs::shown) {
+				Logger::debug("Proc::draw column calc: width={}, prog_size={}, cmd_size={}, Logs::shown={}, bottom_layout={}",
+					width, prog_size, cmd_size, Logs::shown, bottom_layout);
+			}
 
 			//? Update visible sort fields based on current layout, column visibility, and config settings
 			//? This controls which sort fields are available via left/right arrow keys
@@ -4625,6 +4631,10 @@ namespace Logs {
 		if (redraw) {
 			string out;
 			const auto& theme = Theme::c;
+
+			//? DEBUG: Log dimensions to verify correct positioning
+			Logger::debug("Logs::draw: x={}, y={}, width={}, height={}, Proc::width={}", 
+				x, y, width, height, Proc::width);
 
 			out += box;
 
@@ -5688,6 +5698,9 @@ namespace Draw {
 						Logs::x = Proc::x + Proc::width + 1;
 						Logs::y = Proc::y;
 						Logs::height = Proc::height;
+
+						Logger::debug("calcSizes: Logs side-by-side: Proc::width={}, Logs::x={}, Logs::width={}, Term::width={}",
+							Proc::width, Logs::x, Logs::width, Term::width);
 
 						//? Recreate Proc box with new width
 						Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
