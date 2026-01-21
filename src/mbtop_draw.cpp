@@ -4494,7 +4494,7 @@ namespace Proc {
 					+ (render_show_cpu ? cpu_heat + rjust(cpu_str, 5) + "  " + end : "")
 					+ (show_gpu ? gpu_heat + rjust(gpu_str, 5) + "  " + end : "")
 					+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) : "")
-					+ Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
+					+ end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			else {
 				//? Side layout or tree view: original column order
@@ -4509,7 +4509,7 @@ namespace Proc {
 					+ (show_gpu ? " " + (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_gpu_graphs ? graph_bg * 5 : "")
 						+ (show_gpu_graphs and p_gpu_graphs.contains(p.pid) ? Mv::l(5) + gp_color + p_gpu_graphs.at(p.pid)({scale_to_graph(p.gpu_p)}, data_same) : "") + end + ' '
 						+ gp_color + rjust(gpu_str, 4) : "")
-					+ "  " + Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
+					+ "  " + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			if (lc++ > height - 5) break;
 			else if (lc > height - 5 and proc_banner_shown) break;
