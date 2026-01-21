@@ -325,6 +325,7 @@ namespace Input {
 								
 								if (not has_space) {
 									Menu::logs_min_height_required = min_combined_height;
+									Menu::logs_current_proc_height = Proc::height;
 									Menu::logs_error_is_height = true;
 									Menu::show(Menu::Menus::LogsSizeError);
 									Logs::shown = false;
@@ -340,6 +341,7 @@ namespace Input {
 							if (not has_space) {
 								//? Not enough height for below, show error
 								Menu::logs_min_height_required = min_combined_height;
+								Menu::logs_current_proc_height = Proc::height;
 								Menu::logs_error_is_height = true;
 								Menu::show(Menu::Menus::LogsSizeError);
 								//? Don't hide Logs, just stay in beside mode

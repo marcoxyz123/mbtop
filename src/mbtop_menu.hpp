@@ -99,6 +99,7 @@ namespace Menu {
 	//? Store Logs-specific minimum requirements for error dialog
 	extern int logs_min_width_required;
 	extern int logs_min_height_required;
+	extern int logs_current_proc_height;  //? Actual Proc::height when error occurred
 	extern bool logs_error_is_height;  //? true = height error, false = width error
 
 	//* Handles redirection of input for menu functions and handles return codes

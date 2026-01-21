@@ -74,6 +74,7 @@ namespace Menu {
    //? Logs panel size error info
    int logs_min_width_required{110};
    int logs_min_height_required{26};
+   int logs_current_proc_height{0};
    bool logs_error_is_height{false};
 
    const array<string, 32> P_Signals = {
@@ -1255,21 +1256,33 @@ namespace Menu {
 
 	static int logsSizeError(const string& key) {
 		if (redraw) {
-			string error_type = logs_error_is_height ? "height" : "width";
-			int required = logs_error_is_height ? logs_min_height_required : logs_min_width_required;
-			int current = logs_error_is_height ? Term::height : Term::width;
+			vector<string> cont_vec;
 			
-			vector<string> cont_vec {
-				Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
-				"Not enough " + error_type + " for Logs panel!" + Fx::reset,
-				"",
-				"Current " + error_type + ":  " + to_string(current),
-				"Required " + error_type + ": " + to_string(required),
-				"",
-				logs_error_is_height 
-					? "Tip: Increase terminal height"
-					: "Tip: Increase terminal width",
-				"or press 8 to hide Logs panel." + Fx::reset };
+			if (logs_error_is_height) {
+				//? Height error: show Proc::height (which needs to fit Proc+Logs)
+				cont_vec = {
+					Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
+					"Not enough height for Logs below!" + Fx::reset,
+					"",
+					"Proc height:     " + to_string(logs_current_proc_height),
+					"Required height: " + to_string(logs_min_height_required),
+					"(Proc:" + to_string(Proc::min_height) + " + Logs:" + to_string(Logs::min_height) + ")",
+					"",
+					"Tip: Increase terminal height",
+					"or keep Logs beside Proc." + Fx::reset };
+			} else {
+				//? Width error: show terminal width
+				cont_vec = {
+					Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
+					"Not enough width for Logs panel!" + Fx::reset,
+					"",
+					"Terminal width:  " + to_string(Term::width),
+					"Required width:  " + to_string(logs_min_width_required),
+					"(Proc:" + to_string(60) + " + Logs:" + to_string(Logs::min_width) + ")",
+					"",
+					"Tip: Increase terminal width",
+					"or press 8 to hide Logs." + Fx::reset };
+			}
 
 			messageBox = Menu::msgBox{45, 0, cont_vec, "error"};
 			Global::overlay = messageBox();
