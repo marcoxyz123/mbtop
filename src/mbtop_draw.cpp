@@ -4862,9 +4862,15 @@ namespace Logs {
 			
 			//? R:Reverse button (Shift+R when focused)
 			int r_x = cur_x;
-			out += hi + "R" + fg + ":" + sort_str;
-			cur_x += 2 + static_cast<int>(sort_str.length());
+			out += hi + "R" + fg + ":" + sort_str + " ";
+			cur_x += 3 + static_cast<int>(sort_str.length());
 			Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 2 + static_cast<int>(sort_str.length())};
+			
+			//? B:Buffer button (Shift+B when focused)
+			int b_x = cur_x;
+			out += hi + "B" + fg + ":" + to_string(max_entries);
+			cur_x += 2 + static_cast<int>(to_string(max_entries).length());
+			Input::mouse_mappings["logs_buffer"] = {status_y, b_x, 1, 2 + static_cast<int>(to_string(max_entries).length())};
 			
 			//? Pad remaining space
 			int remaining = content_width - (cur_x - x - 1);
@@ -4878,6 +4884,7 @@ namespace Logs {
 				Input::mouse_mappings.erase("logs_export");
 				Input::mouse_mappings.erase("logs_filter");
 				Input::mouse_mappings.erase("logs_sort");
+				Input::mouse_mappings.erase("logs_buffer");
 			}
 
 			//? Draw filter selection modal if active
@@ -4911,6 +4918,49 @@ namespace Logs {
 				//? Instructions
 				out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
 				out += theme("inactive_fg") + "1-5/Enter/Esc" + Fx::reset;
+			}
+
+			//? Draw buffer size selection modal if active
+			if (buffer_modal_active) {
+				const int modal_w = 24;
+				const int modal_h = 11;  //? 7 options + header + footer
+				const int modal_x = x + (width - modal_w) / 2;
+				const int modal_y = y + (height - modal_h) / 2;
+				
+				//? Draw modal box
+				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Buffer Size");
+				
+				//? Buffer size options
+				const array<string, 7> sizes = {"100", "250", "500", "1000", "2500", "5000", "Custom"};
+				
+				int opt_y = modal_y + 2;
+				for (int i = 0; i < 7; i++) {
+					out += Mv::to(opt_y + i, modal_x + 2);
+					if (i == buffer_modal_selected) {
+						out += theme("selected_bg") + theme("selected_fg") + Fx::b;
+						if (i == 6) {
+							//? Custom with input field
+							string custom_display = buffer_custom_input.empty() ? "____" : buffer_custom_input + "_";
+							out += " " + to_string(i + 1) + ". Custom: " + custom_display + " ";
+						} else {
+							out += " " + to_string(i + 1) + ". " + ljust(sizes[static_cast<size_t>(i)], 14) + " ";
+						}
+						out += Fx::reset;
+					} else {
+						out += theme("hi_fg") + to_string(i + 1) + "." + theme("main_fg");
+						if (i == 6) {
+							out += " Custom";
+						} else {
+							out += " " + sizes[static_cast<size_t>(i)];
+						}
+					}
+					//? Mouse mapping for each option
+					Input::mouse_mappings["buffer_" + to_string(i)] = {opt_y + i, modal_x + 1, 1, modal_w - 2};
+				}
+				
+				//? Instructions
+				out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
+				out += theme("inactive_fg") + "1-7/Enter/Esc" + Fx::reset;
 			}
 
 			redraw = false;

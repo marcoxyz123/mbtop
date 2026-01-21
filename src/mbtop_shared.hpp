@@ -662,7 +662,7 @@ namespace Logs {
 
 	//? Filter modal state
 	extern bool filter_modal_active;
-	extern int filter_modal_selected;  //? 0=All, 1=Info+, 2=Error, 3=Fault
+	extern int filter_modal_selected;  //? 0=All, 1=Debug, 2=Info, 3=Error, 4=Fault
 
 	//* Show filter selection modal
 	void show_filter_modal();
@@ -670,8 +670,22 @@ namespace Logs {
 	//* Handle filter modal input, returns true if modal closed
 	bool filter_modal_input(const std::string_view key);
 
-	//* Set filter directly by index (0=All, 1=Info+, 2=Error, 3=Fault)
+	//* Set filter directly by index
 	void set_filter(int filter_idx);
+
+	//? Buffer size modal state
+	extern bool buffer_modal_active;
+	extern int buffer_modal_selected;   //? 0-5 for presets, 6=Custom
+	extern string buffer_custom_input;  //? Custom input string
+
+	//* Show buffer size selection modal
+	void show_buffer_modal();
+
+	//* Handle buffer modal input, returns true if modal closed
+	bool buffer_modal_input(const std::string_view key);
+
+	//* Set buffer size directly
+	void set_buffer_size(size_t size);
 }
 
 /// Detect container engine.

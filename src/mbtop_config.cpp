@@ -253,6 +253,8 @@ namespace Config {
 
 		{"log_export_path",		"#* Path for log export files. Default: ~/Desktop. Filename format: <PID>-<Process>-<datetime>.log"},
 
+		{"log_buffer_size",		"#* Maximum number of log entries to keep in buffer. Default: 500. Higher values use more memory."},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -529,7 +531,8 @@ namespace Config {
 		{"swap_toggle_mode", 0},
 		{"vram_toggle_mode", 0},
 		{"mem_start", 0},
-		{"mem_selected", 0}
+		{"mem_selected", 0},
+		{"log_buffer_size", 500}
 	};
 	std::unordered_map<std::string_view, int> intsTmp;
 

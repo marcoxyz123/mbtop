@@ -2480,6 +2480,16 @@ namespace Logs {
 	void collect() {
 		if (not shown) return;
 
+		//? Load buffer size from config on first call
+		static bool config_loaded = false;
+		if (not config_loaded) {
+			int cfg_size = Config::getI("log_buffer_size");
+			if (cfg_size > 0) {
+				max_entries = static_cast<size_t>(cfg_size);
+			}
+			config_loaded = true;
+		}
+
 		//? Logs panel only works with Follow process mode
 		bool following = Config::getB("follow_process");
 		pid_t followed_pid = following ? Config::getI("followed_pid") : 0;
@@ -2773,6 +2783,124 @@ namespace Logs {
 				filter_modal_active = false;
 				redraw = true;
 				return true;
+			}
+		}
+		return false;
+	}
+
+	//? Buffer size modal state
+	bool buffer_modal_active = false;
+	int buffer_modal_selected = 2;      //? Default to 500 (index 2)
+	string buffer_custom_input;         //? For custom input mode
+
+	//? Buffer size presets
+	static const array<size_t, 6> buffer_presets = {100, 250, 500, 1000, 2500, 5000};
+
+	void show_buffer_modal() {
+		buffer_modal_active = true;
+		buffer_custom_input.clear();
+		//? Find current size in presets
+		size_t current = max_entries;
+		buffer_modal_selected = 6;  //? Default to Custom if not found
+		for (size_t i = 0; i < buffer_presets.size(); i++) {
+			if (buffer_presets[i] == current) {
+				buffer_modal_selected = static_cast<int>(i);
+				break;
+			}
+		}
+		redraw = true;
+	}
+
+	void set_buffer_size(size_t size) {
+		if (size < 50) size = 50;        //? Minimum 50
+		if (size > 10000) size = 10000;  //? Maximum 10000
+		max_entries = size;
+		Config::set("log_buffer_size", static_cast<int>(size));
+		//? Trim buffer if needed
+		while (entries.size() > max_entries) {
+			entries.pop_front();
+		}
+		redraw = true;
+	}
+
+	bool buffer_modal_input(const std::string_view key) {
+		if (key == "escape" || key == "q") {
+			buffer_modal_active = false;
+			buffer_custom_input.clear();
+			redraw = true;
+			return true;
+		}
+		else if (key == "enter") {
+			if (buffer_modal_selected < 6) {
+				//? Preset selected
+				set_buffer_size(buffer_presets[static_cast<size_t>(buffer_modal_selected)]);
+			} else if (not buffer_custom_input.empty()) {
+				//? Custom value entered
+				int val = std::stoi(buffer_custom_input);
+				set_buffer_size(static_cast<size_t>(val));
+			}
+			buffer_modal_active = false;
+			buffer_custom_input.clear();
+			redraw = true;
+			return true;
+		}
+		else if (key == "up" || key == "k") {
+			if (buffer_modal_selected > 0) {
+				buffer_modal_selected--;
+				buffer_custom_input.clear();
+			}
+			redraw = true;
+		}
+		else if (key == "down" || key == "j") {
+			if (buffer_modal_selected < 6) {
+				buffer_modal_selected++;
+				buffer_custom_input.clear();
+			}
+			redraw = true;
+		}
+		else if (key == "backspace" && buffer_modal_selected == 6 && not buffer_custom_input.empty()) {
+			buffer_custom_input.pop_back();
+			redraw = true;
+		}
+		else if (key.size() == 1 && isdigit(key[0])) {
+			if (buffer_modal_selected == 6) {
+				//? Custom mode - append digit
+				if (buffer_custom_input.size() < 5) {  //? Max 5 digits (99999)
+					buffer_custom_input += key[0];
+				}
+			} else {
+				//? Quick select preset 1-6
+				int idx = key[0] - '1';
+				if (idx >= 0 && idx < 6) {
+					set_buffer_size(buffer_presets[static_cast<size_t>(idx)]);
+					buffer_modal_active = false;
+					buffer_custom_input.clear();
+					redraw = true;
+					return true;
+				}
+			}
+			redraw = true;
+		}
+		else if (key == "7" && buffer_modal_selected != 6) {
+			//? Select Custom
+			buffer_modal_selected = 6;
+			buffer_custom_input.clear();
+			redraw = true;
+		}
+		else if (key.starts_with("buffer_")) {
+			//? Mouse click on option
+			int idx = key.back() - '0';
+			if (idx >= 0 && idx < 6) {
+				set_buffer_size(buffer_presets[static_cast<size_t>(idx)]);
+				buffer_modal_active = false;
+				buffer_custom_input.clear();
+				redraw = true;
+				return true;
+			} else if (idx == 6) {
+				//? Custom selected
+				buffer_modal_selected = 6;
+				buffer_custom_input.clear();
+				redraw = true;
 			}
 		}
 		return false;
