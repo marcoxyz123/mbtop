@@ -4612,7 +4612,7 @@ namespace Proc {
 namespace Logs {
 	string box;
 	int x = 0, y = 0, width = 0, height = 0;
-	int min_width = 40, min_height = 10;
+	int min_width = 50, min_height = 10;  //? Minimum to show status bar buttons
 	bool shown = false, redraw = true;
 	bool focused = false;         //? true when Logs panel has input focus
 	bool paused = false;
@@ -4817,6 +4817,7 @@ namespace Logs {
 			//? Calculate positions for mouse mappings
 			int status_y = y + height - 1;
 			int cur_x = x + 1;
+			bool compact = (width < 65);  //? Use compact buttons when narrow
 			
 			//? Build status line with colors and mouse mappings
 			out += Mv::to(status_y, cur_x);
@@ -4824,61 +4825,90 @@ namespace Logs {
 			//? [LIVE], [PAUSED], [REC], or [ERR] status
 			if (not export_error.empty()) {
 				//? Show error briefly - truncate if needed
-				string err_display = export_error.length() > 20 ? export_error.substr(0, 17) + "..." : export_error;
+				int max_err_len = compact ? 10 : 20;
+				string err_display = export_error.length() > static_cast<size_t>(max_err_len) 
+					? export_error.substr(0, static_cast<size_t>(max_err_len - 3)) + "..." : export_error;
 				out += theme("log_fault") + Fx::b + "[ERR] " + err_display + Fx::ub + fg + " ";
 				cur_x += 7 + static_cast<int>(err_display.length());
 			} else if (exporting) {
 				out += theme("log_error") + Fx::b + "[REC]" + Fx::ub + fg + " ";
 				cur_x += 6;
 			} else if (paused) {
-				out += fg + "[PAUSED] ";
-				cur_x += 9;
+				out += fg + (compact ? "[P] " : "[PAUSED] ");
+				cur_x += compact ? 4 : 9;
 			} else {
-				out += fg + "[LIVE] ";
-				cur_x += 7;
+				out += fg + (compact ? "[L] " : "[LIVE] ");
+				cur_x += compact ? 4 : 7;
 			}
 			
-			//? Filter name in color
-			out += filter_color + filter_name + fg + " ";
-			cur_x += static_cast<int>(filter_name.length()) + 1;
+			//? Filter name in color (abbreviate in compact mode)
+			string filter_display = compact ? filter_name.substr(0, 1) : filter_name;
+			out += filter_color + filter_display + fg + " ";
+			cur_x += static_cast<int>(filter_display.length()) + 1;
 			
-			//? Position counter
-			out += pos_str + " ";
-			cur_x += static_cast<int>(pos_str.length()) + 1;
+			//? Position counter (shorter format in compact)
+			string short_pos = compact ? to_string(total_entries) : pos_str;
+			out += short_pos + " ";
+			cur_x += static_cast<int>(short_pos.length()) + 1;
 			
 			//? Separator and buttons
 			out += fg + "| ";
 			cur_x += 2;
 			
-			//? SPC:Pause button (Space key when focused, or click)
-			int p_x = cur_x;
-			out += hi + "SPC" + fg + ":Pause ";
-			cur_x += 10;
-			Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 9};
-			
-			//? E:Export button (Shift+E when focused)
-			int e_x = cur_x;
-			out += hi + "E" + fg + ":Export ";
-			cur_x += 9;
-			Input::mouse_mappings["logs_export"] = {status_y, e_x, 1, 8};
-			
-			//? F:Filter button (Shift+F when focused)
-			int f_x = cur_x;
-			out += hi + "F" + fg + ":Filter ";
-			cur_x += 9;
-			Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 8};
-			
-			//? R:Reverse button (Shift+R when focused)
-			int r_x = cur_x;
-			out += hi + "R" + fg + ":" + sort_str + " ";
-			cur_x += 3 + static_cast<int>(sort_str.length());
-			Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 2 + static_cast<int>(sort_str.length())};
-			
-			//? B:Buffer button (Shift+B when focused)
-			int b_x = cur_x;
-			out += hi + "B" + fg + ":" + to_string(max_entries);
-			cur_x += 2 + static_cast<int>(to_string(max_entries).length());
-			Input::mouse_mappings["logs_buffer"] = {status_y, b_x, 1, 2 + static_cast<int>(to_string(max_entries).length())};
+			//? Buttons - full or compact labels
+			if (compact) {
+				//? Compact: Spc E F R B
+				int p_x = cur_x;
+				out += hi + "Spc" + fg + " ";
+				cur_x += 4;
+				Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 3};
+				
+				int e_x = cur_x;
+				out += hi + "E" + fg + " ";
+				cur_x += 2;
+				Input::mouse_mappings["logs_export"] = {status_y, e_x, 1, 1};
+				
+				int f_x = cur_x;
+				out += hi + "F" + fg + " ";
+				cur_x += 2;
+				Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 1};
+				
+				int r_x = cur_x;
+				out += hi + "R" + fg + " ";
+				cur_x += 2;
+				Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 1};
+				
+				int b_x = cur_x;
+				out += hi + "B" + fg + ":" + to_string(max_entries);
+				cur_x += 2 + static_cast<int>(to_string(max_entries).length());
+				Input::mouse_mappings["logs_buffer"] = {status_y, b_x, 1, 2 + static_cast<int>(to_string(max_entries).length())};
+			} else {
+				//? Full: SPC:Pause E:Export F:Filter R:New B:500
+				int p_x = cur_x;
+				out += hi + "SPC" + fg + ":Pause ";
+				cur_x += 10;
+				Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 9};
+				
+				int e_x = cur_x;
+				out += hi + "E" + fg + ":Export ";
+				cur_x += 9;
+				Input::mouse_mappings["logs_export"] = {status_y, e_x, 1, 8};
+				
+				int f_x = cur_x;
+				out += hi + "F" + fg + ":Filter ";
+				cur_x += 9;
+				Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 8};
+				
+				int r_x = cur_x;
+				out += hi + "R" + fg + ":" + sort_str + " ";
+				cur_x += 3 + static_cast<int>(sort_str.length());
+				Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 2 + static_cast<int>(sort_str.length())};
+				
+				int b_x = cur_x;
+				out += hi + "B" + fg + ":" + to_string(max_entries);
+				cur_x += 2 + static_cast<int>(to_string(max_entries).length());
+				Input::mouse_mappings["logs_buffer"] = {status_y, b_x, 1, 2 + static_cast<int>(to_string(max_entries).length())};
+			}
 			
 			//? Pad remaining space
 			int remaining = content_width - (cur_x - x - 1);
@@ -5903,16 +5933,29 @@ namespace Draw {
 				}
 			} else {
 				//? Vertical split: Logs right of Proc (no gap between panels)
-				if (Proc::width < min_combined_width) {
-					//? Not enough horizontal space
-					Logs::shown = false;
-					Logs::width = Logs::height = 0;
-				} else {
-					int logs_width = std::max(Logs::min_width, Proc::width / 3);
-					//? Ensure Proc keeps min width
-					if (Proc::width - logs_width < Proc::min_width) {
-						logs_width = Proc::width - Proc::min_width;
+				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
+				bool can_show_logs = false;
+				int logs_width = 0;
+				
+				if (Proc::width >= min_combined_width) {
+					//? Calculate available width for Logs
+					//? Give Logs at least min_width, prefer 1/3 of space if available
+					int available = Proc::width - Proc::min_width;  //? What's left after Proc minimum
+					int preferred_logs = Proc::width / 3;
+					
+					//? Logs gets: min_width first, then up to 1/3 if space allows
+					if (available >= preferred_logs) {
+						//? Plenty of space - give Logs preferred size
+						logs_width = preferred_logs;
+						can_show_logs = true;
+					} else if (available >= Logs::min_width) {
+						//? Tight space - Logs gets minimum, Proc shrinks
+						logs_width = Logs::min_width;
+						can_show_logs = true;
 					}
+				}
+				
+				if (can_show_logs) {
 					//? Ensure Logs doesn't exceed terminal bounds
 					int new_proc_width = Proc::width - logs_width;
 					int logs_x = Proc::x + new_proc_width;
@@ -5939,6 +5982,10 @@ namespace Draw {
 						Logs::shown = false;
 						Logs::width = Logs::height = 0;
 					}
+				} else {
+					//? Not enough horizontal space
+					Logs::shown = false;
+					Logs::width = Logs::height = 0;
 				}
 			}
 		} else if (Logs::shown and not Proc::shown) {
