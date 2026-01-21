@@ -5986,12 +5986,13 @@ namespace Draw {
 					int preferred_logs = Proc::width / 3;
 					
 					//? Logs gets: min_width first, then up to 1/3 if space allows
-					if (available >= preferred_logs) {
-						//? Plenty of space - give Logs preferred size
+					//? IMPORTANT: preferred_logs must be >= min_width, otherwise use min_width
+					if (available >= preferred_logs and preferred_logs >= Logs::min_width) {
+						//? Plenty of space - give Logs preferred size (1/3)
 						logs_width = preferred_logs;
 						can_show_logs = true;
 					} else if (available >= Logs::min_width) {
-						//? Tight space - Logs gets minimum, Proc shrinks
+						//? Tight space OR preferred too small - Logs gets minimum
 						logs_width = Logs::min_width;
 						can_show_logs = true;
 					}
