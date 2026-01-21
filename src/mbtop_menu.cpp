@@ -3284,6 +3284,8 @@ namespace MenuV2 {
 					{"Proc | Logs", {
 						{"logs_below_proc", "Position Below", "Show logs panel below proc instead of beside", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"log_color_full_line", "Color Full Line", "Color entire log line (off = only [X] marker colored)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"log_buffer_size", "Buffer Size", "Max log entries to keep (100-10000)", ControlType::Slider, {}, "", 100, 10000, 100},
+						{"log_export_path", "Export Path", "Path for exported logs (empty = ~/Desktop)", ControlType::Text, {}, "", 0, 0, 0},
 					}},
 				},
 				true, {"CPU", "GPU", "PWR", "Memory", "Network", "Processes"}
