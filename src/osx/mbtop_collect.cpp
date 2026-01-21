@@ -2324,8 +2324,10 @@ namespace Proc {
 
 namespace Logs {
 	//? Pipe handle for streaming logs (file-local)
-	static FILE* log_pipe = nullptr;
-	static pid_t streaming_pid = 0;
+	static int log_fd = -1;           //? File descriptor for reading logs
+	static pid_t log_child_pid = 0;   //? PID of the log stream child process
+	static pid_t streaming_pid = 0;   //? PID of the process we're streaming logs for
+	static string line_buffer;        //? Buffer for partial line reads
 
 	//? Parse a single JSON log entry from ndjson output
 	static bool parse_log_entry(const string& json_line, LogEntry& entry) {
@@ -2401,75 +2403,86 @@ namespace Logs {
 		return (level_filter & level_to_bit(level)) != 0;
 	}
 
-	//? Stop any existing log stream
+	//? Stop any existing log stream (non-blocking)
 	static void stop_stream() {
-		if (log_pipe != nullptr) {
-			pclose(log_pipe);
-			log_pipe = nullptr;
+		if (log_child_pid > 0) {
+			//? Kill the child process immediately
+			kill(log_child_pid, SIGKILL);
+			//? Reap the zombie (non-blocking)
+			waitpid(log_child_pid, nullptr, WNOHANG);
+			log_child_pid = 0;
+		}
+		if (log_fd >= 0) {
+			close(log_fd);
+			log_fd = -1;
 		}
 		streaming_pid = 0;
+		line_buffer.clear();
 	}
 
-	//? Start a new log stream for the given PID
+	//? Start a new log stream for the given PID (using fork/exec to avoid pclose blocking)
 	static bool start_stream(pid_t pid) {
 		stop_stream();
 
 		if (pid <= 0) return false;
 
-		//? Build the log command
-		string cmd = "/usr/bin/log stream --process " + std::to_string(pid) + " --style ndjson --level debug 2>/dev/null";
-
-		log_pipe = popen(cmd.c_str(), "r");
-		if (log_pipe == nullptr) {
-			Logger::warning("Failed to start log stream for PID {}", pid);
+		//? Create a pipe for reading the log output
+		int pipe_fds[2];
+		if (pipe(pipe_fds) < 0) {
+			Logger::warning("Failed to create pipe for log stream");
 			return false;
 		}
 
-		//? Set non-blocking mode
-		int fd = fileno(log_pipe);
-		int flags = fcntl(fd, F_GETFL, 0);
-		fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+		//? Fork to run the log command
+		pid_t child = fork();
+		if (child < 0) {
+			Logger::warning("Failed to fork for log stream");
+			close(pipe_fds[0]);
+			close(pipe_fds[1]);
+			return false;
+		}
+
+		if (child == 0) {
+			//? Child process
+			close(pipe_fds[0]);  //? Close read end
+			dup2(pipe_fds[1], STDOUT_FILENO);  //? Redirect stdout to pipe
+			close(pipe_fds[1]);
+
+			//? Redirect stderr to /dev/null
+			int devnull = open("/dev/null", O_WRONLY);
+			if (devnull >= 0) {
+				dup2(devnull, STDERR_FILENO);
+				close(devnull);
+			}
+
+			//? Execute log stream command
+			string pid_str = std::to_string(pid);
+			execlp("/usr/bin/log", "log", "stream", "--process", pid_str.c_str(), "--style", "ndjson", "--level", "debug", nullptr);
+
+			//? If exec fails, exit
+			_exit(1);
+		}
+
+		//? Parent process
+		close(pipe_fds[1]);  //? Close write end
+		log_fd = pipe_fds[0];
+		log_child_pid = child;
+
+		//? Set non-blocking mode on the read end
+		int flags = fcntl(log_fd, F_GETFL, 0);
+		fcntl(log_fd, F_SETFL, flags | O_NONBLOCK);
 
 		streaming_pid = pid;
 		return true;
 	}
 
-	//? Load historical logs for a PID
-	static void load_historical(pid_t pid) {
-		if (pid <= 0) return;
-
-		//? Build the log show command (last 5 minutes)
-		string cmd = "/usr/bin/log show --predicate 'processIdentifier == " + std::to_string(pid) + "' --last 5m --style ndjson 2>/dev/null";
-
-		FILE* pipe = popen(cmd.c_str(), "r");
-		if (pipe == nullptr) {
-			Logger::warning("Failed to load historical logs for PID {}", pid);
-			return;
-		}
-
-		char buffer[4096];
-		while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-			string line(buffer);
-			//? Remove trailing newline
-			if (not line.empty() && line.back() == '\n') {
-				line.pop_back();
-			}
-
-			//? Skip the count/finished summary line
-			if (line.find("\"count\":") != string::npos && line.find("\"finished\":") != string::npos) {
-				continue;
-			}
-
-			LogEntry entry;
-			if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
-				entries.push_back(std::move(entry));
-				if (entries.size() > max_entries) {
-					entries.pop_front();
-				}
-			}
-		}
-
-		pclose(pipe);
+	//? Load historical logs for a PID (non-blocking version)
+	//? Note: Skipping historical loading for now to avoid blocking
+	//? The stream will show new logs as they come in
+	static void load_historical([[maybe_unused]] pid_t pid) {
+		//? Historical log loading is disabled to prevent UI freezes
+		//? The `log show` command can take several seconds to complete
+		//? Users will see new logs as they stream in real-time
 	}
 
 	void collect() {
@@ -2495,32 +2508,63 @@ namespace Logs {
 			redraw = true;
 		}
 
-		//? Read from the stream if active and not paused
-		if (live_mode && not paused && log_pipe != nullptr && current_pid > 0) {
+		//? Read from the stream if active and not paused (non-blocking)
+		if (live_mode && not paused && log_fd >= 0 && current_pid > 0) {
 			char buffer[4096];
-			int lines_read = 0;
-			const int max_lines_per_collect = 50;  //? Limit lines per update to avoid blocking
+			int lines_processed = 0;
+			const int max_lines_per_collect = 50;
 
-			while (lines_read < max_lines_per_collect && fgets(buffer, sizeof(buffer), log_pipe) != nullptr) {
-				string line(buffer);
-				if (not line.empty() && line.back() == '\n') {
-					line.pop_back();
-				}
+			//? Non-blocking read loop
+			while (lines_processed < max_lines_per_collect) {
+				ssize_t bytes_read = read(log_fd, buffer, sizeof(buffer) - 1);
 
-				//? Skip empty lines and summary lines
-				if (line.empty() || (line.find("\"count\":") != string::npos && line.find("\"finished\":") != string::npos)) {
-					continue;
-				}
-
-				LogEntry entry;
-				if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
-					entries.push_back(std::move(entry));
-					if (entries.size() > max_entries) {
-						entries.pop_front();
+				if (bytes_read < 0) {
+					if (errno == EAGAIN || errno == EWOULDBLOCK) {
+						//? No data available right now - this is normal for non-blocking I/O
+						break;
 					}
-					redraw = true;
+					//? Actual error - stop streaming
+					Logger::debug("Log stream read error: {}", strerror(errno));
+					stop_stream();
+					break;
 				}
-				lines_read++;
+
+				if (bytes_read == 0) {
+					//? EOF - stream closed (process may have exited)
+					stop_stream();
+					break;
+				}
+
+				//? Append to line buffer
+				buffer[bytes_read] = '\0';
+				line_buffer += buffer;
+
+				//? Process complete lines
+				size_t newline_pos;
+				while ((newline_pos = line_buffer.find('\n')) != string::npos && lines_processed < max_lines_per_collect) {
+					string line = line_buffer.substr(0, newline_pos);
+					line_buffer.erase(0, newline_pos + 1);
+
+					//? Skip empty lines and summary lines
+					if (line.empty() || (line.find("\"count\":") != string::npos && line.find("\"finished\":") != string::npos)) {
+						continue;
+					}
+
+					LogEntry entry;
+					if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
+						entries.push_back(std::move(entry));
+						if (entries.size() > max_entries) {
+							entries.pop_front();
+						}
+						redraw = true;
+					}
+					lines_processed++;
+				}
+			}
+
+			//? Prevent line buffer from growing too large (truncate if needed)
+			if (line_buffer.size() > 16384) {
+				line_buffer.clear();
 			}
 		}
 	}
