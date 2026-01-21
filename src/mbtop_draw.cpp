@@ -4614,14 +4614,40 @@ namespace Logs {
 	int x = 0, y = 0, width = 0, height = 0;
 	int min_width = 40, min_height = 10;
 	bool shown = false, redraw = true;
+	bool focused = false;         //? true when Logs panel has input focus
 	bool paused = false;
 	bool live_mode = true;
+	bool reverse_order = false;   //? true = oldest first, false = newest first
 	int scroll_offset = 0;
 	pid_t current_pid = 0;
 	uint8_t level_filter = 0x1F;  //? All levels enabled by default
 
 	deque<LogEntry> entries;
 	size_t max_entries = 500;
+
+	//? Get filter name based on current filter
+	string get_filter_name() {
+		if (level_filter == 0x1F) return "All";
+		if (level_filter == 0x18) return "Error";
+		if (level_filter == 0x10) return "Fault";
+		if (level_filter == 0x1E) return "Info+";
+		return "Custom";
+	}
+
+	//? Get filter color based on current filter (Nord Aurora colors from theme)
+	string get_filter_color() {
+		if (level_filter == 0x1F) return Theme::c("main_fg");        //? All - default
+		if (level_filter == 0x18) return Theme::c("log_error");      //? Error - orange
+		if (level_filter == 0x10) return Theme::c("log_fault");      //? Fault - red
+		if (level_filter == 0x1E) return Theme::c("log_info");       //? Info+ - yellow
+		return Theme::c("main_fg");
+	}
+
+	//? Toggle sort order
+	void toggle_sort_order() {
+		reverse_order = not reverse_order;
+		redraw = true;
+	}
 
 	string draw(bool force_redraw, bool data_same) {
 		if (Runner::stopping) return "";
@@ -4778,30 +4804,77 @@ namespace Logs {
 				status = "[HIST]";
 			}
 
-			//? Level filter indicator
-			string filter_str;
-			if (level_filter == 0x1F) {
-				filter_str = "All";
-			} else if (level_filter == 0x18) {
-				filter_str = "Err";
-			} else {
-				filter_str = "Info+";
+			//? Status bar with proper colors and mouse support
+			//? Colors: active (focused) vs inactive, hotkeys highlighted
+			const string fg = focused ? theme("main_fg") : theme("inactive_fg");
+			const string hi = focused ? theme("hi_fg") : theme("inactive_fg");
+			const string filter_color = focused ? get_filter_color() : theme("inactive_fg");
+			
+			//? Build status components
+			string filter_name = get_filter_name();
+			string pos_str = std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries);
+			string sort_str = reverse_order ? "OLD" : "NEW";
+			
+			//? Calculate positions for mouse mappings
+			int status_y = y + height - 1;
+			int cur_x = x + 1;
+			
+			//? Build status line with colors and mouse mappings
+			out += Mv::to(status_y, cur_x);
+			
+			//? [LIVE] or [PAUSED] status
+			out += fg + "[" + (paused ? "PAUSED" : (live_mode ? "LIVE" : "HIST")) + "] ";
+			cur_x += (paused ? 8 : (live_mode ? 6 : 6)) + 1;
+			
+			//? Filter name in color
+			out += filter_color + filter_name + fg + " ";
+			cur_x += static_cast<int>(filter_name.length()) + 1;
+			
+			//? Position counter
+			out += pos_str + " ";
+			cur_x += static_cast<int>(pos_str.length()) + 1;
+			
+			//? Separator and buttons
+			out += fg + "| ";
+			cur_x += 2;
+			
+			//? P:Pause button
+			int p_x = cur_x;
+			out += hi + "P" + fg + ":Pause ";
+			cur_x += 8;
+			if (focused) Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 7};
+			
+			//? L:Mode button
+			int l_x = cur_x;
+			out += hi + "L" + fg + ":Mode ";
+			cur_x += 7;
+			if (focused) Input::mouse_mappings["logs_mode"] = {status_y, l_x, 1, 6};
+			
+			//? O:Filter button
+			int o_x = cur_x;
+			out += hi + "O" + fg + ":Filter ";
+			cur_x += 9;
+			if (focused) Input::mouse_mappings["logs_filter"] = {status_y, o_x, 1, 8};
+			
+			//? S:Sort button
+			int s_x = cur_x;
+			out += hi + "S" + fg + ":" + sort_str;
+			cur_x += 2 + static_cast<int>(sort_str.length());
+			if (focused) Input::mouse_mappings["logs_sort"] = {status_y, s_x, 1, 2 + static_cast<int>(sort_str.length())};
+			
+			//? Pad remaining space
+			int remaining = content_width - (cur_x - x - 1);
+			if (remaining > 0) {
+				out += string(static_cast<size_t>(remaining), ' ');
 			}
-
-			string status_line = status + " " + filter_str + " | " +
-				std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries) +
-				" | P:Pause L:Mode O:Filter";
-
-			//? Truncate and pad status line to full width
-			int status_len = static_cast<int>(ulen(status_line));
-			if (status_len > content_width) {
-				status_line = uresize(status_line, static_cast<size_t>(content_width));
-				status_len = content_width;
+			
+			//? Remove mouse mappings when not focused
+			if (not focused) {
+				Input::mouse_mappings.erase("logs_pause");
+				Input::mouse_mappings.erase("logs_mode");
+				Input::mouse_mappings.erase("logs_filter");
+				Input::mouse_mappings.erase("logs_sort");
 			}
-			int status_padding = content_width - status_len;
-			status_line += string(static_cast<size_t>(std::max(0, status_padding)), ' ');
-
-			out += Mv::to(y + height - 1, x + 1) + theme("inactive_fg") + status_line;
 
 			redraw = false;
 			return out + Fx::reset;

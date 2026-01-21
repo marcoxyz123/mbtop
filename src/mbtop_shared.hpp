@@ -608,8 +608,10 @@ namespace Logs {
 	extern string box;
 	extern int x, y, width, height, min_width, min_height;
 	extern bool shown, redraw;
+	extern bool focused;          //? true when Logs panel has input focus
 	extern bool paused;           //? Pause log streaming for reading
 	extern bool live_mode;        //? true = stream, false = historical
+	extern bool reverse_order;    //? true = oldest first, false = newest first (default)
 	extern int scroll_offset;     //? Scroll position (0 = latest)
 	extern pid_t current_pid;     //? PID being monitored
 
@@ -644,6 +646,15 @@ namespace Logs {
 
 	//* Cycle through log level filters
 	void cycle_level_filter();
+
+	//* Toggle sort order (newest first / oldest first)
+	void toggle_sort_order();
+
+	//* Get filter name string
+	string get_filter_name();
+
+	//* Get filter color based on current filter
+	string get_filter_color();
 }
 
 /// Detect container engine.

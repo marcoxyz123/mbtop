@@ -516,14 +516,24 @@ namespace Input {
 				bool keep_going = false;
 				bool redraw = true;
 
-				//? Mouse click in logs area
+				//? Mouse click in logs area - set focus
 				if (key == "mouse_click") {
 					if (mouse_pos[0] >= Logs::x and mouse_pos[0] < Logs::x + Logs::width
 						and mouse_pos[1] >= Logs::y and mouse_pos[1] < Logs::y + Logs::height) {
-						//? Clicked in Logs panel - could handle row selection here
-						Logs::redraw = true;
+						//? Clicked in Logs panel - set focus
+						if (not Logs::focused) {
+							Logs::focused = true;
+							Logs::redraw = true;
+						}
 					}
-					else keep_going = true;
+					else {
+						//? Clicked outside Logs panel - remove focus
+						if (Logs::focused) {
+							Logs::focused = false;
+							Logs::redraw = true;
+						}
+						keep_going = true;
+					}
 				}
 				//? Scroll in logs area
 				else if (is_in(key, "mouse_scroll_up", "mouse_scroll_down")) {
@@ -538,18 +548,22 @@ namespace Input {
 					}
 					else keep_going = true;
 				}
-				//? Keyboard navigation (only intercept when not conflicting)
-				else if (key == "P") {
-					//? Toggle pause (uppercase P to avoid preset conflict)
+				//? Keyboard navigation (only intercept when focused or not conflicting)
+				else if (key == "P" or key == "logs_pause") {
+					//? Toggle pause
 					Logs::toggle_pause();
 				}
-				else if (key == "L") {
-					//? Toggle live/historical mode (uppercase L)
+				else if (key == "L" or key == "logs_mode") {
+					//? Toggle live/historical mode
 					Logs::toggle_mode();
 				}
-				else if (key == "O") {
-					//? Cycle log level filter (O for Output filter, F is used for Follow)
+				else if (key == "O" or key == "logs_filter") {
+					//? Cycle log level filter
 					Logs::cycle_level_filter();
+				}
+				else if (key == "S" or key == "logs_sort") {
+					//? Toggle sort order (newest/oldest first)
+					Logs::toggle_sort_order();
 				}
 				else if (key == "page_up") {
 					Logs::scroll_offset += (Logs::height - 3);
