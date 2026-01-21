@@ -523,21 +523,11 @@ namespace Input {
 						Runner::run("all", true, true);
 						return;
 					}
-					//? Modal consumed the key
-					if (not is_in(key, "mouse_click")) {
-						Runner::run("all", true, true);
-						return;
-					}
 				}
 
 				//? Handle buffer modal input if active
 				if (Logs::buffer_modal_active) {
 					if (Logs::buffer_modal_input(key)) {
-						Runner::run("all", true, true);
-						return;
-					}
-					//? Modal consumed the key
-					if (not is_in(key, "mouse_click")) {
 						Runner::run("all", true, true);
 						return;
 					}
