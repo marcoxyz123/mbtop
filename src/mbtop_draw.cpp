@@ -3663,8 +3663,12 @@ namespace Proc {
 			else {
 				//? Side layout or tree view: original compact columns
 				//? Columns: Pid | Program | Command | Threads | User | MemB | IO | Cpu% | Gpu%
-				user_size = show_user_cfg ? (width < 75 ? 5 : 10) : 0;
-				thread_size = show_threads_cfg ? (width < 75 ? -1 : 4) : -1;
+				//? When Logs is beside Proc, use tighter thresholds to give space to Logs
+				bool logs_beside = Logs::shown and not Config::getB("logs_below_proc");
+				int tight = logs_beside ? 15 : 0;  //? Tighter thresholds when Logs beside
+				
+				user_size = show_user_cfg ? (width < 75 + tight ? (width < 60 + tight ? 0 : 5) : 10) : 0;
+				thread_size = show_threads_cfg ? (width < 75 + tight ? -1 : 4) : -1;
 				state_size = 0;     // Hidden in side layout
 				priority_size = 0;  // Hidden in side layout
 				nice_size = 0;      // Hidden in side layout
@@ -3675,13 +3679,13 @@ namespace Proc {
 				runtime_size = 0;   // Hidden in side layout
 				io_read_size = 0;
 				io_write_size = 0;
-				io_size = (show_io_cfg and width > 75) ? 5 : 0;  // Single combined I/O column (5 chars)
+				io_size = (show_io_cfg and width > 75 + tight) ? 5 : 0;  // Single combined I/O column (5 chars)
 				int io_adjustment = (io_size > 0 ? 6 : 0);  // Account for I/O column + space
 
-				prog_size = (width > 70 ? 16 : (width > 55 ? 8 : width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment));
-				cmd_size = (show_cmd and width > 55 ? width - prog_size - user_size - thread_size - 33 - gpu_adjustment - io_adjustment : -1);
+				prog_size = (width > 70 + tight ? 16 : (width > 55 + tight ? 8 : max(4, width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment)));
+				cmd_size = (show_cmd and width > 55 + tight ? width - prog_size - user_size - thread_size - 33 - gpu_adjustment - io_adjustment : -1);
 				//? If Command column hidden, give extra space to Program column
-				if (not show_cmd and width > 55) {
+				if (not show_cmd and width > 55 + tight) {
 					prog_size = width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment;
 				}
 				if (not show_graphs) {
