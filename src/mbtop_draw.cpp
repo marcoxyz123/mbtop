@@ -5933,13 +5933,19 @@ namespace Draw {
 				//? Check minimum combined space requirement
 				int min_combined_height = Proc::min_height + Logs::min_height;
 
+				//? Check if below mode was requested but not enough height
+				if (logs_below and Proc::height < min_combined_height) {
+					//? Not enough vertical space - show error dialog and revert to beside
+					Menu::logs_min_height_required = min_combined_height;
+					Menu::logs_current_proc_height = Proc::height;
+					Menu::logs_error_is_height = true;
+					Menu::show(Menu::Menus::LogsSizeError);
+					Config::set("logs_below_proc", false);
+					logs_below = false;  //? Fall through to beside mode
+				}
+
 				if (logs_below) {
-				//? Horizontal split: Logs below Proc
-				if (Proc::height < min_combined_height) {
-					//? Not enough vertical space
-					Logs::shown = false;
-					Logs::width = Logs::height = 0;
-				} else {
+					//? Horizontal split: Logs below Proc - check if it fits
 					int logs_height = std::max(Logs::min_height, Proc::height / 3);
 					//? Ensure Proc keeps min height
 					if (Proc::height - logs_height < Proc::min_height) {
@@ -5964,11 +5970,19 @@ namespace Draw {
 						Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
 						Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
 					} else {
-						Logs::shown = false;
-						Logs::width = Logs::height = 0;
+						//? Not enough space - show dialog and revert to beside
+						//? Show: available space for logs vs required, and terminal height needed
+						Menu::logs_current_proc_height = logs_height;  //? Available space for logs
+						Menu::logs_min_height_required = Term::height + (Logs::min_height - logs_height);  //? Required terminal height
+						Menu::logs_error_is_height = true;
+						Menu::show(Menu::Menus::LogsSizeError);
+						Config::set("logs_below_proc", false);
+						logs_below = false;  //? Fall through to beside mode below
 					}
 				}
-			} else {
+				
+				//? Separate check so we fall through if below mode failed
+				if (not logs_below) {
 				//? Vertical split: Logs right of Proc (no gap between panels)
 				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
 				//? In full-width layout, Proc can shrink to ~60 chars (hiding optional columns)

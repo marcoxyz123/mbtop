@@ -335,19 +335,8 @@ namespace Input {
 							}
 						} else if (not logs_below) {
 							//? State: Beside (right) -> Move to below
-							//? This only happens in full-width view
-							bool has_space = (Proc::height >= min_combined_height);
-							
-							if (not has_space) {
-								//? Not enough height for below, show error and stay in beside mode
-								Menu::logs_min_height_required = min_combined_height;
-								Menu::logs_current_proc_height = Proc::height;
-								Menu::logs_error_is_height = true;
-								Menu::show(Menu::Menus::LogsSizeError);
-								return;
-							} else {
-								Config::set("logs_below_proc", true);
-							}
+							//? Just set the config, calcSizes() will validate and show dialog if needed
+							Config::set("logs_below_proc", true);
 						} else {
 							//? State: Below -> Hidden
 							Logs::shown = false;

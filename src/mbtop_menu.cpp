@@ -1259,14 +1259,14 @@ namespace Menu {
 			vector<string> cont_vec;
 			
 			if (logs_error_is_height) {
-				//? Height error: show Proc::height (which needs to fit Proc+Logs)
+				//? Height error: show available space vs required terminal height
 				cont_vec = {
 					Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
 					"Not enough height for Logs below!" + Fx::reset,
 					"",
-					"Proc height:     " + to_string(logs_current_proc_height),
+					"Terminal height: " + to_string(Term::height),
 					"Required height: " + to_string(logs_min_height_required),
-					"(Proc:" + to_string(Proc::min_height) + " + Logs:" + to_string(Logs::min_height) + ")",
+					"(Logs needs " + to_string(Logs::min_height - logs_current_proc_height) + " more row" + (Logs::min_height - logs_current_proc_height == 1 ? "" : "s") + ")",
 					"",
 					"Tip: Increase terminal height",
 					"or keep Logs beside Proc." + Fx::reset };
