@@ -2621,6 +2621,89 @@ namespace Logs {
 		redraw = true;
 	}
 
+	//? Filter modal state
+	bool filter_modal_active = false;
+	int filter_modal_selected = 0;  //? 0=All, 1=Info+, 2=Error, 3=Fault
+
+	void show_filter_modal() {
+		filter_modal_active = true;
+		//? Set selected based on current filter
+		if (level_filter == 0x1F) filter_modal_selected = 0;       //? All
+		else if (level_filter == 0x1B || level_filter == 0x1E) filter_modal_selected = 1;  //? Info+
+		else if (level_filter == 0x18) filter_modal_selected = 2;  //? Error
+		else if (level_filter == 0x10) filter_modal_selected = 3;  //? Fault
+		else filter_modal_selected = 0;
+		redraw = true;
+	}
+
+	void set_filter(int filter_idx) {
+		switch (filter_idx) {
+			case 0: level_filter = 0x1F; break;  //? All
+			case 1: level_filter = 0x1E; break;  //? Info+ (Info, Error, Fault)
+			case 2: level_filter = 0x18; break;  //? Error (Error, Fault)
+			case 3: level_filter = 0x10; break;  //? Fault only
+			default: level_filter = 0x1F; break;
+		}
+		redraw = true;
+	}
+
+	bool filter_modal_input(const std::string_view key) {
+		if (key == "escape" or key == "q" or key == "O") {
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "enter" or key == "space") {
+			set_filter(filter_modal_selected);
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "up" or key == "k") {
+			if (filter_modal_selected > 0) filter_modal_selected--;
+			redraw = true;
+		}
+		else if (key == "down" or key == "j") {
+			if (filter_modal_selected < 3) filter_modal_selected++;
+			redraw = true;
+		}
+		else if (key == "1") {
+			set_filter(0);  //? All
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "2") {
+			set_filter(1);  //? Info+
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "3") {
+			set_filter(2);  //? Error
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "4") {
+			set_filter(3);  //? Fault
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key.starts_with("filter_")) {
+			//? Mouse click on filter option
+			int idx = key.back() - '0';
+			if (idx >= 0 and idx <= 3) {
+				set_filter(idx);
+				filter_modal_active = false;
+				redraw = true;
+				return true;
+			}
+		}
+		return false;
+	}
+
 }  // namespace Logs
 
 namespace Tools {

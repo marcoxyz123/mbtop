@@ -655,6 +655,19 @@ namespace Logs {
 
 	//* Get filter color based on current filter
 	string get_filter_color();
+
+	//? Filter modal state
+	extern bool filter_modal_active;
+	extern int filter_modal_selected;  //? 0=All, 1=Info+, 2=Error, 3=Fault
+
+	//* Show filter selection modal
+	void show_filter_modal();
+
+	//* Handle filter modal input, returns true if modal closed
+	bool filter_modal_input(const std::string_view key);
+
+	//* Set filter directly by index (0=All, 1=Info+, 2=Error, 3=Fault)
+	void set_filter(int filter_idx);
 }
 
 /// Detect container engine.

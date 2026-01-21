@@ -516,6 +516,19 @@ namespace Input {
 				bool keep_going = false;
 				bool redraw = true;
 
+				//? Handle filter modal input first if active
+				if (Logs::filter_modal_active) {
+					if (Logs::filter_modal_input(key)) {
+						Runner::run("all", true, true);
+						return;
+					}
+					//? Modal consumed the key
+					if (not is_in(key, "mouse_click")) {
+						Runner::run("all", true, true);
+						return;
+					}
+				}
+
 				//? Mouse click in logs area - set focus
 				if (key == "mouse_click") {
 					if (mouse_pos[0] >= Logs::x and mouse_pos[0] < Logs::x + Logs::width
@@ -558,8 +571,8 @@ namespace Input {
 					Logs::toggle_mode();
 				}
 				else if (key == "O" or key == "logs_filter") {
-					//? Cycle log level filter
-					Logs::cycle_level_filter();
+					//? Show filter selection modal
+					Logs::show_filter_modal();
 				}
 				else if (key == "S" or key == "logs_sort") {
 					//? Toggle sort order (newest/oldest first)

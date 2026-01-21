@@ -4876,6 +4876,39 @@ namespace Logs {
 				Input::mouse_mappings.erase("logs_sort");
 			}
 
+			//? Draw filter selection modal if active
+			if (filter_modal_active) {
+				const int modal_w = 20;
+				const int modal_h = 8;
+				const int modal_x = x + (width - modal_w) / 2;
+				const int modal_y = y + (height - modal_h) / 2;
+				
+				//? Draw modal box
+				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Filter");
+				
+				//? Filter options
+				const array<string, 4> filters = {"All", "Info+", "Error", "Fault"};
+				
+				int opt_y = modal_y + 2;
+				for (int i = 0; i < 4; i++) {
+					out += Mv::to(opt_y + i, modal_x + 2);
+					if (i == filter_modal_selected) {
+						out += theme("selected_bg") + theme("selected_fg") + Fx::b;
+						out += " " + to_string(i + 1) + ". " + ljust(filters[static_cast<size_t>(i)], 10) + " ";
+						out += Fx::reset;
+					} else {
+						out += theme("hi_fg") + to_string(i + 1) + "." + theme("main_fg");
+						out += " " + filters[static_cast<size_t>(i)];
+					}
+					//? Mouse mapping for each option
+					Input::mouse_mappings["filter_" + to_string(i)] = {opt_y + i, modal_x + 1, 1, modal_w - 2};
+				}
+				
+				//? Instructions
+				out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
+				out += theme("inactive_fg") + "1-4/Enter/Esc" + Fx::reset;
+			}
+
 			redraw = false;
 			return out + Fx::reset;
 		}
