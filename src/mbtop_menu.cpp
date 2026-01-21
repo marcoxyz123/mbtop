@@ -3281,6 +3281,10 @@ namespace MenuV2 {
 						{"proc_gpu_graphs", "GPU Graphs", "Show mini GPU graphs in process list", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"graph_symbol_proc", "Graph Symbol", "Symbol for process graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
 					}},
+					{"Proc | Logs", {
+						{"logs_below_proc", "Position Below", "Show logs panel below proc instead of beside", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"log_color_full_line", "Color Full Line", "Color entire log line (off = only [X] marker colored)", ControlType::Toggle, {}, "", 0, 0, 0},
+					}},
 				},
 				true, {"CPU", "GPU", "PWR", "Memory", "Network", "Processes"}
 			});
@@ -4439,6 +4443,13 @@ namespace MenuV2 {
 								const auto is_mouse_enabled = not Config::getB("disable_mouse");
 								std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
 							}
+							//? Logs layout change requires size recalculation
+							else if (opt->key == "logs_below_proc") {
+								if (Logs::shown) {
+									Draw::calcSizes();
+									Global::resized = true;
+								}
+							}
 						}
 					}
 					else if (opt->control == ControlType::Text) {
@@ -4601,6 +4612,13 @@ namespace MenuV2 {
 									else if (opt.key == "disable_mouse") {
 										const auto is_mouse_enabled = not Config::getB("disable_mouse");
 										std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
+									}
+									else if (opt.key == "logs_below_proc") {
+										//? Logs layout change requires size recalculation
+										if (Logs::shown) {
+											Draw::calcSizes();
+											Global::resized = true;
+										}
 									}
 								}
 							}
