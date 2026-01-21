@@ -4838,29 +4838,29 @@ namespace Logs {
 			out += fg + "| ";
 			cur_x += 2;
 			
-			//? P:Pause button
+			//? Pause button (Space key when focused, or click)
 			int p_x = cur_x;
-			out += hi + "P" + fg + ":Pause ";
-			cur_x += 8;
-			if (focused) Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 7};
-			
-			//? L:Mode button
-			int l_x = cur_x;
-			out += hi + "L" + fg + ":Mode ";
+			out += hi + "[" + fg + "Pause" + hi + "]";
 			cur_x += 7;
-			if (focused) Input::mouse_mappings["logs_mode"] = {status_y, l_x, 1, 6};
+			Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 7};
 			
-			//? O:Filter button
-			int o_x = cur_x;
-			out += hi + "O" + fg + ":Filter ";
+			//? L:Mode button (Shift+L when focused)
+			int l_x = cur_x;
+			out += " " + hi + "L" + fg + ":Mode ";
+			cur_x += 8;
+			Input::mouse_mappings["logs_mode"] = {status_y, l_x, 1, 7};
+			
+			//? F:Filter button (Shift+F when focused)
+			int f_x = cur_x;
+			out += hi + "F" + fg + ":Filter ";
 			cur_x += 9;
-			if (focused) Input::mouse_mappings["logs_filter"] = {status_y, o_x, 1, 8};
+			Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 8};
 			
-			//? S:Sort button
-			int s_x = cur_x;
-			out += hi + "S" + fg + ":" + sort_str;
+			//? R:Sort button (Shift+R when focused)
+			int r_x = cur_x;
+			out += hi + "R" + fg + ":" + sort_str;
 			cur_x += 2 + static_cast<int>(sort_str.length());
-			if (focused) Input::mouse_mappings["logs_sort"] = {status_y, s_x, 1, 2 + static_cast<int>(sort_str.length())};
+			Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 2 + static_cast<int>(sort_str.length())};
 			
 			//? Pad remaining space
 			int remaining = content_width - (cur_x - x - 1);
@@ -4868,8 +4868,8 @@ namespace Logs {
 				out += string(static_cast<size_t>(remaining), ' ');
 			}
 			
-			//? Remove mouse mappings when not focused
-			if (not focused) {
+			//? Mouse mappings always active for clicks, remove only when Logs hidden
+			if (not Logs::shown) {
 				Input::mouse_mappings.erase("logs_pause");
 				Input::mouse_mappings.erase("logs_mode");
 				Input::mouse_mappings.erase("logs_filter");

@@ -300,8 +300,9 @@ namespace Input {
 								Config::set("followed_pid", Config::getI("selected_pid"));
 								Config::set("update_following", true);
 							}
-							//? Initialize with followed PID
+							//? Initialize with followed PID and reset state
 							Logs::current_pid = Config::getI("followed_pid");
+							Logs::paused = false;
 							Logs::clear();
 							Logs::shown = true;
 						} else {
@@ -561,30 +562,46 @@ namespace Input {
 					}
 					else keep_going = true;
 				}
-				//? Keyboard navigation (only intercept when focused or not conflicting)
-				else if (key == "P" or key == "logs_pause") {
-					//? Toggle pause
+				//? Mouse click on status bar buttons (work regardless of focus)
+				else if (key == "logs_pause") {
 					Logs::toggle_pause();
 				}
-				else if (key == "L" or key == "logs_mode") {
-					//? Toggle live/historical mode
+				else if (key == "logs_mode") {
 					Logs::toggle_mode();
 				}
-				else if (key == "O" or key == "logs_filter") {
-					//? Show filter selection modal
+				else if (key == "logs_filter") {
 					Logs::show_filter_modal();
 				}
-				else if (key == "S" or key == "logs_sort") {
-					//? Toggle sort order (newest/oldest first)
+				else if (key == "logs_sort") {
 					Logs::toggle_sort_order();
 				}
-				else if (key == "page_up") {
-					Logs::scroll_offset += (Logs::height - 3);
-					Logs::redraw = true;
-				}
-				else if (key == "page_down") {
-					Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
-					Logs::redraw = true;
+				//? Keyboard shortcuts ONLY when Logs panel is focused
+				else if (Logs::focused) {
+					if (key == "space") {
+						//? Space = Toggle pause (non-conflicting)
+						Logs::toggle_pause();
+					}
+					else if (key == "L") {
+						//? Shift+L = Toggle live/historical mode
+						Logs::toggle_mode();
+					}
+					else if (key == "F") {
+						//? Shift+F = Show filter modal (F is follow in Proc, but we're focused on Logs)
+						Logs::show_filter_modal();
+					}
+					else if (key == "R") {
+						//? Shift+R = Reverse sort order
+						Logs::toggle_sort_order();
+					}
+					else if (key == "page_up") {
+						Logs::scroll_offset += (Logs::height - 3);
+						Logs::redraw = true;
+					}
+					else if (key == "page_down") {
+						Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
+						Logs::redraw = true;
+					}
+					else keep_going = true;
 				}
 				else keep_going = true;
 
@@ -661,11 +678,19 @@ namespace Input {
 						Config::set("follow_process", true);
 						Config::set("followed_pid", Config::getI("selected_pid"));
 						Config::set("update_following", true);
+						//? Reset Logs state for new process
+						Logs::current_pid = Config::getI("selected_pid");
+						Logs::paused = false;
+						Logs::clear();
 					}
 					else if (Config::getB("show_detailed") and Config::getI("proc_selected") == 0 and Config::getI("followed_pid") != Config::getI("detailed_pid")) {
 						Config::set("follow_process", true);
 						Config::set("followed_pid", Config::getI("detailed_pid"));
 						Config::set("update_following", true);
+						//? Reset Logs state for new process
+						Logs::current_pid = Config::getI("detailed_pid");
+						Logs::paused = false;
+						Logs::clear();
 					}
 					else if (Config::getB("follow_process")) {
 						Config::flip("follow_process");
@@ -675,6 +700,10 @@ namespace Input {
 							Config::set("restore_detailed_pid", Config::getI("detailed_pid"));
 						Config::set("followed_pid", 0);
 						Config::set("proc_followed", 0);
+						//? Clear Logs when unfollowing
+						Logs::current_pid = 0;
+						Logs::paused = false;
+						Logs::clear();
 					}
 				}
 				else if (key == "r") {
