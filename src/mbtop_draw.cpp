@@ -4622,6 +4622,7 @@ namespace Logs {
 	bool reverse_order = false;   //? true = oldest first, false = newest first
 	int scroll_offset = 0;
 	pid_t current_pid = 0;
+	string current_name;          //? Name of process being monitored
 	uint8_t level_filter = 0x1F;  //? All levels enabled by default
 
 	deque<LogEntry> entries;

@@ -2636,10 +2636,10 @@ namespace Logs {
 			return;
 		}
 
-		//? Get process name from Proc namespace (real-time value)
+		//? Get process name from Logs namespace (set when following started)
 		string proc_name = "unknown";
-		if (not Proc::selected_name.empty()) {
-			proc_name = Proc::selected_name;
+		if (not current_name.empty()) {
+			proc_name = current_name;
 		}
 		//? Sanitize process name for filename
 		for (char& c : proc_name) {

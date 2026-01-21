@@ -300,8 +300,9 @@ namespace Input {
 								Config::set("followed_pid", Config::getI("selected_pid"));
 								Config::set("update_following", true);
 							}
-							//? Initialize with followed PID and reset state
+							//? Initialize with followed PID/name and reset state
 							Logs::current_pid = Config::getI("followed_pid");
+							Logs::current_name = Proc::selected_name;
 							Logs::paused = false;
 							Logs::clear();
 							Logs::shown = true;

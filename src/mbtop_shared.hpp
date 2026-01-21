@@ -616,6 +616,7 @@ namespace Logs {
 	extern bool reverse_order;    //? true = oldest first, false = newest first (default)
 	extern int scroll_offset;     //? Scroll position (0 = latest)
 	extern pid_t current_pid;     //? PID being monitored
+	extern string current_name;   //? Name of process being monitored
 
 	//? Log level filter bitmask: bit 0=Default, 1=Info, 2=Debug, 3=Error, 4=Fault
 	extern uint8_t level_filter;
