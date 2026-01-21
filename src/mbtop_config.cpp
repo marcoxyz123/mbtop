@@ -249,6 +249,8 @@ namespace Config {
 
 		{"logs_below_proc",		"#* Position the logs panel below proc panel instead of beside it. Pressing '8' toggles the logs panel."},
 
+		{"log_color_full_line",	"#* Color the full log line based on level, or only the level marker [X]. Colors from theme: log_fault, log_error, log_info, log_default, log_debug."},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -446,6 +448,7 @@ namespace Config {
 		{"net_beside_mem", true},
 		{"proc_full_width", false},
 		{"logs_below_proc", false},
+		{"log_color_full_line", false},
 		{"stacked_layout", false},
 		{"zfs_arc_cached", true},
 		{"show_swap", true},
