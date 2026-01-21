@@ -275,21 +275,16 @@ namespace Input {
 						Runner::run("all", false, true);
 						return;
 					}
-					//? Key "8" cycles Logs panel: right -> below -> hidden
+					//? Key "8" cycles Logs panel
+					//? Full-width view: beside -> below -> hidden
+					//? Compact view: below -> hidden (beside disabled, too small)
 					if (intKey == 8 and Proc::shown) {
 						atomic_wait(Runner::active);
 						auto logs_below = Config::getB("logs_below_proc");
+						auto proc_full_width = Config::getB("proc_full_width");
 						
 						if (not Logs::shown) {
-							//? State: Hidden -> Show beside (right)
-							int min_combined_width = Proc::min_width + Logs::min_width;
-							bool has_space = (Proc::width >= min_combined_width);
-							
-							if (not has_space) {
-								Menu::show(Menu::Menus::SizeError);
-								return;
-							}
-							
+							//? State: Hidden -> Show Logs
 							//? Auto-follow the selected process if not already following
 							if (not Config::getB("follow_process") and Config::getI("selected_pid") > 0) {
 								Config::set("follow_process", true);
@@ -302,9 +297,34 @@ namespace Input {
 							Logs::paused = false;
 							Logs::clear();
 							Logs::shown = true;
-							Config::set("logs_below_proc", false);
+							
+							//? Full-width view: show beside (right)
+							//? Compact view: show below only (beside too small)
+							if (proc_full_width) {
+								int min_combined_width = Proc::min_width + Logs::min_width;
+								bool has_space = (Proc::width >= min_combined_width);
+								
+								if (not has_space) {
+									Menu::show(Menu::Menus::SizeError);
+									Logs::shown = false;
+									return;
+								}
+								Config::set("logs_below_proc", false);  //? Show beside
+							} else {
+								//? Compact view: only below mode allowed
+								int min_combined_height = Proc::min_height + Logs::min_height;
+								bool has_space = (Proc::height >= min_combined_height);
+								
+								if (not has_space) {
+									Menu::show(Menu::Menus::SizeError);
+									Logs::shown = false;
+									return;
+								}
+								Config::set("logs_below_proc", true);  //? Show below
+							}
 						} else if (not logs_below) {
 							//? State: Beside (right) -> Move to below
+							//? This only happens in full-width view
 							int min_combined_height = Proc::min_height + Logs::min_height;
 							bool has_space = (Proc::height >= min_combined_height);
 							

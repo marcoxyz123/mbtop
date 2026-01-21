@@ -3620,7 +3620,7 @@ namespace Proc {
 				constexpr int PROG_MIN = 10;
 				if (remaining < PROG_MIN) {
 					//? Not enough space - progressively hide optional columns
-					//? Priority (hide first to last): GpuT, CpuT, Virt, Runtime, IO, Ports
+					//? Priority (hide first to last): GpuT, CpuT, Virt, Runtime, IO, Ports, Thr, Ni, Pri, Sta
 					if (gpu_time_size > 0 and remaining < PROG_MIN) {
 						remaining += gpu_time_size + 2;
 						gpu_time_size = 0;
@@ -3645,6 +3645,23 @@ namespace Proc {
 					if (ports_size > 0 and remaining < PROG_MIN) {
 						remaining += ports_size + 2;
 						ports_size = 0;
+					}
+					//? Additional columns to hide before disabling Logs panel
+					if (thread_size > 0 and remaining < PROG_MIN) {
+						remaining += thread_size + 2;
+						thread_size = 0;
+					}
+					if (nice_size > 0 and remaining < PROG_MIN) {
+						remaining += nice_size + 2;
+						nice_size = 0;
+					}
+					if (priority_size > 0 and remaining < PROG_MIN) {
+						remaining += priority_size + 2;
+						priority_size = 0;
+					}
+					if (state_size > 0 and remaining < PROG_MIN) {
+						remaining += state_size + 2;
+						state_size = 0;
 					}
 				}
 
@@ -5895,12 +5912,19 @@ namespace Draw {
 		//? If Logs panel is shown, adjust Proc dimensions and set Logs dimensions
 		if (Logs::shown and Proc::shown) {
 			auto logs_below = Config::getB("logs_below_proc");
+			auto proc_full_width = Config::getB("proc_full_width");
 
-			//? Check minimum combined space requirement
-			int min_combined_width = Proc::min_width + Logs::min_width;  //? No gap between panels
-			int min_combined_height = Proc::min_height + Logs::min_height;
+			//? Compact view (side layout): Disable Logs - too small when sharing space with Mem/Net
+			if (not proc_full_width) {
+				Logs::shown = false;
+				Logs::width = Logs::height = 0;
+			}
+			//? Full-width view (bottom layout): Logs can be shown beside or below
+			else {
+				//? Check minimum combined space requirement
+				int min_combined_height = Proc::min_height + Logs::min_height;
 
-			if (logs_below) {
+				if (logs_below) {
 				//? Horizontal split: Logs below Proc
 				if (Proc::height < min_combined_height) {
 					//? Not enough vertical space
@@ -5938,13 +5962,18 @@ namespace Draw {
 			} else {
 				//? Vertical split: Logs right of Proc (no gap between panels)
 				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
+				//? In bottom layout, Proc can shrink more (hide Sta, Pri, Ni, Thr) before Logs disabled
+				//? Min layout: Pid(8) + Prog(10) + User(8) + Mem(5) + Cpu(5) + borders(4) = ~40 chars
+				int proc_min_for_logs = proc_full_width ? 40 : Proc::min_width;  //? Lower min in bottom layout
+				int min_combined_beside = proc_min_for_logs + Logs::min_width;
+				
 				bool can_show_logs = false;
 				int logs_width = 0;
 				
-				if (Proc::width >= min_combined_width) {
+				if (Proc::width >= min_combined_beside) {
 					//? Calculate available width for Logs
 					//? Give Logs at least min_width, prefer 1/3 of space if available
-					int available = Proc::width - Proc::min_width;  //? What's left after Proc minimum
+					int available = Proc::width - proc_min_for_logs;  //? What's left after Proc minimum
 					int preferred_logs = Proc::width / 3;
 					
 					//? Logs gets: min_width first, then up to 1/3 if space allows
@@ -5967,7 +5996,7 @@ namespace Draw {
 						logs_width = Term::width - logs_x;
 					}
 
-					if (logs_width >= Logs::min_width and new_proc_width >= Proc::min_width) {
+					if (logs_width >= Logs::min_width and new_proc_width >= proc_min_for_logs) {
 						Proc::width = new_proc_width;
 						Proc::select_max = Proc::height - 3;
 
@@ -5992,6 +6021,7 @@ namespace Draw {
 					Logs::width = Logs::height = 0;
 				}
 			}
+			}  //? End of proc_full_width check
 		} else if (Logs::shown and not Proc::shown) {
 			//? Logs requires Proc to be shown
 			Logs::shown = false;
