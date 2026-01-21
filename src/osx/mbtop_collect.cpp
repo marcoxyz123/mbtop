@@ -2542,16 +2542,16 @@ namespace Logs {
 					}
 
 					LogEntry entry;
-					if (parse_log_entry(line, entry)) {
-						//? Write to export file if exporting (only filtered entries)
-						if (exporting && export_file_handle != nullptr && passes_filter(entry.level)) {
+					if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
+						//? Write to export file if exporting
+						if (exporting && export_file_handle != nullptr) {
 							fprintf(export_file_handle, "[%c] %s %s\n",
 								entry.level.empty() ? 'D' : entry.level[0],
 								entry.timestamp.c_str(),
 								entry.message.c_str());
 							fflush(export_file_handle);
 						}
-						//? Store ALL entries, filter at display time
+						//? Only store entries that pass filter (prevents buffer overflow with non-matching entries)
 						entries.push_back(std::move(entry));
 						if (entries.size() > max_entries) {
 							entries.pop_front();
@@ -2682,29 +2682,35 @@ namespace Logs {
 
 	//? Filter modal state
 	bool filter_modal_active = false;
-	int filter_modal_selected = 0;  //? 0=All, 1=Debug+, 2=Info+, 3=Error+, 4=Fault
+	int filter_modal_selected = 0;  //? 0=All, 1=Debug, 2=Info, 3=Error, 4=Fault
 
 	void show_filter_modal() {
 		filter_modal_active = true;
 		//? Set selected based on current filter
 		//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
 		if (level_filter == 0x1F) filter_modal_selected = 0;       //? All
-		else if (level_filter == 0x1E) filter_modal_selected = 1;  //? Debug+ (Debug, Info, Error, Fault)
-		else if (level_filter == 0x1A) filter_modal_selected = 2;  //? Info+ (Info, Error, Fault)
-		else if (level_filter == 0x18) filter_modal_selected = 3;  //? Error+ (Error, Fault)
+		else if (level_filter == 0x04) filter_modal_selected = 1;  //? Debug only
+		else if (level_filter == 0x02) filter_modal_selected = 2;  //? Info only
+		else if (level_filter == 0x08) filter_modal_selected = 3;  //? Error only
 		else if (level_filter == 0x10) filter_modal_selected = 4;  //? Fault only
 		else filter_modal_selected = 0;
 		redraw = true;
 	}
 
 	void set_filter(int filter_idx) {
+		uint8_t old_filter = level_filter;
 		switch (filter_idx) {
 			case 0: level_filter = 0x1F; break;  //? All (Default, Debug, Info, Error, Fault)
-			case 1: level_filter = 0x1E; break;  //? Debug+ (Debug, Info, Error, Fault)
-			case 2: level_filter = 0x1A; break;  //? Info+ (Info, Error, Fault)
-			case 3: level_filter = 0x18; break;  //? Error+ (Error, Fault)
+			case 1: level_filter = 0x04; break;  //? Debug only
+			case 2: level_filter = 0x02; break;  //? Info only
+			case 3: level_filter = 0x08; break;  //? Error only
 			case 4: level_filter = 0x10; break;  //? Fault only
 			default: level_filter = 0x1F; break;
+		}
+		//? Clear buffer when filter changes to prevent old non-matching entries from taking up space
+		if (old_filter != level_filter) {
+			entries.clear();
+			scroll_offset = 0;
 		}
 		redraw = true;
 	}

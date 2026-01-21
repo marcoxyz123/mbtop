@@ -4630,9 +4630,9 @@ namespace Logs {
 	//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
 	string get_filter_name() {
 		if (level_filter == 0x1F) return "All";
-		if (level_filter == 0x1E) return "Debug+";
-		if (level_filter == 0x1A) return "Info+";
-		if (level_filter == 0x18) return "Error+";
+		if (level_filter == 0x04) return "Debug";
+		if (level_filter == 0x02) return "Info";
+		if (level_filter == 0x08) return "Error";
 		if (level_filter == 0x10) return "Fault";
 		return "Custom";
 	}
@@ -4640,9 +4640,9 @@ namespace Logs {
 	//? Get filter color based on current filter (Nord Aurora colors from theme)
 	string get_filter_color() {
 		if (level_filter == 0x1F) return Theme::c("main_fg");        //? All - default
-		if (level_filter == 0x1E) return Theme::c("log_debug");      //? Debug+ - violet
-		if (level_filter == 0x1A) return Theme::c("log_info");       //? Info+ - yellow
-		if (level_filter == 0x18) return Theme::c("log_error");      //? Error+ - orange
+		if (level_filter == 0x04) return Theme::c("log_debug");      //? Debug - violet
+		if (level_filter == 0x02) return Theme::c("log_info");       //? Info - yellow
+		if (level_filter == 0x08) return Theme::c("log_error");      //? Error - orange
 		if (level_filter == 0x10) return Theme::c("log_fault");      //? Fault - red
 		return Theme::c("main_fg");
 	}
@@ -4692,27 +4692,9 @@ namespace Logs {
 				return out + Fx::reset;
 			}
 
-			//? Build filtered list of entries (filter at display time)
-			//? Bitmask check: level_filter & level_bit
-			auto passes_display_filter = [](const string& level) {
-				uint8_t bit = 0x01;  //? Default
-				if (level == "Info") bit = 0x02;
-				else if (level == "Debug") bit = 0x04;
-				else if (level == "Error") bit = 0x08;
-				else if (level == "Fault") bit = 0x10;
-				return (level_filter & bit) != 0;
-			};
-
-			vector<size_t> filtered_indices;
-			for (size_t i = 0; i < entries.size(); i++) {
-				if (passes_display_filter(entries[i].level)) {
-					filtered_indices.push_back(i);
-				}
-			}
-
-			//? Calculate visible range based on filtered entries
+			//? Calculate visible range (entries already filtered at collection time)
 			int visible_rows = content_height - 1;  //? Reserve 1 row for status bar
-			int total_entries = static_cast<int>(filtered_indices.size());
+			int total_entries = static_cast<int>(entries.size());
 			int max_scroll = std::max(0, total_entries - visible_rows);
 
 			//? Clamp scroll offset
@@ -4723,15 +4705,13 @@ namespace Logs {
 			int start_idx = std::max(0, total_entries - visible_rows - scroll_offset);
 			int end_idx = std::min(total_entries, start_idx + visible_rows);
 
-			//? No filtered logs available - show message but continue to draw status bar
-			if (filtered_indices.empty()) {
+			//? No logs available - show message but continue to draw status bar
+			if (entries.empty()) {
 				//? Clear all content rows
 				for (int row = y + 1; row < y + height - 1; row++) {
 					clear_row(row);
 				}
-				string msg = entries.empty() 
-					? "No logs for PID " + std::to_string(current_pid)
-					: "No logs match filter";
+				string msg = "No logs for PID " + std::to_string(current_pid);
 				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
 				int msg_y = y + height / 2;
 				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
@@ -4744,9 +4724,9 @@ namespace Logs {
 				clear_row(row);
 			}
 
-			//? Draw filtered log entries
+			//? Draw log entries
 			for (int i = start_idx; i < end_idx; i++) {
-				const auto& entry = entries[filtered_indices[static_cast<size_t>(i)]];
+				const auto& entry = entries[static_cast<size_t>(i)];
 				int row = y + 1 + (i - start_idx);
 
 				//? Color based on log level - using theme colors (default: Nord Aurora)
@@ -4910,8 +4890,8 @@ namespace Logs {
 				//? Draw modal box
 				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Filter");
 				
-				//? Filter options: All, Debug+, Info+, Error+, Fault
-				const array<string, 5> filters = {"All", "Debug+", "Info+", "Error+", "Fault"};
+				//? Filter options: All, Debug, Info, Error, Fault (single level each)
+				const array<string, 5> filters = {"All", "Debug", "Info", "Error", "Fault"};
 				
 				int opt_y = modal_y + 2;
 				for (int i = 0; i < 5; i++) {
