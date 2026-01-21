@@ -281,7 +281,10 @@ namespace Input {
 					if (intKey == 8 and Proc::shown) {
 						atomic_wait(Runner::active);
 						auto logs_below = Config::getB("logs_below_proc");
-						auto proc_full_width = Config::getB("proc_full_width");
+						
+						//? Proc is "effectively full-width" if it takes the entire terminal width
+						//? This happens when proc_full_width=true OR when Mem/Net are hidden
+						bool proc_is_full_width = (Proc::width == Term::width);
 						
 						if (not Logs::shown) {
 							//? State: Hidden -> Show Logs
@@ -300,7 +303,7 @@ namespace Input {
 							
 							//? Full-width view: show beside (right)
 							//? Compact view: show below only (beside too small)
-							if (proc_full_width) {
+							if (proc_is_full_width) {
 								int min_combined_width = Proc::min_width + Logs::min_width;
 								bool has_space = (Proc::width >= min_combined_width);
 								

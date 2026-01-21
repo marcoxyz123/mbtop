@@ -5912,14 +5912,17 @@ namespace Draw {
 		//? If Logs panel is shown, adjust Proc dimensions and set Logs dimensions
 		if (Logs::shown and Proc::shown) {
 			auto logs_below = Config::getB("logs_below_proc");
-			auto proc_full_width = Config::getB("proc_full_width");
-
-			//? Compact view (side layout): Disable Logs - too small when sharing space with Mem/Net
-			if (not proc_full_width) {
+			
+			//? Proc is "effectively full-width" if it has the entire terminal width
+			//? This happens when proc_full_width=true OR when Mem/Net are hidden
+			bool proc_is_full_width = (Proc::width == Term::width);
+			
+			//? Compact view (sharing horizontal space with Mem/Net): Disable Logs
+			if (not proc_is_full_width) {
 				Logs::shown = false;
 				Logs::width = Logs::height = 0;
 			}
-			//? Full-width view (bottom layout): Logs can be shown beside or below
+			//? Full-width view: Logs can be shown beside or below
 			else {
 				//? Check minimum combined space requirement
 				int min_combined_height = Proc::min_height + Logs::min_height;
@@ -5962,9 +5965,9 @@ namespace Draw {
 			} else {
 				//? Vertical split: Logs right of Proc (no gap between panels)
 				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
-				//? In bottom layout, Proc can shrink more (hide Sta, Pri, Ni, Thr) before Logs disabled
+				//? In full-width layout, Proc can shrink more (hide Sta, Pri, Ni, Thr) before Logs disabled
 				//? Min layout: Pid(8) + Prog(10) + User(8) + Mem(5) + Cpu(5) + borders(4) = ~40 chars
-				int proc_min_for_logs = proc_full_width ? 40 : Proc::min_width;  //? Lower min in bottom layout
+				int proc_min_for_logs = proc_is_full_width ? 40 : Proc::min_width;  //? Lower min in full-width
 				int min_combined_beside = proc_min_for_logs + Logs::min_width;
 				
 				bool can_show_logs = false;
