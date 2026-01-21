@@ -274,7 +274,7 @@ namespace Input {
 						if (not Logs::shown) {
 							//? Check if there's enough space for Logs panel
 							auto logs_below = Config::getB("logs_below_proc");
-							int min_combined_width = Proc::min_width + Logs::min_width + 1;
+							int min_combined_width = Proc::min_width + Logs::min_width;
 							int min_combined_height = Proc::min_height + Logs::min_height;
 							
 							bool has_space = logs_below 

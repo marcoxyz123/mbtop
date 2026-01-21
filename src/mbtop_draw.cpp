@@ -4728,8 +4728,10 @@ namespace Logs {
 					timestamp_short = "??:??:??";
 				}
 
-				//? Build log line
-				string line = "[" + string(1, level_char) + "] " + timestamp_short + " " + entry.message;
+				//? Build log line - sanitize message to remove control chars (like \r \n \t)
+				//? that would cause cursor movement and display corruption
+				string safe_message = replace_ascii_control(entry.message);
+				string line = "[" + string(1, level_char) + "] " + timestamp_short + " " + safe_message;
 
 				//? Calculate display width and truncate if needed
 				int display_len = static_cast<int>(ulen(line));
@@ -5633,7 +5635,7 @@ namespace Draw {
 			auto logs_below = Config::getB("logs_below_proc");
 
 			//? Check minimum combined space requirement
-			int min_combined_width = Proc::min_width + Logs::min_width + 1;  //? +1 for gap
+			int min_combined_width = Proc::min_width + Logs::min_width;  //? No gap between panels
 			int min_combined_height = Proc::min_height + Logs::min_height;
 
 			if (logs_below) {
@@ -5672,7 +5674,7 @@ namespace Draw {
 					}
 				}
 			} else {
-				//? Vertical split: Logs right of Proc
+				//? Vertical split: Logs right of Proc (no gap between panels)
 				if (Proc::width < min_combined_width) {
 					//? Not enough horizontal space
 					Logs::shown = false;
@@ -5680,12 +5682,12 @@ namespace Draw {
 				} else {
 					int logs_width = std::max(Logs::min_width, Proc::width / 3);
 					//? Ensure Proc keeps min width
-					if (Proc::width - logs_width - 1 < Proc::min_width) {
-						logs_width = Proc::width - Proc::min_width - 1;
+					if (Proc::width - logs_width < Proc::min_width) {
+						logs_width = Proc::width - Proc::min_width;
 					}
 					//? Ensure Logs doesn't exceed terminal bounds
-					int new_proc_width = Proc::width - logs_width - 1;
-					int logs_x = Proc::x + new_proc_width + 1;
+					int new_proc_width = Proc::width - logs_width;
+					int logs_x = Proc::x + new_proc_width;
 					if (logs_x + logs_width > Term::width) {
 						logs_width = Term::width - logs_x;
 					}
@@ -5695,7 +5697,7 @@ namespace Draw {
 						Proc::select_max = Proc::height - 3;
 
 						Logs::width = logs_width;
-						Logs::x = Proc::x + Proc::width + 1;
+						Logs::x = Proc::x + Proc::width;  //? No gap - Logs starts right after Proc
 						Logs::y = Proc::y;
 						Logs::height = Proc::height;
 
