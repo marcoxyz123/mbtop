@@ -2542,15 +2542,16 @@ namespace Logs {
 					}
 
 					LogEntry entry;
-					if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
-						//? Write to export file if exporting
-						if (exporting && export_file_handle != nullptr) {
+					if (parse_log_entry(line, entry)) {
+						//? Write to export file if exporting (only filtered entries)
+						if (exporting && export_file_handle != nullptr && passes_filter(entry.level)) {
 							fprintf(export_file_handle, "[%c] %s %s\n",
 								entry.level.empty() ? 'D' : entry.level[0],
 								entry.timestamp.c_str(),
 								entry.message.c_str());
 							fflush(export_file_handle);
 						}
+						//? Store ALL entries, filter at display time
 						entries.push_back(std::move(entry));
 						if (entries.size() > max_entries) {
 							entries.pop_front();
@@ -2681,25 +2682,28 @@ namespace Logs {
 
 	//? Filter modal state
 	bool filter_modal_active = false;
-	int filter_modal_selected = 0;  //? 0=All, 1=Info+, 2=Error, 3=Fault
+	int filter_modal_selected = 0;  //? 0=All, 1=Debug+, 2=Info+, 3=Error+, 4=Fault
 
 	void show_filter_modal() {
 		filter_modal_active = true;
 		//? Set selected based on current filter
+		//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
 		if (level_filter == 0x1F) filter_modal_selected = 0;       //? All
-		else if (level_filter == 0x1B || level_filter == 0x1E) filter_modal_selected = 1;  //? Info+
-		else if (level_filter == 0x18) filter_modal_selected = 2;  //? Error
-		else if (level_filter == 0x10) filter_modal_selected = 3;  //? Fault
+		else if (level_filter == 0x1E) filter_modal_selected = 1;  //? Debug+ (Debug, Info, Error, Fault)
+		else if (level_filter == 0x1A) filter_modal_selected = 2;  //? Info+ (Info, Error, Fault)
+		else if (level_filter == 0x18) filter_modal_selected = 3;  //? Error+ (Error, Fault)
+		else if (level_filter == 0x10) filter_modal_selected = 4;  //? Fault only
 		else filter_modal_selected = 0;
 		redraw = true;
 	}
 
 	void set_filter(int filter_idx) {
 		switch (filter_idx) {
-			case 0: level_filter = 0x1F; break;  //? All
-			case 1: level_filter = 0x1E; break;  //? Info+ (Info, Error, Fault)
-			case 2: level_filter = 0x18; break;  //? Error (Error, Fault)
-			case 3: level_filter = 0x10; break;  //? Fault only
+			case 0: level_filter = 0x1F; break;  //? All (Default, Debug, Info, Error, Fault)
+			case 1: level_filter = 0x1E; break;  //? Debug+ (Debug, Info, Error, Fault)
+			case 2: level_filter = 0x1A; break;  //? Info+ (Info, Error, Fault)
+			case 3: level_filter = 0x18; break;  //? Error+ (Error, Fault)
+			case 4: level_filter = 0x10; break;  //? Fault only
 			default: level_filter = 0x1F; break;
 		}
 		redraw = true;
@@ -2722,7 +2726,7 @@ namespace Logs {
 			redraw = true;
 		}
 		else if (key == "down" or key == "j") {
-			if (filter_modal_selected < 3) filter_modal_selected++;
+			if (filter_modal_selected < 4) filter_modal_selected++;
 			redraw = true;
 		}
 		else if (key == "1") {
@@ -2732,19 +2736,25 @@ namespace Logs {
 			return true;
 		}
 		else if (key == "2") {
-			set_filter(1);  //? Info+
+			set_filter(1);  //? Debug+
 			filter_modal_active = false;
 			redraw = true;
 			return true;
 		}
 		else if (key == "3") {
-			set_filter(2);  //? Error
+			set_filter(2);  //? Info+
 			filter_modal_active = false;
 			redraw = true;
 			return true;
 		}
 		else if (key == "4") {
-			set_filter(3);  //? Fault
+			set_filter(3);  //? Error+
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "5") {
+			set_filter(4);  //? Fault
 			filter_modal_active = false;
 			redraw = true;
 			return true;
@@ -2752,7 +2762,7 @@ namespace Logs {
 		else if (key.starts_with("filter_")) {
 			//? Mouse click on filter option
 			int idx = key.back() - '0';
-			if (idx >= 0 and idx <= 3) {
+			if (idx >= 0 and idx <= 4) {
 				set_filter(idx);
 				filter_modal_active = false;
 				redraw = true;
