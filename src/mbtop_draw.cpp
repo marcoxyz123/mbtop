@@ -4829,7 +4829,7 @@ namespace Logs {
 			//? Build status components
 			string filter_name = get_filter_name();
 			string pos_str = std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries);
-			string sort_str = reverse_order ? "OLD" : "NEW";
+			string sort_str = reverse_order ? "Old" : "New";
 			
 			//? Calculate positions for mouse mappings
 			int status_y = y + height - 1;
