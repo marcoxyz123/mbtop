@@ -275,21 +275,17 @@ namespace Input {
 						Runner::run("all", false, true);
 						return;
 					}
-					//? Key "8" toggles Logs panel (requires Follow process mode)
+					//? Key "8" cycles Logs panel: right -> below -> hidden
 					if (intKey == 8 and Proc::shown) {
 						atomic_wait(Runner::active);
+						auto logs_below = Config::getB("logs_below_proc");
+						
 						if (not Logs::shown) {
-							//? Check if there's enough space for Logs panel
-							auto logs_below = Config::getB("logs_below_proc");
+							//? State: Hidden -> Show beside (right)
 							int min_combined_width = Proc::min_width + Logs::min_width;
-							int min_combined_height = Proc::min_height + Logs::min_height;
-							
-							bool has_space = logs_below 
-								? (Proc::height >= min_combined_height)
-								: (Proc::width >= min_combined_width);
+							bool has_space = (Proc::width >= min_combined_width);
 							
 							if (not has_space) {
-								//? Show size error menu
 								Menu::show(Menu::Menus::SizeError);
 								return;
 							}
@@ -306,8 +302,22 @@ namespace Input {
 							Logs::paused = false;
 							Logs::clear();
 							Logs::shown = true;
+							Config::set("logs_below_proc", false);
+						} else if (not logs_below) {
+							//? State: Beside (right) -> Move to below
+							int min_combined_height = Proc::min_height + Logs::min_height;
+							bool has_space = (Proc::height >= min_combined_height);
+							
+							if (not has_space) {
+								//? Not enough height for below, skip to hidden
+								Logs::shown = false;
+							} else {
+								Config::set("logs_below_proc", true);
+							}
 						} else {
+							//? State: Below -> Hidden
 							Logs::shown = false;
+							Config::set("logs_below_proc", false);  //? Reset for next cycle
 						}
 						Config::current_preset = -1;
 						Draw::calcSizes();
