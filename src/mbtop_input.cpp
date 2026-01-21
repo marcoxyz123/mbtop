@@ -268,14 +268,37 @@ namespace Input {
 						Runner::run("all", false, true);
 						return;
 					}
-					//? Key "8" toggles Logs panel (shows logs for selected process)
+					//? Key "8" toggles Logs panel (requires Follow process mode)
 					if (intKey == 8 and Proc::shown) {
 						atomic_wait(Runner::active);
-						Logs::shown = not Logs::shown;
-						if (Logs::shown) {
-							//? Initialize with currently selected PID
-							Logs::current_pid = Config::getI("selected_pid");
+						if (not Logs::shown) {
+							//? Check if there's enough space for Logs panel
+							auto logs_below = Config::getB("logs_below_proc");
+							int min_combined_width = Proc::min_width + Logs::min_width + 1;
+							int min_combined_height = Proc::min_height + Logs::min_height;
+							
+							bool has_space = logs_below 
+								? (Proc::height >= min_combined_height)
+								: (Proc::width >= min_combined_width);
+							
+							if (not has_space) {
+								//? Show size error menu
+								Menu::show(Menu::Menus::SizeError);
+								return;
+							}
+							
+							//? Auto-follow the selected process if not already following
+							if (not Config::getB("follow_process") and Config::getI("selected_pid") > 0) {
+								Config::set("follow_process", true);
+								Config::set("followed_pid", Config::getI("selected_pid"));
+								Config::set("update_following", true);
+							}
+							//? Initialize with followed PID
+							Logs::current_pid = Config::getI("followed_pid");
 							Logs::clear();
+							Logs::shown = true;
+						} else {
+							Logs::shown = false;
 						}
 						Config::current_preset = -1;
 						Draw::calcSizes();
@@ -479,6 +502,62 @@ namespace Input {
 					keep_going = true;
 
 				if (not keep_going) return;
+			}
+
+			//? Input actions for logs panel (must be BEFORE proc to intercept keys)
+			if (Logs::shown) {
+				bool keep_going = false;
+				bool redraw = true;
+
+				//? Mouse click in logs area
+				if (key == "mouse_click") {
+					if (mouse_pos[0] >= Logs::x and mouse_pos[0] < Logs::x + Logs::width
+						and mouse_pos[1] >= Logs::y and mouse_pos[1] < Logs::y + Logs::height) {
+						//? Clicked in Logs panel - could handle row selection here
+						Logs::redraw = true;
+					}
+					else keep_going = true;
+				}
+				//? Scroll in logs area
+				else if (is_in(key, "mouse_scroll_up", "mouse_scroll_down")) {
+					if (mouse_pos[0] >= Logs::x and mouse_pos[0] < Logs::x + Logs::width
+						and mouse_pos[1] >= Logs::y and mouse_pos[1] < Logs::y + Logs::height) {
+						if (key == "mouse_scroll_up") {
+							Logs::scroll_offset++;
+						} else {
+							if (Logs::scroll_offset > 0) Logs::scroll_offset--;
+						}
+						Logs::redraw = true;
+					}
+					else keep_going = true;
+				}
+				//? Keyboard navigation (only intercept when not conflicting)
+				else if (key == "P") {
+					//? Toggle pause (uppercase P to avoid preset conflict)
+					Logs::toggle_pause();
+				}
+				else if (key == "L") {
+					//? Toggle live/historical mode (uppercase L)
+					Logs::toggle_mode();
+				}
+				else if (key == "O") {
+					//? Cycle log level filter (O for Output filter, F is used for Follow)
+					Logs::cycle_level_filter();
+				}
+				else if (key == "page_up") {
+					Logs::scroll_offset += (Logs::height - 3);
+					Logs::redraw = true;
+				}
+				else if (key == "page_down") {
+					Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
+					Logs::redraw = true;
+				}
+				else keep_going = true;
+
+				if (not keep_going) {
+					Runner::run("all", true, redraw);
+					return;
+				}
 			}
 
 			//? Input actions for proc box
@@ -1113,60 +1192,6 @@ namespace Input {
 				}
 			}
 
-			//? Input actions for logs panel
-			if (Logs::shown) {
-				bool keep_going = false;
-				bool redraw = true;
-
-				if (is_in(key, "up", "k", "mouse_scroll_up")) {
-					//? Scroll up (older logs)
-					Logs::scroll_offset++;
-					Logs::redraw = true;
-				}
-				else if (is_in(key, "down", "j", "mouse_scroll_down")) {
-					//? Scroll down (newer logs)
-					if (Logs::scroll_offset > 0) Logs::scroll_offset--;
-					Logs::redraw = true;
-				}
-				else if (key == "home" or key == "g") {
-					//? Jump to oldest logs
-					Logs::scroll_offset = static_cast<int>(Logs::entries.size());
-					Logs::redraw = true;
-				}
-				else if (key == "end" or key == "G") {
-					//? Jump to newest logs
-					Logs::scroll_offset = 0;
-					Logs::redraw = true;
-				}
-				else if (key == "P") {
-					//? Toggle pause
-					Logs::toggle_pause();
-				}
-				else if (key == "l") {
-					//? Toggle live/historical mode
-					Logs::toggle_mode();
-				}
-				else if (key == "f") {
-					//? Cycle log level filter
-					Logs::cycle_level_filter();
-				}
-				else if (key == "page_up") {
-					//? Scroll up by page
-					Logs::scroll_offset += (Logs::height - 3);
-					Logs::redraw = true;
-				}
-				else if (key == "page_down") {
-					//? Scroll down by page
-					Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
-					Logs::redraw = true;
-				}
-				else keep_going = true;
-
-				if (not keep_going) {
-					Runner::run("all", true, redraw);
-					return;
-				}
-			}
 		}
 
 		catch (const std::exception& e) {

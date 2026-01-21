@@ -2488,18 +2488,16 @@ namespace Logs {
 	void collect() {
 		if (not shown) return;
 
-		//? Get the currently selected PID from Proc
-		pid_t selected_pid = Config::getI("selected_pid");
+		//? Logs panel only works with Follow process mode
+		bool following = Config::getB("follow_process");
+		pid_t followed_pid = following ? Config::getI("followed_pid") : 0;
 
-		//? Check if we need to switch to a new process
-		if (selected_pid != current_pid) {
+		//? Check if we need to switch to a new process or stop
+		if (followed_pid != current_pid) {
 			clear();
-			current_pid = selected_pid;
+			current_pid = followed_pid;
 
 			if (current_pid > 0) {
-				//? Load historical logs first
-				load_historical(current_pid);
-
 				//? Start streaming if in live mode
 				if (live_mode && not paused) {
 					start_stream(current_pid);

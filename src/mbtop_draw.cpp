@@ -4606,7 +4606,7 @@ namespace Proc {
 namespace Logs {
 	string box;
 	int x = 0, y = 0, width = 0, height = 0;
-	int min_width = 30, min_height = 8;
+	int min_width = 40, min_height = 10;
 	bool shown = false, redraw = true;
 	bool paused = false;
 	bool live_mode = true;
@@ -4631,9 +4631,11 @@ namespace Logs {
 			const int content_width = width - 2;
 			const int content_height = height - 2;
 
-			//? Empty state: no process selected
-			if (current_pid == 0 or Config::getI("selected_pid") == 0) {
-				string msg = "Select a process to view logs";
+			//? Empty state: check if following a process
+			if (current_pid == 0) {
+				string msg = Config::getB("follow_process") 
+					? "Waiting for logs from followed process..."
+					: "Press 'F' to follow a process, then '8' for logs";
 				int msg_x = x + (width - static_cast<int>(msg.length())) / 2;
 				int msg_y = y + height / 2;
 				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
@@ -4736,7 +4738,7 @@ namespace Logs {
 
 			string status_line = status + " " + filter_str + " | " +
 				std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries) +
-				" | P:Pause L:Mode F:Filter";
+				" | P:Pause L:Mode O:Filter";
 
 			//? Truncate status line if needed
 			if (static_cast<int>(status_line.length()) > content_width) {
@@ -5596,50 +5598,86 @@ namespace Draw {
 		if (Logs::shown and Proc::shown) {
 			auto logs_below = Config::getB("logs_below_proc");
 
+			//? Check minimum combined space requirement
+			int min_combined_width = Proc::min_width + Logs::min_width + 1;  //? +1 for gap
+			int min_combined_height = Proc::min_height + Logs::min_height;
+
 			if (logs_below) {
 				//? Horizontal split: Logs below Proc
-				int logs_height = std::max(Logs::min_height, Proc::height / 3);
-				if (Proc::height - logs_height < Proc::min_height) {
-					logs_height = Proc::height - Proc::min_height;
-				}
-				if (logs_height >= Logs::min_height) {
-					Proc::height -= logs_height;
-					Proc::select_max = Proc::height - 3;
-
-					Logs::width = Proc::width;
-					Logs::x = Proc::x;
-					Logs::y = Proc::y + Proc::height;
-					Logs::height = logs_height;
-
-					//? Recreate Proc box with new height
-					Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
-					Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
-				} else {
-					//? Not enough space for Logs panel
+				if (Proc::height < min_combined_height) {
+					//? Not enough vertical space
 					Logs::shown = false;
+					Logs::width = Logs::height = 0;
+				} else {
+					int logs_height = std::max(Logs::min_height, Proc::height / 3);
+					//? Ensure Proc keeps min height
+					if (Proc::height - logs_height < Proc::min_height) {
+						logs_height = Proc::height - Proc::min_height;
+					}
+					//? Ensure Logs height doesn't exceed terminal bounds
+					int max_logs_y = Proc::y + Proc::height - logs_height;
+					if (max_logs_y + logs_height > Term::height) {
+						logs_height = Term::height - max_logs_y;
+					}
+
+					if (logs_height >= Logs::min_height) {
+						Proc::height -= logs_height;
+						Proc::select_max = Proc::height - 3;
+
+						Logs::width = Proc::width;
+						Logs::x = Proc::x;
+						Logs::y = Proc::y + Proc::height;
+						Logs::height = logs_height;
+
+						//? Recreate Proc box with new height
+						Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
+						Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
+					} else {
+						Logs::shown = false;
+						Logs::width = Logs::height = 0;
+					}
 				}
 			} else {
 				//? Vertical split: Logs right of Proc
-				int logs_width = std::max(Logs::min_width, Proc::width / 3);
-				if (Proc::width - logs_width - 1 < Proc::min_width) {
-					logs_width = Proc::width - Proc::min_width - 1;
-				}
-				if (logs_width >= Logs::min_width) {
-					Proc::width -= logs_width + 1;  //? +1 for divider
-
-					Logs::width = logs_width;
-					Logs::x = Proc::x + Proc::width + 1;
-					Logs::y = Proc::y;
-					Logs::height = Proc::height;
-
-					//? Recreate Proc box with new width
-					Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
-					Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
-				} else {
-					//? Not enough space for Logs panel
+				if (Proc::width < min_combined_width) {
+					//? Not enough horizontal space
 					Logs::shown = false;
+					Logs::width = Logs::height = 0;
+				} else {
+					int logs_width = std::max(Logs::min_width, Proc::width / 3);
+					//? Ensure Proc keeps min width
+					if (Proc::width - logs_width - 1 < Proc::min_width) {
+						logs_width = Proc::width - Proc::min_width - 1;
+					}
+					//? Ensure Logs doesn't exceed terminal bounds
+					int new_proc_width = Proc::width - logs_width - 1;
+					int logs_x = Proc::x + new_proc_width + 1;
+					if (logs_x + logs_width > Term::width) {
+						logs_width = Term::width - logs_x;
+					}
+
+					if (logs_width >= Logs::min_width and new_proc_width >= Proc::min_width) {
+						Proc::width = new_proc_width;
+						Proc::select_max = Proc::height - 3;
+
+						Logs::width = logs_width;
+						Logs::x = Proc::x + Proc::width + 1;
+						Logs::y = Proc::y;
+						Logs::height = Proc::height;
+
+						//? Recreate Proc box with new width
+						Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
+						Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
+					} else {
+						Logs::shown = false;
+						Logs::width = Logs::height = 0;
+					}
 				}
 			}
+		} else if (Logs::shown and not Proc::shown) {
+			//? Logs requires Proc to be shown
+			Logs::shown = false;
+			Logs::width = Logs::height = 0;
 		}
 	}
 }
