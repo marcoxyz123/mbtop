@@ -4688,20 +4688,6 @@ namespace Logs {
 				return out + Fx::reset;
 			}
 
-			//? No logs available
-			if (entries.empty()) {
-				//? Clear all content rows
-				for (int row = y + 1; row < y + height - 1; row++) {
-					clear_row(row);
-				}
-				string msg = "No logs for PID " + std::to_string(current_pid);
-				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
-				int msg_y = y + height / 2;
-				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
-				redraw = false;
-				return out + Fx::reset;
-			}
-
 			//? Calculate visible range
 			int visible_rows = content_height - 1;  //? Reserve 1 row for status bar
 			int total_entries = static_cast<int>(entries.size());
@@ -4714,6 +4700,20 @@ namespace Logs {
 			//? Start index (from the end, since newest logs are at the back)
 			int start_idx = std::max(0, total_entries - visible_rows - scroll_offset);
 			int end_idx = std::min(total_entries, start_idx + visible_rows);
+
+			//? No logs available - show message but continue to draw status bar
+			if (entries.empty()) {
+				//? Clear all content rows
+				for (int row = y + 1; row < y + height - 1; row++) {
+					clear_row(row);
+				}
+				string msg = "No logs for PID " + std::to_string(current_pid);
+				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
+				int msg_y = y + height / 2;
+				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
+				//? Don't return - continue to draw status bar below
+			}
+			else {
 
 			//? Clear ALL content rows first to prevent Proc artifacts from showing through
 			for (int row = y + 1; row < y + height - 1; row++) {
@@ -4793,8 +4793,9 @@ namespace Logs {
 					out += Mv::to(row, x + 1) + theme("main_fg") + "[" + level_color + string(1, level_char) + theme("main_fg") + "] " + padded_line;
 				}
 			}
+			}  //? End of else block (entries not empty)
 
-			//? Status bar at bottom
+			//? Status bar at bottom - ALWAYS drawn even when no logs
 			string status;
 			if (paused) {
 				status = "[PAUSED]";
@@ -4838,17 +4839,17 @@ namespace Logs {
 			out += fg + "| ";
 			cur_x += 2;
 			
-			//? Pause button (Space key when focused, or click)
+			//? SPC:Pause button (Space key when focused, or click)
 			int p_x = cur_x;
-			out += hi + "[" + fg + "Pause" + hi + "]";
-			cur_x += 7;
-			Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 7};
+			out += hi + "SPC" + fg + ":Pause ";
+			cur_x += 10;
+			Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 9};
 			
 			//? L:Mode button (Shift+L when focused)
 			int l_x = cur_x;
-			out += " " + hi + "L" + fg + ":Mode ";
-			cur_x += 8;
-			Input::mouse_mappings["logs_mode"] = {status_y, l_x, 1, 7};
+			out += hi + "L" + fg + ":Mode ";
+			cur_x += 7;
+			Input::mouse_mappings["logs_mode"] = {status_y, l_x, 1, 6};
 			
 			//? F:Filter button (Shift+F when focused)
 			int f_x = cur_x;
@@ -4856,7 +4857,7 @@ namespace Logs {
 			cur_x += 9;
 			Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 8};
 			
-			//? R:Sort button (Shift+R when focused)
+			//? R:Reverse button (Shift+R when focused)
 			int r_x = cur_x;
 			out += hi + "R" + fg + ":" + sort_str;
 			cur_x += 2 + static_cast<int>(sort_str.length());
