@@ -249,7 +249,7 @@ namespace Config {
 
 		{"logs_below_proc",		"#* Position the logs panel below proc panel instead of beside it. Pressing '8' toggles the logs panel."},
 
-		{"log_color_full_line",	"#* Color the full log line based on level, or only the level marker [X]. Colors from theme: log_fault, log_error, log_info, log_default, log_debug."},
+		{"log_color_full_line",	"#* Color the full log line based on level, or only the level marker [X]. Colors from theme: log_fault, log_error, log_info, log_debug_plus, log_debug."},
 
 		{"log_export_path",		"#* Path for log export files. Default: ~/Desktop. Filename format: <PID>-<Process>-<datetime>.log"},
 

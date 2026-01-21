@@ -2699,7 +2699,7 @@ namespace Logs {
 		//? Set selected based on current filter
 		//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
 		if (level_filter == 0x1F) filter_modal_selected = 0;       //? All
-		else if (level_filter == 0x04) filter_modal_selected = 1;  //? Debug only
+		else if (level_filter == 0x05) filter_modal_selected = 1;  //? Debug (d + D)
 		else if (level_filter == 0x02) filter_modal_selected = 2;  //? Info only
 		else if (level_filter == 0x08) filter_modal_selected = 3;  //? Error only
 		else if (level_filter == 0x10) filter_modal_selected = 4;  //? Fault only
@@ -2711,7 +2711,7 @@ namespace Logs {
 		uint8_t old_filter = level_filter;
 		switch (filter_idx) {
 			case 0: level_filter = 0x1F; break;  //? All (Default, Debug, Info, Error, Fault)
-			case 1: level_filter = 0x04; break;  //? Debug only
+			case 1: level_filter = 0x05; break;  //? Debug (d + D) - includes macOS Debug and Default levels
 			case 2: level_filter = 0x02; break;  //? Info only
 			case 3: level_filter = 0x08; break;  //? Error only
 			case 4: level_filter = 0x10; break;  //? Fault only

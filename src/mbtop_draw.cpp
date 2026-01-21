@@ -4630,7 +4630,7 @@ namespace Logs {
 	//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
 	string get_filter_name() {
 		if (level_filter == 0x1F) return "All";
-		if (level_filter == 0x04) return "Debug";
+		if (level_filter == 0x05) return "Debug";   //? Debug (d) + Default (D) combined
 		if (level_filter == 0x02) return "Info";
 		if (level_filter == 0x08) return "Error";
 		if (level_filter == 0x10) return "Fault";
@@ -4640,7 +4640,7 @@ namespace Logs {
 	//? Get filter color based on current filter (Nord Aurora colors from theme)
 	string get_filter_color() {
 		if (level_filter == 0x1F) return Theme::c("main_fg");        //? All - default
-		if (level_filter == 0x04) return Theme::c("log_debug");      //? Debug - violet
+		if (level_filter == 0x05) return Theme::c("log_debug");      //? Debug - violet (d + D combined)
 		if (level_filter == 0x02) return Theme::c("log_info");       //? Info - yellow
 		if (level_filter == 0x08) return Theme::c("log_error");      //? Error - orange
 		if (level_filter == 0x10) return Theme::c("log_fault");      //? Fault - red
@@ -4745,7 +4745,8 @@ namespace Logs {
 					level_color = theme("log_debug");
 					level_char = 'd';
 				} else {
-					level_color = theme("log_default");
+					//? "Default" level from macOS = Debug+ (green)
+					level_color = theme("log_debug_plus");
 					level_char = 'D';
 				}
 

@@ -105,11 +105,11 @@ namespace Theme {
 		{ "followed_bg", "#5E81AC" },
 		{ "followed_fg", "#ECEFF4" },
 		//? Log level marker colors (Nord Aurora)
-		{ "log_fault", "#BF616A" },   //? Nord Aurora Red
-		{ "log_error", "#D08770" },   //? Nord Orange
-		{ "log_info", "#EBCB8B" },    //? Nord Yellow
-		{ "log_default", "#A3BE8C" }, //? Nord Green
-		{ "log_debug", "#B48EAD" },   //? Nord Aurora Violet
+		{ "log_fault", "#BF616A" },      //? Nord Aurora Red
+		{ "log_error", "#D08770" },      //? Nord Orange
+		{ "log_info", "#EBCB8B" },       //? Nord Yellow
+		{ "log_debug_plus", "#A3BE8C" }, //? Nord Green - macOS "Default" level (Debug+)
+		{ "log_debug", "#B48EAD" },      //? Nord Aurora Violet - macOS "Debug" level
 	};
 
 	const std::unordered_map<string, string> TTY_theme = {
