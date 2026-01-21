@@ -766,6 +766,10 @@ namespace Input {
 						}
 					}
 					else if (key.starts_with("mouse_scroll_") and in_proc_box) {
+						//? Disable mouse scroll when following to prevent accidental release (Magic Mouse)
+						if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
+							return;  //? Ignore mouse scroll while following
+						}
 						goto proc_mouse_scroll;
 					}
 					else if (key == "mouse_drag" and dragging_scroll) {
