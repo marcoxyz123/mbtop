@@ -3564,34 +3564,40 @@ namespace Proc {
 				//? No braille graphs - just text values with heat colors
 				//? Columns: Pid | Program | User | Sta | Pri | Ni | Thr | Ports | IO/R | IO/W | Mem | Virt | CpuT | GpuT | Time | Cpu% | Gpu% | Command
 				gpu_adjustment = show_gpu ? 6 : 0;  // Bottom layout: just 5 chars + space (no graph)
+				
+				//? When Logs is beside Proc, use MUCH lower thresholds to allow Proc to shrink
+				//? This ensures columns are hidden progressively as terminal narrows
+				bool logs_beside = Logs::shown and not Config::getB("logs_below_proc");
+				int shrink = logs_beside ? 60 : 0;  //? Subtract from thresholds when Logs beside
 
 				//? When Command is hidden, use lower thresholds and more generous column sizes
 				//? Priority: Data columns get comfortable space first, Program gets the rest
 				if (show_cmd) {
-					user_size = show_user_cfg ? (width < 140 ? 8 : 10) : 0;
-					ports_size = (show_ports_cfg and width > 120) ? 5 : 0;
-					io_read_size = (show_io_read_cfg and width > 100) ? 5 : 0;
-					io_write_size = (show_io_write_cfg and width > 100) ? 5 : 0;
-					virt_size = (show_virt_cfg and width > 130) ? 6 : 0;
-					cpu_time_size = (show_cputime_cfg and width > 140) ? 8 : 0;
-					gpu_time_size = (show_gputime_cfg and show_gpu and width > 150) ? 8 : 0;
-					runtime_size = (show_runtime_cfg and width > 110) ? 8 : 0;
+					user_size = show_user_cfg ? (width < 140 - shrink ? (width < 50 ? 0 : 8) : 10) : 0;
+					ports_size = (show_ports_cfg and width > 120 - shrink) ? 5 : 0;
+					io_read_size = (show_io_read_cfg and width > 100 - shrink) ? 5 : 0;
+					io_write_size = (show_io_write_cfg and width > 100 - shrink) ? 5 : 0;
+					virt_size = (show_virt_cfg and width > 130 - shrink) ? 6 : 0;
+					cpu_time_size = (show_cputime_cfg and width > 140 - shrink) ? 8 : 0;
+					gpu_time_size = (show_gputime_cfg and show_gpu and width > 150 - shrink) ? 8 : 0;
+					runtime_size = (show_runtime_cfg and width > 110 - shrink) ? 8 : 0;
 				} else {
 					//? No Command: lower thresholds, more generous sizing for data columns
-					user_size = show_user_cfg ? (width < 100 ? 10 : 12) : 0;
-					ports_size = (show_ports_cfg and width > 80) ? 6 : 0;
-					io_read_size = (show_io_read_cfg and width > 80) ? 6 : 0;
-					io_write_size = (show_io_write_cfg and width > 80) ? 6 : 0;
-					virt_size = (show_virt_cfg and width > 90) ? 7 : 0;
-					cpu_time_size = (show_cputime_cfg and width > 100) ? 9 : 0;
-					gpu_time_size = (show_gputime_cfg and show_gpu and width > 110) ? 9 : 0;
-					runtime_size = (show_runtime_cfg and width > 90) ? 9 : 0;
+					user_size = show_user_cfg ? (width < 100 - shrink ? (width < 50 ? 0 : 10) : 12) : 0;
+					ports_size = (show_ports_cfg and width > 80 - shrink) ? 6 : 0;
+					io_read_size = (show_io_read_cfg and width > 80 - shrink) ? 6 : 0;
+					io_write_size = (show_io_write_cfg and width > 80 - shrink) ? 6 : 0;
+					virt_size = (show_virt_cfg and width > 90 - shrink) ? 7 : 0;
+					cpu_time_size = (show_cputime_cfg and width > 100 - shrink) ? 9 : 0;
+					gpu_time_size = (show_gputime_cfg and show_gpu and width > 110 - shrink) ? 9 : 0;
+					runtime_size = (show_runtime_cfg and width > 90 - shrink) ? 9 : 0;
 				}
 
-				state_size = show_state_cfg ? 3 : 0;      // "Sta" column: R/S/I/Z/T
-				priority_size = show_priority_cfg ? 3 : 0;   // Priority value (0-127)
-				nice_size = show_nice_cfg ? 3 : 0;       // Nice value: -20 to 19
-				thread_size = show_threads_cfg ? 4 : 0;     // Thread count
+				//? Sta, Pri, Ni, Thr: Width-dependent when Logs is beside (hide early to save space)
+				state_size = show_state_cfg ? (logs_beside and width < 55 ? 0 : 3) : 0;
+				priority_size = show_priority_cfg ? (logs_beside and width < 55 ? 0 : 3) : 0;
+				nice_size = show_nice_cfg ? (logs_beside and width < 55 ? 0 : 3) : 0;
+				thread_size = show_threads_cfg ? (logs_beside and width < 60 ? 0 : 4) : 0;
 				io_size = 0;  // Disable combined IO in bottom layout
 
 				//? Calculate fixed column space (excluding prog_size and cmd_size)
@@ -5965,9 +5971,9 @@ namespace Draw {
 			} else {
 				//? Vertical split: Logs right of Proc (no gap between panels)
 				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
-				//? In full-width layout, Proc can shrink more (hide Sta, Pri, Ni, Thr) before Logs disabled
-				//? Min layout: Pid(8) + Prog(10) + User(8) + Mem(5) + Cpu(5) + borders(4) = ~40 chars
-				int proc_min_for_logs = proc_is_full_width ? 40 : Proc::min_width;  //? Lower min in full-width
+				//? In full-width layout, Proc can shrink significantly - all optional columns can be hidden
+				//? Absolute min: Pid(8) + Prog(10) + Mem(6) + Cpu(6) + borders(4) = ~34 chars, use 30 for safety
+				int proc_min_for_logs = proc_is_full_width ? 30 : Proc::min_width;  //? Much lower min when full-width
 				int min_combined_beside = proc_min_for_logs + Logs::min_width;
 				
 				bool can_show_logs = false;
