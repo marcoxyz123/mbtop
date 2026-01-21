@@ -304,8 +304,8 @@ namespace Input {
 							//? Full-width view: show beside (right)
 							//? Compact view: show below only (beside too small)
 							if (proc_is_full_width) {
-								//? Use lower minimum (30) because Proc can hide many columns when Logs beside
-								int proc_min_for_logs = 30;
+								//? Proc can shrink to ~60 chars by hiding optional columns when Logs beside
+								int proc_min_for_logs = 60;
 								int min_combined_width = proc_min_for_logs + Logs::min_width;
 								bool has_space = (Proc::width >= min_combined_width);
 								

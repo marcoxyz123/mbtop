@@ -5971,9 +5971,9 @@ namespace Draw {
 			} else {
 				//? Vertical split: Logs right of Proc (no gap between panels)
 				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
-				//? In full-width layout, Proc can shrink significantly - all optional columns can be hidden
-				//? Absolute min: Pid(8) + Prog(10) + Mem(6) + Cpu(6) + borders(4) = ~34 chars, use 30 for safety
-				int proc_min_for_logs = proc_is_full_width ? 30 : Proc::min_width;  //? Much lower min when full-width
+				//? In full-width layout, Proc can shrink to ~60 chars (hiding optional columns)
+				//? Min layout: Pid(8) + Prog(14) + User(5) + Mem(6) + Cpu(6) + Gpu(6) + borders(8) = ~53, use 60 for comfort
+				int proc_min_for_logs = proc_is_full_width ? 60 : Proc::min_width;
 				int min_combined_beside = proc_min_for_logs + Logs::min_width;
 				
 				bool can_show_logs = false;
@@ -5998,11 +5998,11 @@ namespace Draw {
 				}
 				
 				if (can_show_logs) {
-					//? Ensure Logs doesn't exceed terminal bounds
+					//? Ensure Logs doesn't exceed terminal bounds (1-based coords: last col = x + width - 1)
 					int new_proc_width = Proc::width - logs_width;
 					int logs_x = Proc::x + new_proc_width;
-					if (logs_x + logs_width > Term::width) {
-						logs_width = Term::width - logs_x;
+					if (logs_x + logs_width - 1 > Term::width) {  //? Fix: check last column, not one past end
+						logs_width = Term::width - logs_x + 1;
 					}
 
 					if (logs_width >= Logs::min_width and new_proc_width >= proc_min_for_logs) {
