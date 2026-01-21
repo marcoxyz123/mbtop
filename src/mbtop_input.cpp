@@ -339,12 +339,13 @@ namespace Input {
 							bool has_space = (Proc::height >= min_combined_height);
 							
 							if (not has_space) {
-								//? Not enough height for below, show error
+								//? Not enough height for below, show error and stay in beside mode
 								Menu::logs_min_height_required = min_combined_height;
 								Menu::logs_current_proc_height = Proc::height;
 								Menu::logs_error_is_height = true;
 								Menu::show(Menu::Menus::LogsSizeError);
-								//? Don't hide Logs, just stay in beside mode
+								//? Need to trigger redraw for dialog to appear
+								Runner::run("all", false, true);
 								return;
 							} else {
 								Config::set("logs_below_proc", true);
