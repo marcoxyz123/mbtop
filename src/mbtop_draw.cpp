@@ -4631,12 +4631,21 @@ namespace Logs {
 			const int content_width = width - 2;
 			const int content_height = height - 2;
 
+			//? Helper lambda to clear a row
+			auto clear_row = [&](int row) {
+				out += Mv::to(row, x + 1) + string(static_cast<size_t>(content_width), ' ');
+			};
+
 			//? Empty state: check if following a process
 			if (current_pid == 0) {
+				//? Clear all content rows
+				for (int row = y + 1; row < y + height - 1; row++) {
+					clear_row(row);
+				}
 				string msg = Config::getB("follow_process") 
 					? "Waiting for logs from followed process..."
 					: "Press 'F' to follow a process, then '8' for logs";
-				int msg_x = x + (width - static_cast<int>(msg.length())) / 2;
+				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
 				int msg_y = y + height / 2;
 				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
 				redraw = false;
@@ -4645,8 +4654,12 @@ namespace Logs {
 
 			//? No logs available
 			if (entries.empty()) {
+				//? Clear all content rows
+				for (int row = y + 1; row < y + height - 1; row++) {
+					clear_row(row);
+				}
 				string msg = "No logs for PID " + std::to_string(current_pid);
-				int msg_x = x + (width - static_cast<int>(msg.length())) / 2;
+				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
 				int msg_y = y + height / 2;
 				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
 				redraw = false;
@@ -4665,6 +4678,11 @@ namespace Logs {
 			//? Start index (from the end, since newest logs are at the back)
 			int start_idx = std::max(0, total_entries - visible_rows - scroll_offset);
 			int end_idx = std::min(total_entries, start_idx + visible_rows);
+
+			//? Clear ALL content rows first to prevent Proc artifacts from showing through
+			for (int row = y + 1; row < y + height - 1; row++) {
+				clear_row(row);
+			}
 
 			//? Draw log entries
 			for (int i = start_idx; i < end_idx; i++) {
@@ -4703,17 +4721,19 @@ namespace Logs {
 				//? Build log line
 				string line = "[" + string(1, level_char) + "] " + timestamp_short + " " + entry.message;
 
-				//? Truncate to fit width
-				if (static_cast<int>(line.length()) > content_width) {
-					line = line.substr(0, static_cast<size_t>(content_width - 3)) + "...";
+				//? Calculate display width and truncate if needed
+				int display_len = static_cast<int>(ulen(line));
+				if (display_len > content_width) {
+					//? Truncate by characters, not bytes
+					line = uresize(line, static_cast<size_t>(content_width - 3)) + "...";
+					display_len = content_width;
 				}
 
-				out += Mv::to(row, x + 1) + level_color + line + Fx::ub + theme("main_fg");
-			}
+				//? Pad to full width to clear old content
+				int padding = content_width - display_len;
+				string padded_line = line + string(static_cast<size_t>(std::max(0, padding)), ' ');
 
-			//? Clear remaining rows
-			for (int row = y + 1 + (end_idx - start_idx); row < y + content_height; row++) {
-				out += Mv::to(row, x + 1) + string(static_cast<size_t>(content_width), ' ');
+				out += Mv::to(row, x + 1) + level_color + padded_line + Fx::ub + theme("main_fg");
 			}
 
 			//? Status bar at bottom
@@ -4740,10 +4760,14 @@ namespace Logs {
 				std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries) +
 				" | P:Pause L:Mode O:Filter";
 
-			//? Truncate status line if needed
-			if (static_cast<int>(status_line.length()) > content_width) {
-				status_line = status_line.substr(0, static_cast<size_t>(content_width));
+			//? Truncate and pad status line to full width
+			int status_len = static_cast<int>(ulen(status_line));
+			if (status_len > content_width) {
+				status_line = uresize(status_line, static_cast<size_t>(content_width));
+				status_len = content_width;
 			}
+			int status_padding = content_width - status_len;
+			status_line += string(static_cast<size_t>(std::max(0, status_padding)), ' ');
 
 			out += Mv::to(y + height - 1, x + 1) + theme("inactive_fg") + status_line;
 
