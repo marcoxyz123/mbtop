@@ -323,9 +323,12 @@ namespace Draw {
 		this->text.clear();
 	}
 
-	//* Nord Aurora colors for instance indicator
-	const string nord_orange = "\x1b[38;2;208;135;112m";  // #D08770 - Primary instance
-	const string nord_green = "\x1b[38;2;163;190;140m";   // #A3BE8C - Secondary instance
+	//* Nord Aurora colors for instance indicator and log levels
+	const string nord_red = "\x1b[38;2;191;97;106m";      // #BF616A - Aurora Red (Fault)
+	const string nord_orange = "\x1b[38;2;208;135;112m";  // #D08770 - Orange (Error)
+	const string nord_yellow = "\x1b[38;2;235;203;139m";  // #EBCB8B - Yellow (Info)
+	const string nord_green = "\x1b[38;2;163;190;140m";   // #A3BE8C - Green (Default)
+	const string nord_violet = "\x1b[38;2;180;142;173m";  // #B48EAD - Aurora Violet (Debug)
 
 	string createBox(
 			const int x, const int y, const int width, const int height, string line_color, bool fill, const std::string_view title,
@@ -4699,27 +4702,27 @@ namespace Logs {
 				const auto& entry = entries[static_cast<size_t>(i)];
 				int row = y + 1 + (i - start_idx);
 
-				//? Color based on log level
+				//? Color based on log level - using Nord Aurora colors
 				string level_color;
 				char level_char = 'D';
-				if (entry.level == "Error") {
-					level_color = theme("proc_misc");
-					level_char = 'E';
-				} else if (entry.level == "Fault") {
-					level_color = Fx::b + theme("proc_misc");
+				if (entry.level == "Fault") {
+					level_color = Draw::nord_red;      //? Nord Aurora Red
 					level_char = 'F';
-				} else if (entry.level == "Debug") {
-					level_color = theme("inactive_fg");
-					level_char = 'd';
+				} else if (entry.level == "Error") {
+					level_color = Draw::nord_orange;   //? Nord Orange
+					level_char = 'E';
 				} else if (entry.level == "Info") {
-					level_color = theme("main_fg");
+					level_color = Draw::nord_yellow;   //? Nord Yellow
 					level_char = 'I';
+				} else if (entry.level == "Debug") {
+					level_color = Draw::nord_violet;   //? Nord Aurora Violet
+					level_char = 'd';
 				} else {
-					level_color = theme("main_fg");
+					level_color = Draw::nord_green;    //? Nord Green (Default)
 					level_char = 'D';
 				}
 
-				//? Format: [L] HH:MM:SS message
+				//? Format: L HH:MM:SS message (no brackets around level)
 				string timestamp_short;
 				if (entry.timestamp.length() >= 19) {
 					//? Extract HH:MM:SS from "YYYY-MM-DD HH:MM:SS..."
@@ -4731,7 +4734,7 @@ namespace Logs {
 				//? Build log line - sanitize message to remove control chars (like \r \n \t)
 				//? that would cause cursor movement and display corruption
 				string safe_message = replace_ascii_control(entry.message);
-				string line = "[" + string(1, level_char) + "] " + timestamp_short + " " + safe_message;
+				string line = string(1, level_char) + " " + timestamp_short + " " + safe_message;
 
 				//? Calculate display width and truncate if needed
 				int display_len = static_cast<int>(ulen(line));
