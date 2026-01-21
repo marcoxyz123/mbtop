@@ -2602,7 +2602,11 @@ namespace Logs {
 
 	void start_export() {
 		if (exporting) return;  //? Already exporting
-		if (current_pid <= 0) return;  //? No process to export
+		if (current_pid <= 0) {
+			export_error = "No process followed";
+			redraw = true;
+			return;
+		}
 
 		//? Get export path from config (default: ~/Desktop)
 		string export_path = Config::getS("log_export_path");
