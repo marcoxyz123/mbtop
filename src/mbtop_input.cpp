@@ -344,8 +344,6 @@ namespace Input {
 								Menu::logs_current_proc_height = Proc::height;
 								Menu::logs_error_is_height = true;
 								Menu::show(Menu::Menus::LogsSizeError);
-								//? Need to trigger redraw for dialog to appear
-								Runner::run("all", false, true);
 								return;
 							} else {
 								Config::set("logs_below_proc", true);
