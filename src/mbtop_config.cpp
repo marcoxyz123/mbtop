@@ -251,6 +251,8 @@ namespace Config {
 
 		{"log_color_full_line",	"#* Color the full log line based on level, or only the level marker [X]. Colors from theme: log_fault, log_error, log_info, log_default, log_debug."},
 
+		{"log_export_path",		"#* Path for log export files. Default: ~/Desktop. Filename format: <PID>-<Process>-<datetime>.log"},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -375,6 +377,7 @@ namespace Config {
 		{"net_iface_filter", ""},
 		{"base_10_bitrate", "Auto"},
 		{"log_level", "WARNING"},
+		{"log_export_path", ""},
 		{"proc_filter", ""},
 		{"proc_command", ""},
 		{"selected_name", ""},

@@ -566,8 +566,13 @@ namespace Input {
 				else if (key == "logs_pause") {
 					Logs::toggle_pause();
 				}
-				else if (key == "logs_mode") {
-					Logs::toggle_mode();
+				else if (key == "logs_export") {
+					//? Toggle export to file
+					if (Logs::exporting) {
+						Logs::stop_export();
+					} else {
+						Logs::start_export();
+					}
 				}
 				else if (key == "logs_filter") {
 					Logs::show_filter_modal();
@@ -581,9 +586,13 @@ namespace Input {
 						//? Space = Toggle pause (non-conflicting)
 						Logs::toggle_pause();
 					}
-					else if (key == "L") {
-						//? Shift+L = Toggle live/historical mode
-						Logs::toggle_mode();
+					else if (key == "E") {
+						//? Shift+E = Toggle export to file
+						if (Logs::exporting) {
+							Logs::stop_export();
+						} else {
+							Logs::start_export();
+						}
 					}
 					else if (key == "F") {
 						//? Shift+F = Show filter modal (F is follow in Proc, but we're focused on Logs)
@@ -678,7 +687,8 @@ namespace Input {
 						Config::set("follow_process", true);
 						Config::set("followed_pid", Config::getI("selected_pid"));
 						Config::set("update_following", true);
-						//? Reset Logs state for new process
+						//? Stop export and reset Logs state for new process
+						Logs::stop_export();
 						Logs::current_pid = Config::getI("selected_pid");
 						Logs::paused = false;
 						Logs::clear();
@@ -687,7 +697,8 @@ namespace Input {
 						Config::set("follow_process", true);
 						Config::set("followed_pid", Config::getI("detailed_pid"));
 						Config::set("update_following", true);
-						//? Reset Logs state for new process
+						//? Stop export and reset Logs state for new process
+						Logs::stop_export();
 						Logs::current_pid = Config::getI("detailed_pid");
 						Logs::paused = false;
 						Logs::clear();
@@ -700,7 +711,8 @@ namespace Input {
 							Config::set("restore_detailed_pid", Config::getI("detailed_pid"));
 						Config::set("followed_pid", 0);
 						Config::set("proc_followed", 0);
-						//? Clear Logs when unfollowing
+						//? Stop export and clear Logs when unfollowing
+						Logs::stop_export();
 						Logs::current_pid = 0;
 						Logs::paused = false;
 						Logs::clear();

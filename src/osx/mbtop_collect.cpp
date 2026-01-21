@@ -2328,6 +2328,7 @@ namespace Logs {
 	static pid_t log_child_pid = 0;   //? PID of the log stream child process
 	static pid_t streaming_pid = 0;   //? PID of the process we're streaming logs for
 	static string line_buffer;        //? Buffer for partial line reads
+	static FILE* export_file_handle = nullptr;  //? File handle for log export
 
 	//? Parse a single JSON log entry from ndjson output
 	static bool parse_log_entry(const string& json_line, LogEntry& entry) {
@@ -2476,15 +2477,6 @@ namespace Logs {
 		return true;
 	}
 
-	//? Load historical logs for a PID (non-blocking version)
-	//? Note: Skipping historical loading for now to avoid blocking
-	//? The stream will show new logs as they come in
-	static void load_historical([[maybe_unused]] pid_t pid) {
-		//? Historical log loading is disabled to prevent UI freezes
-		//? The `log show` command can take several seconds to complete
-		//? Users will see new logs as they stream in real-time
-	}
-
 	void collect() {
 		if (not shown) return;
 
@@ -2495,11 +2487,12 @@ namespace Logs {
 		//? Check if we need to switch to a new process or stop
 		if (followed_pid != current_pid) {
 			clear();
+			stop_export();  //? Stop export when switching processes
 			current_pid = followed_pid;
 
 			if (current_pid > 0) {
-				//? Start streaming if in live mode
-				if (live_mode && not paused) {
+				//? Start streaming
+				if (not paused) {
 					start_stream(current_pid);
 				}
 			}
@@ -2507,7 +2500,7 @@ namespace Logs {
 		}
 
 		//? Read from the stream if active and not paused (non-blocking)
-		if (live_mode && not paused && log_fd >= 0 && current_pid > 0) {
+		if (not paused && log_fd >= 0 && current_pid > 0) {
 			char buffer[4096];
 			int lines_processed = 0;
 			const int max_lines_per_collect = 50;
@@ -2550,6 +2543,14 @@ namespace Logs {
 
 					LogEntry entry;
 					if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
+						//? Write to export file if exporting
+						if (exporting && export_file_handle != nullptr) {
+							fprintf(export_file_handle, "[%c] %s %s\n",
+								entry.level.empty() ? 'D' : entry.level[0],
+								entry.timestamp.c_str(),
+								entry.message.c_str());
+							fflush(export_file_handle);
+						}
 						entries.push_back(std::move(entry));
 						if (entries.size() > max_entries) {
 							entries.pop_front();
@@ -2578,33 +2579,90 @@ namespace Logs {
 	void toggle_pause() {
 		paused = not paused;
 
-		if (live_mode) {
-			if (paused) {
-				//? Stop the stream when paused
-				stop_stream();
-			} else if (current_pid > 0) {
-				//? Resume streaming
-				start_stream(current_pid);
-			}
+		if (paused) {
+			//? Stop the stream when paused
+			stop_stream();
+		} else if (current_pid > 0) {
+			//? Resume streaming
+			start_stream(current_pid);
 		}
 		redraw = true;
 	}
 
-	void toggle_mode() {
-		live_mode = not live_mode;
+	void start_export() {
+		if (exporting) return;  //? Already exporting
+		if (current_pid <= 0) return;  //? No process to export
 
-		if (current_pid > 0) {
-			if (live_mode && not paused) {
-				//? Switch to live mode - start streaming
-				start_stream(current_pid);
+		//? Get export path from config (default: ~/Desktop)
+		string export_path = Config::getS("log_export_path");
+		if (export_path.empty()) {
+			const char* home = getenv("HOME");
+			if (home) {
+				export_path = string(home) + "/Desktop";
 			} else {
-				//? Switch to historical mode - stop streaming
-				stop_stream();
-				//? Reload historical logs
-				entries.clear();
-				load_historical(current_pid);
+				export_path = "/tmp";
 			}
 		}
+
+		//? Get process name
+		string proc_name = "unknown";
+		if (Config::getS("selected_name").length() > 0) {
+			proc_name = Config::getS("selected_name");
+		}
+		//? Sanitize process name for filename
+		for (char& c : proc_name) {
+			if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') {
+				c = '_';
+			}
+		}
+
+		//? Generate filename: <PID>-<Program>-<datetime>.log
+		time_t now = time(nullptr);
+		struct tm* t = localtime(&now);
+		char datetime[32];
+		strftime(datetime, sizeof(datetime), "%Y%m%d-%H%M%S", t);
+
+		export_filename = fmt::format("{}/{}-{}-{}.log", export_path, current_pid, proc_name, datetime);
+
+		//? Open file for writing
+		export_file_handle = fopen(export_filename.c_str(), "w");
+		if (export_file_handle == nullptr) {
+			Logger::warning("Failed to open log export file: {}", export_filename);
+			export_filename.clear();
+			return;
+		}
+
+		//? Write header
+		fprintf(export_file_handle, "# mbtop Log Export\n");
+		fprintf(export_file_handle, "# PID: %d\n", current_pid);
+		fprintf(export_file_handle, "# Process: %s\n", proc_name.c_str());
+		fprintf(export_file_handle, "# Started: %s\n", datetime);
+		fprintf(export_file_handle, "# Format: [Level] Timestamp Message\n");
+		fprintf(export_file_handle, "#\n");
+		fflush(export_file_handle);
+
+		exporting = true;
+		redraw = true;
+		Logger::info("Started log export to: {}", export_filename);
+	}
+
+	void stop_export() {
+		if (not exporting) return;
+
+		if (export_file_handle != nullptr) {
+			//? Write footer
+			time_t now = time(nullptr);
+			struct tm* t = localtime(&now);
+			char datetime[32];
+			strftime(datetime, sizeof(datetime), "%Y-%m-%d %H:%M:%S", t);
+			fprintf(export_file_handle, "#\n# Export ended: %s\n", datetime);
+			fclose(export_file_handle);
+			export_file_handle = nullptr;
+		}
+
+		Logger::info("Stopped log export: {}", export_filename);
+		exporting = false;
+		export_filename.clear();
 		redraw = true;
 	}
 

@@ -610,7 +610,8 @@ namespace Logs {
 	extern bool shown, redraw;
 	extern bool focused;          //? true when Logs panel has input focus
 	extern bool paused;           //? Pause log streaming for reading
-	extern bool live_mode;        //? true = stream, false = historical
+	extern bool exporting;        //? true when exporting logs to file
+	extern string export_filename; //? Current export filename
 	extern bool reverse_order;    //? true = oldest first, false = newest first (default)
 	extern int scroll_offset;     //? Scroll position (0 = latest)
 	extern pid_t current_pid;     //? PID being monitored
@@ -641,8 +642,11 @@ namespace Logs {
 	//* Toggle pause state
 	void toggle_pause();
 
-	//* Toggle between live streaming and historical mode
-	void toggle_mode();
+	//* Start exporting logs to file
+	void start_export();
+
+	//* Stop exporting logs to file
+	void stop_export();
 
 	//* Cycle through log level filters
 	void cycle_level_filter();

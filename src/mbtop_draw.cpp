@@ -4616,7 +4616,8 @@ namespace Logs {
 	bool shown = false, redraw = true;
 	bool focused = false;         //? true when Logs panel has input focus
 	bool paused = false;
-	bool live_mode = true;
+	bool exporting = false;
+	string export_filename;
 	bool reverse_order = false;   //? true = oldest first, false = newest first
 	int scroll_offset = 0;
 	pid_t current_pid = 0;
@@ -4796,15 +4797,6 @@ namespace Logs {
 			}  //? End of else block (entries not empty)
 
 			//? Status bar at bottom - ALWAYS drawn even when no logs
-			string status;
-			if (paused) {
-				status = "[PAUSED]";
-			} else if (live_mode) {
-				status = "[LIVE]";
-			} else {
-				status = "[HIST]";
-			}
-
 			//? Status bar with proper colors and mouse support
 			//? Colors: active (focused) vs inactive, hotkeys highlighted
 			const string fg = focused ? theme("main_fg") : theme("inactive_fg");
@@ -4823,9 +4815,17 @@ namespace Logs {
 			//? Build status line with colors and mouse mappings
 			out += Mv::to(status_y, cur_x);
 			
-			//? [LIVE] or [PAUSED] status
-			out += fg + "[" + (paused ? "PAUSED" : (live_mode ? "LIVE" : "HIST")) + "] ";
-			cur_x += (paused ? 8 : (live_mode ? 6 : 6)) + 1;
+			//? [LIVE], [PAUSED], or [REC] status
+			if (exporting) {
+				out += theme("log_error") + Fx::b + "[REC]" + Fx::ub + fg + " ";
+				cur_x += 6;
+			} else if (paused) {
+				out += fg + "[PAUSED] ";
+				cur_x += 9;
+			} else {
+				out += fg + "[LIVE] ";
+				cur_x += 7;
+			}
 			
 			//? Filter name in color
 			out += filter_color + filter_name + fg + " ";
@@ -4845,11 +4845,11 @@ namespace Logs {
 			cur_x += 10;
 			Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 9};
 			
-			//? L:Mode button (Shift+L when focused)
-			int l_x = cur_x;
-			out += hi + "L" + fg + ":Mode ";
-			cur_x += 7;
-			Input::mouse_mappings["logs_mode"] = {status_y, l_x, 1, 6};
+			//? E:Export button (Shift+E when focused)
+			int e_x = cur_x;
+			out += hi + "E" + fg + ":Export ";
+			cur_x += 9;
+			Input::mouse_mappings["logs_export"] = {status_y, e_x, 1, 8};
 			
 			//? F:Filter button (Shift+F when focused)
 			int f_x = cur_x;
@@ -4872,7 +4872,7 @@ namespace Logs {
 			//? Mouse mappings always active for clicks, remove only when Logs hidden
 			if (not Logs::shown) {
 				Input::mouse_mappings.erase("logs_pause");
-				Input::mouse_mappings.erase("logs_mode");
+				Input::mouse_mappings.erase("logs_export");
 				Input::mouse_mappings.erase("logs_filter");
 				Input::mouse_mappings.erase("logs_sort");
 			}
