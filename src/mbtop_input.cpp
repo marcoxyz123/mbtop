@@ -563,6 +563,22 @@ namespace Input {
 					return;
 				}
 
+				//? Handle color picker modal input if active
+				if (Logs::color_modal_active) {
+					if (Logs::color_modal_input(key)) {
+						Runner::run("all", true, true);
+						return;
+					}
+				}
+
+				//? Handle config modal input if active
+				if (Logs::config_modal_active) {
+					if (Logs::config_modal_input(key)) {
+						Runner::run("all", true, true);
+						return;
+					}
+				}
+
 				//? Handle filter modal input if active
 				if (Logs::filter_modal_active) {
 					if (Logs::filter_modal_input(key)) {
@@ -635,6 +651,15 @@ namespace Input {
 				}
 				else if (key == "logs_source") {
 					Logs::toggle_source();
+				}
+				//? Color picker modal clicks
+				else if (key == "color_0" or key == "color_1" or key == "color_2" or key == "color_3" or key == "color_4") {
+					if (Logs::color_modal_active) {
+						Logs::color_modal_selected = key.back() - '0';
+						Logs::color_modal_input("enter");
+						Runner::run("all", true, true);
+						return;
+					}
 				}
 				//? Keyboard shortcuts ONLY when Logs panel is focused
 				else if (Logs::focused) {

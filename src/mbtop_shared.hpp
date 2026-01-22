@@ -712,6 +712,53 @@ namespace Logs {
 	//* Handle error modal input (any key closes it)
 	bool error_modal_input(const std::string_view key);
 
+	//=== Log Config Modal State ===
+	extern bool config_modal_active;
+	extern string config_modal_name;        //? Process name being configured
+	extern string config_modal_cmdline;     //? Process cmdline for matching
+	extern string config_modal_display;     //? Editable display name
+	extern string config_modal_path;        //? Editable log path
+	extern bool config_modal_tagged;        //? Enable tagging checkbox
+	extern int config_modal_color_idx;      //? Selected color (0-4)
+	extern int config_modal_field;          //? 0=display, 1=path, 2=tagged, 3=color, 4=buttons
+	extern int config_modal_button;         //? 0=Save, 1=Remove, 2=Cancel
+
+	//* Show log config modal for a process
+	void show_config_modal(const string& name, const string& cmdline);
+
+	//* Handle log config modal input, returns true if modal closed
+	bool config_modal_input(const std::string_view key);
+
+	//* Draw log config modal
+	string draw_config_modal();
+
+	//=== Color Picker Modal State ===
+	extern bool color_modal_active;
+	extern string color_modal_name;         //? Process name being tagged
+	extern string color_modal_cmdline;      //? Process cmdline
+	extern int color_modal_selected;        //? Selected color (0-4)
+
+	//* Show quick color picker modal
+	void show_color_modal(const string& name, const string& cmdline);
+
+	//* Handle color modal input, returns true if modal closed
+	bool color_modal_input(const std::string_view key);
+
+	//* Draw color picker modal
+	string draw_color_modal();
+
+	//? Tag color definitions (Nord Aurora)
+	namespace TagColors {
+		const array<string, 5> names = {"Rd", "Or", "Yl", "Gn", "Vi"};
+		const array<string, 5> themes = {
+			"log_fault",      //? Red
+			"log_error",      //? Orange
+			"log_info",       //? Yellow
+			"log_debug_plus", //? Green
+			"log_debug"       //? Violet
+		};
+	}
+
 	//=== Source Management Functions ===
 
 	//* Toggle between System and Application log sources
