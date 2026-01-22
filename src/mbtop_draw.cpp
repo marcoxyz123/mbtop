@@ -4296,6 +4296,25 @@ namespace Proc {
 				}
 			}
 
+			//? Check for process tagging
+			string tag_bg_start;
+			string tag_bg_end;
+			if (not is_selected and not is_followed) {
+				if (auto tag_cfg = Config::find_process_config(p.name, p.cmd)) {
+					if (tag_cfg->has_tagging()) {
+						string tag_color_str = Theme::c(tag_cfg->tag_color);
+						if (Config::getS("proc_tag_mode") == "line") {
+							// Line mode: use dim tag color for entire line
+							tag_bg_start = tag_color_str + Fx::d;
+							tag_bg_end = Fx::ud + Theme::c("main_fg");
+						} else {
+							// Name mode: override program name color
+							c_color = tag_color_str + Fx::b;
+						}
+					}
+				}
+			}
+
 			const auto san_cmd = replace_ascii_control(p.cmd);
 
 			if (not p_wide_cmd.contains(p.pid)) p_wide_cmd[p.pid] = ulen(san_cmd) != ulen(san_cmd, true);
@@ -4304,14 +4323,14 @@ namespace Proc {
 			if (not proc_tree) {
 				if (bottom_layout) {
 					//? Bottom layout: Pid | Program | User | S | Ni | Thr | ...data... | Command
-					out += Mv::to(y+2+lc, x+1)
+					out += Mv::to(y+2+lc, x+1) + tag_bg_start
 						+ g_color + rjust(to_string(p.pid), 8) + "  "
 						+ c_color + ljust(p.name, prog_size, true, true) + "  " + end;  //? wide=true for proper Unicode display width
 					//? Rest of bottom layout columns handled in common section below
 				}
 				else {
 					//? Side layout: original Pid | Program | Command order
-					out += Mv::to(y+2+lc, x+1)
+					out += Mv::to(y+2+lc, x+1) + tag_bg_start
 						+ g_color + rjust(to_string(p.pid), 8) + ' '
 						+ c_color + ljust(p.name, prog_size, true, true) + ' ' + end  //? wide=true for proper Unicode display width
 						+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) + Mv::to(y+2+lc, x+11+prog_size+cmd_size) + ' ' : "");
@@ -4321,7 +4340,7 @@ namespace Proc {
 			else {
 				const string prefix_pid = p.prefix + to_string(p.pid);
 				int width_left = tree_size;
-				out += Mv::to(y+2+lc, x+1) + g_color + uresize(prefix_pid, width_left) + ' ';
+				out += Mv::to(y+2+lc, x+1) + tag_bg_start + g_color + uresize(prefix_pid, width_left) + ' ';
 				width_left -= ulen(prefix_pid);
 				if (width_left > 0) {
 					out += c_color + uresize(p.name, width_left - 1) + end + ' ';
@@ -4529,7 +4548,7 @@ namespace Proc {
 					+ (render_show_cpu ? cpu_heat + rjust(cpu_str, 5) + "  " + end : "")
 					+ (show_gpu ? gpu_heat + rjust(gpu_str, 5) + "  " + end : "")
 					+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) : "")
-					+ end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
+					+ tag_bg_end + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			else {
 				//? Side layout or tree view: original column order
@@ -4544,7 +4563,7 @@ namespace Proc {
 					+ (show_gpu ? " " + (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_gpu_graphs ? graph_bg * 5 : "")
 						+ (show_gpu_graphs and p_gpu_graphs.contains(p.pid) ? Mv::l(5) + gp_color + p_gpu_graphs.at(p.pid)({scale_to_graph(p.gpu_p)}, data_same) : "") + end + ' '
 						+ gp_color + rjust(gpu_str, 4) : "")
-					+ "  " + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
+					+ "  " + tag_bg_end + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			if (lc++ > height - 5) break;
 			else if (lc > height - 5 and proc_banner_shown) break;
