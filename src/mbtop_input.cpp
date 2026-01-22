@@ -633,6 +633,9 @@ namespace Input {
 				else if (key == "logs_buffer") {
 					Logs::show_buffer_modal();
 				}
+				else if (key == "logs_source") {
+					Logs::toggle_source();
+				}
 				//? Keyboard shortcuts ONLY when Logs panel is focused
 				else if (Logs::focused) {
 					if (key == "space") {
@@ -655,6 +658,10 @@ namespace Input {
 					else if (key == "R") {
 						//? Shift+R = Reverse sort order
 						Logs::toggle_sort_order();
+					}
+					else if (key == "S") {
+						//? Shift+S = Toggle log source (System/Application)
+						Logs::toggle_source();
 					}
 					else if (key == "B") {
 						//? Shift+B = Show buffer size modal

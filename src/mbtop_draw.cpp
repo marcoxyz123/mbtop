@@ -4962,7 +4962,37 @@ namespace Logs {
 			string filter_display = compact ? filter_name.substr(0, 1) : filter_name;
 			out += filter_color + filter_display + fg + " ";
 			cur_x += static_cast<int>(filter_display.length()) + 1;
-			
+
+			//? Source indicator with availability dots
+			{
+				string src_indicator = get_source_indicator();
+				string src_dots = get_availability_dots();
+				//? Color the indicator based on source
+				string src_color = (source == Source::System) ? theme("title") : theme("log_debug_plus");
+				//? Color dots: filled=active color, empty=inactive
+				string sys_dot_color = (source == Source::System) ? theme("proc_misc") : theme("inactive_fg");
+				string app_dot_color = (source == Source::Application && app_log_available) 
+					? theme("proc_misc") : theme("inactive_fg");
+
+				if (compact) {
+					//? Compact: just show S/A indicator
+					out += hi + "S" + fg + ":" + src_color + (source == Source::System ? "S" : "A") + fg + " ";
+					cur_x += 5;
+				} else {
+					//? Full: [S:Sys] or [S:App] with availability dots
+					out += hi + "S" + fg + ":" + src_color;
+					out += (source == Source::System) ? "Sys" : "App";
+					out += fg + " ";
+					//? Availability dots (◉=available, ○=unavailable)
+					out += sys_dot_color + "◉";  //? System always available
+					out += app_dot_color + (app_log_available ? "◉" : "○");
+					out += fg + " ";
+					cur_x += 11;  //? "S:Sys ◉◉ " = 10 chars + 1 space
+				}
+				//? Add mouse mapping for source toggle
+				Input::mouse_mappings["logs_source"] = {status_y, cur_x - (compact ? 5 : 11), 1, compact ? 4 : 10};
+			}
+
 			//? Position counter (shorter format in compact)
 			string short_pos = compact ? to_string(total_entries) : pos_str;
 			out += short_pos + " ";
