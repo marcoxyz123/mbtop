@@ -608,6 +608,9 @@ namespace Logs {
 	extern string box;
 	extern int x, y, width, height, min_width, min_height;
 	extern bool shown, redraw;
+	
+	//? Minimum Proc width when Logs panel is shown beside (Proc can shrink to this by hiding optional columns)
+	constexpr int proc_min_for_logs = 60;
 	extern bool focused;          //? true when Logs panel has input focus
 	extern bool paused;           //? Pause log streaming for reading
 	extern bool exporting;        //? true when exporting logs to file
@@ -649,9 +652,6 @@ namespace Logs {
 
 	//* Stop exporting logs to file
 	void stop_export();
-
-	//* Cycle through log level filters
-	void cycle_level_filter();
 
 	//* Toggle sort order (newest first / oldest first)
 	void toggle_sort_order();

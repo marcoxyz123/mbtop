@@ -4691,6 +4691,18 @@ namespace Logs {
 			string out;
 			const auto& theme = Theme::c;
 
+			//? Clean up modal mouse mappings when modals are not active
+			if (not filter_modal_active) {
+				for (int i = 0; i < 5; i++) {
+					Input::mouse_mappings.erase("filter_" + to_string(i));
+				}
+			}
+			if (not buffer_modal_active) {
+				for (int i = 0; i < 7; i++) {
+					Input::mouse_mappings.erase("buffer_" + to_string(i));
+				}
+			}
+
 			//? DEBUG: Log dimensions to verify correct positioning
 			Logger::debug("Logs::draw: x={}, y={}, width={}, height={}, Proc::width={}", 
 				x, y, width, height, Proc::width);
@@ -4754,8 +4766,14 @@ namespace Logs {
 			}
 
 			//? Draw log entries
+			//? When reverse_order is true, show oldest at top (newest at bottom when scrolled to 0)
+			//? When reverse_order is false (default), show newest at bottom
 			for (int i = start_idx; i < end_idx; i++) {
-				const auto& entry = entries[static_cast<size_t>(i)];
+				//? Calculate entry index based on display order
+				int entry_idx = reverse_order 
+					? (end_idx - 1 - (i - start_idx))  //? Reverse: newest at top of visible range
+					: i;                                //? Normal: oldest at top of visible range
+				const auto& entry = entries[static_cast<size_t>(entry_idx)];
 				int row = y + 1 + (i - start_idx);
 
 				//? Color based on log level - using theme colors (default: Nord Aurora)
@@ -4838,7 +4856,10 @@ namespace Logs {
 			
 			//? Build status components
 			string filter_name = get_filter_name();
-			string pos_str = std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries);
+			//? Position string: show "0/0" when empty, otherwise "start-end/total"
+			string pos_str = (total_entries == 0) 
+				? "0/0" 
+				: std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries);
 			string sort_str = reverse_order ? "Old" : "New";
 			
 			//? Calculate positions for mouse mappings
@@ -4941,15 +4962,6 @@ namespace Logs {
 			int remaining = content_width - (cur_x - x - 1);
 			if (remaining > 0) {
 				out += string(static_cast<size_t>(remaining), ' ');
-			}
-			
-			//? Mouse mappings always active for clicks, remove only when Logs hidden
-			if (not Logs::shown) {
-				Input::mouse_mappings.erase("logs_pause");
-				Input::mouse_mappings.erase("logs_export");
-				Input::mouse_mappings.erase("logs_filter");
-				Input::mouse_mappings.erase("logs_sort");
-				Input::mouse_mappings.erase("logs_buffer");
 			}
 
 			//? Draw filter selection modal if active
@@ -5985,10 +5997,10 @@ namespace Draw {
 				if (not logs_below) {
 				//? Vertical split: Logs right of Proc (no gap between panels)
 				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
-				//? In full-width layout, Proc can shrink to ~60 chars (hiding optional columns)
+				//? In full-width layout, Proc can shrink to Logs::proc_min_for_logs (hiding optional columns)
 				//? Min layout: Pid(8) + Prog(14) + User(5) + Mem(6) + Cpu(6) + Gpu(6) + borders(8) = ~53, use 60 for comfort
-				int proc_min_for_logs = proc_is_full_width ? 60 : Proc::min_width;
-				int min_combined_beside = proc_min_for_logs + Logs::min_width;
+				int proc_min = proc_is_full_width ? Logs::proc_min_for_logs : Proc::min_width;
+				int min_combined_beside = proc_min + Logs::min_width;
 				
 				bool can_show_logs = false;
 				int logs_width = 0;
@@ -5996,7 +6008,7 @@ namespace Draw {
 				if (Proc::width >= min_combined_beside) {
 					//? Calculate available width for Logs
 					//? Give Logs at least min_width, prefer 1/3 of space if available
-					int available = Proc::width - proc_min_for_logs;  //? What's left after Proc minimum
+					int available = Proc::width - proc_min;  //? What's left after Proc minimum
 					int preferred_logs = Proc::width / 3;
 					
 					//? Logs gets: min_width first, then up to 1/3 if space allows
@@ -6020,7 +6032,7 @@ namespace Draw {
 						logs_width = Term::width - logs_x + 1;
 					}
 
-					if (logs_width >= Logs::min_width and new_proc_width >= proc_min_for_logs) {
+					if (logs_width >= Logs::min_width and new_proc_width >= proc_min) {
 						Proc::width = new_proc_width;
 						Proc::select_max = Proc::height - 3;
 

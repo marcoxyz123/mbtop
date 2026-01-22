@@ -287,8 +287,7 @@ namespace Input {
 						bool proc_is_full_width = (Proc::width == Term::width);
 						
 						//? Calculate minimums for error messages
-						int proc_min_for_logs = 60;
-						int min_combined_width = proc_min_for_logs + Logs::min_width;  //? 60 + 50 = 110
+						int min_combined_width = Logs::proc_min_for_logs + Logs::min_width;
 						int min_combined_height = Proc::min_height + Logs::min_height;
 						
 						if (not Logs::shown) {
@@ -341,6 +340,12 @@ namespace Input {
 							//? State: Below -> Hidden
 							Logs::shown = false;
 							Config::set("logs_below_proc", false);  //? Reset for next cycle
+							//? Clean up mouse mappings when hiding logs
+							mouse_mappings.erase("logs_pause");
+							mouse_mappings.erase("logs_export");
+							mouse_mappings.erase("logs_filter");
+							mouse_mappings.erase("logs_sort");
+							mouse_mappings.erase("logs_buffer");
 						}
 						Config::current_preset = -1;
 						Draw::calcSizes();
@@ -656,10 +661,14 @@ namespace Input {
 						Logs::show_buffer_modal();
 					}
 					else if (key == "page_up") {
-						Logs::scroll_offset += (Logs::height - 3);
+						//? Scroll up (towards older entries) with upper bound
+						int visible_rows = Logs::height - 3;
+						int max_scroll = std::max(0, static_cast<int>(Logs::entries.size()) - visible_rows);
+						Logs::scroll_offset = std::min(max_scroll, Logs::scroll_offset + visible_rows);
 						Logs::redraw = true;
 					}
 					else if (key == "page_down") {
+						//? Scroll down (towards newer entries) with lower bound
 						Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
 						Logs::redraw = true;
 					}

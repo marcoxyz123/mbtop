@@ -2361,6 +2361,36 @@ namespace Logs {
 							case '"': value += '"'; break;
 							case '\\': value += '\\'; break;
 							case '/': value += '/'; break;
+							case 'u': {
+								//? Unicode escape: \uXXXX (4 hex digits)
+								if (pos + 4 < json_line.length()) {
+									string hex_str = json_line.substr(pos + 1, 4);
+									bool valid_hex = true;
+									for (char c : hex_str) {
+										if (not isxdigit(c)) { valid_hex = false; break; }
+									}
+									if (valid_hex) {
+										unsigned int codepoint = std::stoul(hex_str, nullptr, 16);
+										//? Convert codepoint to UTF-8
+										if (codepoint < 0x80) {
+											value += static_cast<char>(codepoint);
+										} else if (codepoint < 0x800) {
+											value += static_cast<char>(0xC0 | (codepoint >> 6));
+											value += static_cast<char>(0x80 | (codepoint & 0x3F));
+										} else {
+											value += static_cast<char>(0xE0 | (codepoint >> 12));
+											value += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+											value += static_cast<char>(0x80 | (codepoint & 0x3F));
+										}
+										pos += 4;  //? Skip the 4 hex digits (pos++ at end of loop handles 'u')
+									} else {
+										value += 'u';  //? Invalid hex, keep literal
+									}
+								} else {
+									value += 'u';  //? Not enough chars, keep literal
+								}
+								break;
+							}
 							default: value += json_line[pos]; break;
 						}
 					} else {
@@ -2404,13 +2434,18 @@ namespace Logs {
 		return (level_filter & level_to_bit(level)) != 0;
 	}
 
-	//? Stop any existing log stream (non-blocking)
+	//? Stop any existing log stream
 	static void stop_stream() {
 		if (log_child_pid > 0) {
-			//? Kill the child process immediately
+			//? Kill the child process
 			kill(log_child_pid, SIGKILL);
-			//? Reap the zombie (non-blocking)
-			waitpid(log_child_pid, nullptr, WNOHANG);
+			//? Wait for child to die with retry loop (up to 10ms)
+			//? SIGKILL is asynchronous, so we need to wait briefly for termination
+			for (int i = 0; i < 10; i++) {
+				pid_t result = waitpid(log_child_pid, nullptr, WNOHANG);
+				if (result != 0) break;  //? Child reaped or error
+				usleep(1000);  //? Wait 1ms before retry
+			}
 			log_child_pid = 0;
 		}
 		if (log_fd >= 0) {
@@ -2514,6 +2549,11 @@ namespace Logs {
 			char buffer[4096];
 			int lines_processed = 0;
 			const int max_lines_per_collect = 50;
+
+			//? Pre-allocate line buffer capacity to reduce reallocations
+			if (line_buffer.capacity() < 16384) {
+				line_buffer.reserve(16384);
+			}
 
 			//? Non-blocking read loop
 			while (lines_processed < max_lines_per_collect) {
@@ -2648,9 +2688,10 @@ namespace Logs {
 
 		//? Generate filename: <PID>-<Program>-<datetime>.log
 		time_t now = time(nullptr);
-		struct tm* t = localtime(&now);
+		struct tm t_buf;
+		localtime_r(&now, &t_buf);
 		char datetime[32];
-		strftime(datetime, sizeof(datetime), "%Y%m%d-%H%M%S", t);
+		strftime(datetime, sizeof(datetime), "%Y%m%d-%H%M%S", &t_buf);
 
 		export_filename = fmt::format("{}/{}-{}-{}.log", export_path, current_pid, proc_name, datetime);
 
@@ -2683,9 +2724,10 @@ namespace Logs {
 		if (export_file_handle != nullptr) {
 			//? Write footer
 			time_t now = time(nullptr);
-			struct tm* t = localtime(&now);
+			struct tm t_buf;
+			localtime_r(&now, &t_buf);
 			char datetime[32];
-			strftime(datetime, sizeof(datetime), "%Y-%m-%d %H:%M:%S", t);
+			strftime(datetime, sizeof(datetime), "%Y-%m-%d %H:%M:%S", &t_buf);
 			fprintf(export_file_handle, "#\n# Export ended: %s\n", datetime);
 			fclose(export_file_handle);
 			export_file_handle = nullptr;
@@ -2694,19 +2736,6 @@ namespace Logs {
 		Logger::info("Stopped log export: {}", export_filename);
 		exporting = false;
 		export_filename.clear();
-		redraw = true;
-	}
-
-	void cycle_level_filter() {
-		//? Cycle through filter modes:
-		//? All (0x1F) -> Errors only (0x18) -> Info+ (0x1B) -> All (0x1F)
-		if (level_filter == 0x1F) {
-			level_filter = 0x18;  //? Error + Fault only
-		} else if (level_filter == 0x18) {
-			level_filter = 0x1B;  //? Default + Info + Error + Fault (no Debug)
-		} else {
-			level_filter = 0x1F;  //? All levels
-		}
 		redraw = true;
 	}
 
@@ -2746,7 +2775,7 @@ namespace Logs {
 	}
 
 	bool filter_modal_input(const std::string_view key) {
-		if (key == "escape" or key == "q" or key == "O") {
+		if (key == "escape" or key == "q") {
 			filter_modal_active = false;
 			redraw = true;
 			return true;
@@ -2855,9 +2884,12 @@ namespace Logs {
 				//? Preset selected
 				set_buffer_size(buffer_presets[static_cast<size_t>(buffer_modal_selected)]);
 			} else if (not buffer_custom_input.empty()) {
-				//? Custom value entered
-				int val = std::stoi(buffer_custom_input);
-				set_buffer_size(static_cast<size_t>(val));
+				//? Custom value entered - use stoi_safe to prevent crashes on invalid input
+				int val = stoi_safe(buffer_custom_input, 0);
+				if (val > 0) {
+					set_buffer_size(static_cast<size_t>(val));
+				}
+				//? If val <= 0, just close modal without changing buffer size
 			}
 			buffer_modal_active = false;
 			buffer_custom_input.clear();
