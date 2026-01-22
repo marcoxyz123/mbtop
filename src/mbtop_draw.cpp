@@ -3882,7 +3882,38 @@ namespace Proc {
 				    	title_left, follow_process ? Fx::b : "",
 				    	hi_color, 'F', t_color, "ollow",
 				    	Fx::ub, title_right);
-				    if (selected == 0) Input::mouse_mappings["F"] = {d_y, mouse_x, 1, 6};
+				    if (alive and selected == 0) Input::mouse_mappings["F"] = {d_y, mouse_x, 1, 6};
+				    mouse_x += 8;
+				}
+
+				//? Quick tag button: (●)██ or (○)██ - radio button + color preview
+				if (width > 85) {
+				    auto tag_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
+				    bool is_tagged = tag_cfg.has_value() && tag_cfg->has_tagging();
+				    string tag_preview_color = is_tagged ? Theme::c(tag_cfg->tag_color) : Theme::c("inactive_fg");
+				    
+				    out += title_left + hi_color + (is_tagged ? "(●)" : "(○)")
+				    	+ tag_preview_color + "██" + Fx::reset + title_right;
+				    if (alive and selected == 0) {
+				        Input::mouse_mappings["proc_tag_toggle"] = {d_y, mouse_x + 1, 1, 3};
+				        Input::mouse_mappings["proc_tag_color"] = {d_y, mouse_x + 4, 1, 2};
+				    }
+				    mouse_x += 8;
+				}
+
+				//? Log config button: [Log◉◉] with availability dots
+				if (width > 93) {
+				    auto log_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
+				    bool has_app_log = log_cfg.has_value() && log_cfg->has_logging();
+				    
+				    out += title_left + Fx::b + hi_color + 'L' + t_color + "og"
+				    	+ Theme::c("main_fg") + "◉"  //? System always available
+				    	+ (has_app_log ? Theme::c("main_fg") : Theme::c("inactive_fg")) + "◉"
+				    	+ Fx::ub + title_right;
+				    if (alive and selected == 0) {
+				        Input::mouse_mappings["L"] = {d_y, mouse_x, 1, 7};
+				    }
+				    mouse_x += 9;
 				}
 
 				//? Labels
@@ -4008,39 +4039,14 @@ namespace Proc {
 			    if (selected > 0) Input::mouse_mappings["F"] = {y + height - 1, mouse_x, 1, 6};
 			    mouse_x += 8;
 			}
-			//? Quick tag button with color preview
-			if (width > 80 and selected > 0) {
-				//? Get tag config for selected process
-				auto sel_cfg = Config::find_process_config(selected_name, "");
-				bool is_tagged = sel_cfg.has_value() && sel_cfg->has_tagging();
-				string tag_color_preview = is_tagged ? Theme::c(sel_cfg->tag_color) : Theme::c("inactive_fg");
-				//? (●) or (○) radio button + ██ color preview
-				out += title_left_down + hi_color + (is_tagged ? "(●)" : "(○)")
-					+ tag_color_preview + "██" + Fx::reset + title_right_down;
-				Input::mouse_mappings["proc_tag_toggle"] = {y + height - 1, mouse_x + 1, 1, 3};  //? Radio button
-				Input::mouse_mappings["proc_tag_color"] = {y + height - 1, mouse_x + 4, 1, 2};   //? Color preview
-				mouse_x += 8;
-			}
-			//? Log config button with availability indicators
-			if (width > 88 and selected > 0) {
-				//? Check if app log is available for selected process
-				auto log_cfg = Config::find_process_config(selected_name, "");
-				bool has_app = log_cfg.has_value() && log_cfg->has_logging();
-				out += title_left_down + Fx::b + hi_color + 'L' + t_color + "og"
-					+ Theme::c("main_fg") + "◉"  //? System logs always available
-					+ (has_app ? Theme::c("main_fg") : Theme::c("inactive_fg")) + "◉"
-					+ Fx::ub + title_right_down;
-				Input::mouse_mappings["L"] = {y + height - 1, mouse_x, 1, 6};
-				mouse_x += 8;
-			}
 			//? Toggle columns button (Shift+T)
-			if (width > 96) {
+			if (width > 82) {
 			    out += title_left_down + Fx::b + Theme::c("hi_fg") + 'T' + Theme::c("title") + "oggle" + Fx::ub + title_right_down;
 			    Input::mouse_mappings["T"] = {y + height - 1, mouse_x, 1, 6};
 			    mouse_x += 8;
 			}
 			//? Logs panel button (key 8)
-			if (width > 104) {
+			if (width > 92) {
 			    out += title_left_down + (Logs::shown ? Fx::b : "") + Theme::c("hi_fg") + '8'
 			        + Theme::c("title") + "Logs" + Fx::ub + title_right_down;
 			    Input::mouse_mappings["8"] = {y + height - 1, mouse_x, 1, 5};
@@ -5396,34 +5402,27 @@ namespace Logs {
 			out += filter_color + filter_display + fg + " ";
 			cur_x += static_cast<int>(filter_display.length()) + 1;
 
-			//? Source indicator with availability dots
+			//? Source indicator with availability dots (format: S:Sys ◉◉)
 			{
-				string src_indicator = get_source_indicator();
-				string src_dots = get_availability_dots();
-				//? Color the indicator based on source
-				string src_color = (source == Source::System) ? theme("title") : theme("log_debug_plus");
-				//? Color dots: filled=active color, empty=inactive
+				//? Color dots: filled=active, empty=inactive
 				string sys_dot_color = (source == Source::System) ? theme("proc_misc") : theme("inactive_fg");
 				string app_dot_color = (source == Source::Application && app_log_available) 
 					? theme("proc_misc") : theme("inactive_fg");
 
+				int src_start_x = cur_x;
 				if (compact) {
-					//? Compact: just show S/A indicator
-					out += hi + "S" + fg + ":" + src_color + (source == Source::System ? "S" : "A") + fg + " ";
-					cur_x += 5;
+					//? Compact: S:S or S:A with dots
+					out += hi + "S" + fg + ":" + (source == Source::System ? "S" : "A") + " ";
+					out += sys_dot_color + "●" + app_dot_color + (app_log_available ? "●" : "○") + fg + " ";
+					cur_x += 8;  //? "S:S ●○ " = 8 chars
 				} else {
-					//? Full: [S:Sys] or [S:App] with availability dots
-					out += hi + "S" + fg + ":" + src_color;
-					out += (source == Source::System) ? "Sys" : "App";
-					out += fg + " ";
-					//? Availability dots (◉=available, ○=unavailable)
-					out += sys_dot_color + "◉";  //? System always available
-					out += app_dot_color + (app_log_available ? "◉" : "○");
-					out += fg + " ";
-					cur_x += 11;  //? "S:Sys ◉◉ " = 10 chars + 1 space
+					//? Full: S:Sys or S:App with dots
+					out += hi + "S" + fg + ":" + (source == Source::System ? "Sys" : "App") + " ";
+					out += sys_dot_color + "●" + app_dot_color + (app_log_available ? "●" : "○") + fg + " ";
+					cur_x += 10;  //? "S:Sys ●○ " = 10 chars
 				}
 				//? Add mouse mapping for source toggle
-				Input::mouse_mappings["logs_source"] = {status_y, cur_x - (compact ? 5 : 11), 1, compact ? 4 : 10};
+				Input::mouse_mappings["logs_source"] = {status_y, src_start_x, 1, compact ? 3 : 5};
 			}
 
 			//? Position counter (shorter format in compact)
