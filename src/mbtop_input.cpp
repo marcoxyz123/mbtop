@@ -773,6 +773,11 @@ namespace Input {
 					no_update = false;
 					Config::set("update_following", true);
 				}
+				else if (key == "a") {
+					//? Toggle tagged filter - show only processes with tag configs
+					Proc::filter_tagged = not Proc::filter_tagged;
+					no_update = false;
+				}
 				else if (is_in(key, "u")) {
 					Config::flip("pause_proc_list");
 				}
@@ -1016,6 +1021,47 @@ namespace Input {
 				    Menu::show(Menu::Menus::Renice);
 				    return;
 			    }
+				//? Open Log Config modal (L key)
+				else if (key == "L" and Config::getB("show_detailed") and Config::getI("proc_selected") == 0) {
+					if (Proc::detailed.status == "Dead") return;
+					Logs::show_config_modal(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+					Runner::run("all", true, true);
+					return;
+				}
+				//? Open Color Picker modal (c key when detailed view is showing)
+				else if (key == "proc_tag_color" or (key == "c" and Config::getB("show_detailed") and Config::getI("proc_selected") == 0)) {
+					if (Proc::detailed.status == "Dead") return;
+					Logs::show_color_modal(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+					Runner::run("all", true, true);
+					return;
+				}
+				//? Toggle tag on/off for selected/detailed process
+				else if (key == "proc_tag_toggle") {
+					string proc_name = Config::getI("proc_selected") > 0 ? Proc::selected_name : Proc::detailed.entry.name;
+					string proc_cmd = Config::getI("proc_selected") > 0 ? "" : Proc::detailed.entry.cmd;
+					auto cfg = Config::find_process_config(proc_name, proc_cmd);
+					if (cfg.has_value() && cfg->has_tagging()) {
+						//? Remove tagging
+						Config::ProcessLogConfig new_cfg = *cfg;
+						new_cfg.tagged = false;
+						new_cfg.tag_color.clear();
+						Config::save_process_config(new_cfg);
+					} else {
+						//? Enable tagging with default color (green)
+						Config::ProcessLogConfig new_cfg;
+						new_cfg.name = proc_name;
+						new_cfg.tagged = true;
+						new_cfg.tag_color = "log_debug_plus";  //? Green
+						if (cfg.has_value()) {
+							new_cfg.log_path = cfg->log_path;
+							new_cfg.display_name = cfg->display_name;
+							new_cfg.command_pattern = cfg->command_pattern;
+						}
+						Config::save_process_config(new_cfg);
+					}
+					Runner::run("proc", false, true);
+					return;
+				}
 				else if ((is_in(key, "up", "down", "page_up", "page_down", "home", "end") or (vim_keys and is_in(key, "j", "k", "g", "G")))
 					 and not (Config::getI("disk_selected") > 0 and Config::getB("show_disks"))
 					 and not (Config::getI("mem_selected") > 0)) {

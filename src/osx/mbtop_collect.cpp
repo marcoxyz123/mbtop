@@ -2236,6 +2236,19 @@ namespace Proc {
 			}
 		}
 
+		//* Apply tagged filter if enabled
+		if (Proc::filter_tagged) {
+			for (auto &p : current_procs) {
+				if (not p.filtered) {
+					auto cfg = Config::find_process_config(p.name, p.cmd);
+					if (not cfg.has_value() or not cfg->has_tagging()) {
+						p.filtered = true;
+						filter_found++;
+					}
+				}
+			}
+		}
+
 		//* Sort processes
 		if ((sorted_change or tree_mode_change) or (not no_update and not pause_proc_list)) {
 			proc_sorter(current_procs, sorting, reverse, tree);

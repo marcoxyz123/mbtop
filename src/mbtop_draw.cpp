@@ -3307,6 +3307,7 @@ namespace Proc {
 	int selected_pid = 0, selected_depth = 0;
 	int scroll_pos;
 	string selected_name;
+	bool filter_tagged = false;  //? When true, show only tagged processes
 	std::unordered_map<size_t, Draw::Graph> p_graphs;
 	std::unordered_map<size_t, Draw::Graph> p_gpu_graphs;
 	std::unordered_map<size_t, bool> p_wide_cmd;
@@ -3952,10 +3953,15 @@ namespace Proc {
 					+ "per-" + Theme::c("hi_fg") + 'c' + Theme::c("title") + "ore" + Fx::ub + title_right;
 				Input::mouse_mappings["c"] = {y, sort_pos - 24, 1, 8};
 			}
-			if (width > 45 + sort_len) {
-				out += Mv::to(y, sort_pos - 15) + title_left + (Config::getB("proc_reversed") ? Fx::b : "") + Theme::c("hi_fg")
+			if (width > 52 + sort_len) {
+				out += Mv::to(y, sort_pos - 22) + title_left + (Config::getB("proc_reversed") ? Fx::b : "") + Theme::c("hi_fg")
 					+ 'r' + Theme::c("title") + "everse" + Fx::ub + title_right;
-				Input::mouse_mappings["r"] = {y, sort_pos - 14, 1, 7};
+				Input::mouse_mappings["r"] = {y, sort_pos - 21, 1, 7};
+			}
+			if (width > 45 + sort_len) {
+				out += Mv::to(y, sort_pos - 13) + title_left + (filter_tagged ? Fx::b : "") + Theme::c("title") + "t"
+					+ Theme::c("hi_fg") + 'a' + Theme::c("title") + "gged" + Fx::ub + title_right;
+				Input::mouse_mappings["a"] = {y, sort_pos - 12, 1, 6};
 			}
 			if (width > 35 + sort_len) {
 				out += Mv::to(y, sort_pos - 6) + title_left + (Config::getB("proc_tree") ? Fx::b : "") + Theme::c("title") + "tre"
@@ -4002,14 +4008,39 @@ namespace Proc {
 			    if (selected > 0) Input::mouse_mappings["F"] = {y + height - 1, mouse_x, 1, 6};
 			    mouse_x += 8;
 			}
+			//? Quick tag button with color preview
+			if (width > 80 and selected > 0) {
+				//? Get tag config for selected process
+				auto sel_cfg = Config::find_process_config(selected_name, "");
+				bool is_tagged = sel_cfg.has_value() && sel_cfg->has_tagging();
+				string tag_color_preview = is_tagged ? Theme::c(sel_cfg->tag_color) : Theme::c("inactive_fg");
+				//? (●) or (○) radio button + ██ color preview
+				out += title_left_down + hi_color + (is_tagged ? "(●)" : "(○)")
+					+ tag_color_preview + "██" + Fx::reset + title_right_down;
+				Input::mouse_mappings["proc_tag_toggle"] = {y + height - 1, mouse_x + 1, 1, 3};  //? Radio button
+				Input::mouse_mappings["proc_tag_color"] = {y + height - 1, mouse_x + 4, 1, 2};   //? Color preview
+				mouse_x += 8;
+			}
+			//? Log config button with availability indicators
+			if (width > 88 and selected > 0) {
+				//? Check if app log is available for selected process
+				auto log_cfg = Config::find_process_config(selected_name, "");
+				bool has_app = log_cfg.has_value() && log_cfg->has_logging();
+				out += title_left_down + Fx::b + hi_color + 'L' + t_color + "og"
+					+ Theme::c("main_fg") + "◉"  //? System logs always available
+					+ (has_app ? Theme::c("main_fg") : Theme::c("inactive_fg")) + "◉"
+					+ Fx::ub + title_right_down;
+				Input::mouse_mappings["L"] = {y + height - 1, mouse_x, 1, 6};
+				mouse_x += 8;
+			}
 			//? Toggle columns button (Shift+T)
-			if (width > 82) {
+			if (width > 96) {
 			    out += title_left_down + Fx::b + Theme::c("hi_fg") + 'T' + Theme::c("title") + "oggle" + Fx::ub + title_right_down;
 			    Input::mouse_mappings["T"] = {y + height - 1, mouse_x, 1, 6};
 			    mouse_x += 8;
 			}
 			//? Logs panel button (key 8)
-			if (width > 92) {
+			if (width > 104) {
 			    out += title_left_down + (Logs::shown ? Fx::b : "") + Theme::c("hi_fg") + '8'
 			        + Theme::c("title") + "Logs" + Fx::ub + title_right_down;
 			    Input::mouse_mappings["8"] = {y + height - 1, mouse_x, 1, 5};
