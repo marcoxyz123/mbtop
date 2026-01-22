@@ -3315,6 +3315,7 @@ namespace MenuV2 {
 						{"proc_per_core", "Per Core", "Show per-core CPU usage", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"proc_mem_bytes", "Memory as Bytes", "Show memory usage in bytes", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"proc_show_cmd", "Show Command", "Show command column", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"proc_tag_mode", "Tag Display Mode", "How to show tagged processes (name=color name only, line=color entire row)", ControlType::Radio, {"name", "line"}, "", 0, 0, 0},
 					}},
 					{"Proc | Behavior", {
 						{"proc_aggregate", "Aggregate", "Aggregate child process stats in tree view", ControlType::Toggle, {}, "", 0, 0, 0},
