@@ -621,6 +621,19 @@ namespace Logs {
 	extern pid_t current_pid;     //? PID being monitored
 	extern string current_name;   //? Name of process being monitored
 
+	//=== Log Source Management ===
+	enum class Source {
+		System,      //? macOS unified logging (log stream)
+		Application  //? Application log file (text-based)
+	};
+
+	extern Source source;              //? Current log source (default: System)
+	extern string app_log_path;        //? Path to application log file
+	extern bool app_log_available;     //? Whether app log exists/readable
+	extern string custom_display_name; //? Display name from config (optional)
+	extern string custom_tag_color;    //? Tag color from config (optional)
+	extern string current_cmdline;     //? Command line of current process
+
 	//? Log level filter bitmask: bit 0=Default, 1=Info, 2=Debug, 3=Error, 4=Fault
 	extern uint8_t level_filter;
 
@@ -698,6 +711,31 @@ namespace Logs {
 
 	//* Handle error modal input (any key closes it)
 	bool error_modal_input(const std::string_view key);
+
+	//=== Source Management Functions ===
+
+	//* Toggle between System and Application log sources
+	//* Called by 'S' key handler
+	void toggle_source();
+
+	//* Resolve log config for a process (called when process is selected for logging)
+	//* Sets app_log_path, app_log_available, custom_display_name, custom_tag_color
+	void resolve_config(pid_t pid, const string& name, const string& cmdline);
+
+	//* Collect logs from application log file (text-based parsing)
+	//* Called by collect() when source == Application
+	void collect_app_logs();
+
+	//* Check if application log is available for current process
+	bool has_app_log();
+
+	//* Get source indicator string for status bar
+	//* Returns "[S:Sys]" or "[S:App]"
+	string get_source_indicator();
+
+	//* Get availability dots for UI
+	//* Returns availability status string
+	string get_availability_dots();
 }
 
 /// Detect container engine.

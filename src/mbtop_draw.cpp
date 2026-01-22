@@ -19,6 +19,7 @@ tab-size = 4
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <iterator>
 #include <ranges>
 #include <stdexcept>
@@ -58,6 +59,7 @@ using std::views::iota;
 using namespace Tools;
 using namespace std::literals; // for operator""s
 namespace rng = std::ranges;
+namespace fs = std::filesystem;
 
 namespace Symbols {
 	const string meter = "■";
@@ -4655,6 +4657,14 @@ namespace Logs {
 	deque<LogEntry> entries;
 	size_t max_entries = 500;
 
+	//=== Log Source State ===
+	Source source = Source::System;      //? Current source (default: System)
+	string app_log_path;                 //? Path to application log file
+	bool app_log_available = false;      //? Whether app log exists/readable
+	string custom_display_name;          //? Display name from config
+	string custom_tag_color;             //? Tag color from config
+	string current_cmdline;              //? Command line of current process
+
 	//? Get filter name based on current filter
 	//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
 	string get_filter_name() {
@@ -4680,6 +4690,70 @@ namespace Logs {
 	void toggle_sort_order() {
 		reverse_order = not reverse_order;
 		redraw = true;
+	}
+
+	//=== Source Management Functions ===
+
+	void toggle_source() {
+		if (!app_log_available) return;  //? Can't switch if no app log
+		source = (source == Source::System) ? Source::Application : Source::System;
+		entries.clear();  //? Clear buffer on source change
+		scroll_offset = 0;
+		redraw = true;
+	}
+
+	void resolve_config(pid_t pid, const string& name, const string& cmdline) {
+		current_pid = pid;
+		current_name = name;
+		current_cmdline = cmdline;
+
+		//? Reset app log state
+		app_log_path.clear();
+		app_log_available = false;
+		custom_display_name.clear();
+		custom_tag_color.clear();
+
+		//? Look up config
+		if (auto cfg = Config::find_process_config(name, cmdline)) {
+			app_log_path = cfg->log_path;
+			custom_display_name = cfg->display_name;
+			custom_tag_color = cfg->tag_color;
+
+			//? Check if file exists and is readable
+			if (!app_log_path.empty()) {
+				std::error_code ec;
+				if (fs::exists(app_log_path, ec) && !ec) {
+					app_log_available = true;
+				}
+			}
+		}
+
+		//? Set source based on config default and availability
+		if (Config::logging.default_source == "application" && app_log_available) {
+			source = Source::Application;
+		} else {
+			source = Source::System;
+		}
+	}
+
+	void collect_app_logs() {
+		//? Stub - will be implemented in Phase 4
+		//? This function will parse application log files
+	}
+
+	bool has_app_log() {
+		return app_log_available;
+	}
+
+	string get_source_indicator() {
+		return (source == Source::System) ? "[S:Sys]" : "[S:App]";
+	}
+
+	string get_availability_dots() {
+		//? Returns availability indicator: ◉◉ (both), ◉○ (system only), etc.
+		string sys_dot = "◉";  //? System always available
+		string app_dot = app_log_available ? "◉" : "○";
+		return sys_dot + app_dot;
 	}
 
 	string draw(bool force_redraw, bool data_same) {
