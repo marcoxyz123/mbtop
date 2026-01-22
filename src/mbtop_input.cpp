@@ -228,6 +228,13 @@ namespace Input {
 			auto vim_keys = Config::getB("vim_keys");
 			auto help_key = (vim_keys ? "H" : "h");
 			auto kill_key = (vim_keys ? "K" : "k");
+			
+			//? Double-click detection for releasing follow mode
+			//? Requires two clicks within 400ms to release follow
+			static uint64_t last_proc_click_time = 0;
+			static int last_proc_click_line = -1;
+			constexpr uint64_t DOUBLE_CLICK_MS = 400;
+			
 			//? Global input actions
 			if (not filtering) {
 				bool keep_going = false;
@@ -262,6 +269,83 @@ namespace Input {
 						if (not Config::toggle_box("pwr")) {
 							Menu::show(Menu::Menus::SizeError);
 							return;
+						}
+						Config::current_preset = -1;
+						Draw::calcSizes();
+						Runner::run("all", false, true);
+						return;
+					}
+					//? Key "8" cycles Logs panel
+					//? Full-width view: beside -> below -> hidden
+					//? Compact view: below -> hidden (beside disabled, too small)
+					if (intKey == 8 and Proc::shown) {
+						atomic_wait(Runner::active);
+						auto logs_below = Config::getB("logs_below_proc");
+						
+						//? Proc is "effectively full-width" if it takes the entire terminal width
+						//? This happens when proc_full_width=true OR when Mem/Net are hidden
+						bool proc_is_full_width = (Proc::width == Term::width);
+						
+						//? Calculate minimums for error messages
+						int min_combined_width = Logs::proc_min_for_logs + Logs::min_width;
+						int min_combined_height = Proc::min_height + Logs::min_height;
+						
+						if (not Logs::shown) {
+							//? State: Hidden -> Show Logs
+							//? Auto-follow the selected process if not already following
+							if (not Config::getB("follow_process") and Config::getI("selected_pid") > 0) {
+								Config::set("follow_process", true);
+								Config::set("followed_pid", Config::getI("selected_pid"));
+								Config::set("update_following", true);
+							}
+							//? Initialize with followed PID/name and reset state
+							Logs::current_pid = Config::getI("followed_pid");
+							Logs::current_name = Proc::selected_name;
+							Logs::paused = false;
+							Logs::clear();
+							Logs::shown = true;
+							
+							//? Full-width view: show beside (right)
+							//? Compact view: show below only (beside too small)
+							if (proc_is_full_width) {
+								bool has_space = (Proc::width >= min_combined_width);
+								
+								if (not has_space) {
+									Menu::logs_min_width_required = min_combined_width;
+									Menu::logs_error_is_height = false;
+									Menu::show(Menu::Menus::LogsSizeError);
+									Logs::shown = false;
+									return;
+								}
+								Config::set("logs_below_proc", false);  //? Show beside
+							} else {
+								//? Compact view: only below mode allowed
+								bool has_space = (Proc::height >= min_combined_height);
+								
+								if (not has_space) {
+									Menu::logs_min_height_required = min_combined_height;
+									Menu::logs_current_proc_height = Proc::height;
+									Menu::logs_error_is_height = true;
+									Menu::show(Menu::Menus::LogsSizeError);
+									Logs::shown = false;
+									return;
+								}
+								Config::set("logs_below_proc", true);  //? Show below
+							}
+						} else if (not logs_below) {
+							//? State: Beside (right) -> Move to below
+							//? Just set the config, calcSizes() will validate and show dialog if needed
+							Config::set("logs_below_proc", true);
+						} else {
+							//? State: Below -> Hidden
+							Logs::shown = false;
+							Config::set("logs_below_proc", false);  //? Reset for next cycle
+							//? Clean up mouse mappings when hiding logs
+							mouse_mappings.erase("logs_pause");
+							mouse_mappings.erase("logs_export");
+							mouse_mappings.erase("logs_filter");
+							mouse_mappings.erase("logs_sort");
+							mouse_mappings.erase("logs_buffer");
 						}
 						Config::current_preset = -1;
 						Draw::calcSizes();
@@ -467,6 +551,137 @@ namespace Input {
 				if (not keep_going) return;
 			}
 
+			//? Input actions for logs panel (must be BEFORE proc to intercept keys)
+			if (Logs::shown) {
+				bool keep_going = false;
+				bool redraw = true;
+
+				//? Handle error modal input first - any key closes it
+				if (Logs::error_modal_active) {
+					Logs::error_modal_input(key);
+					Runner::run("all", true, true);
+					return;
+				}
+
+				//? Handle filter modal input if active
+				if (Logs::filter_modal_active) {
+					if (Logs::filter_modal_input(key)) {
+						Runner::run("all", true, true);
+						return;
+					}
+				}
+
+				//? Handle buffer modal input if active
+				if (Logs::buffer_modal_active) {
+					if (Logs::buffer_modal_input(key)) {
+						Runner::run("all", true, true);
+						return;
+					}
+				}
+
+				//? Mouse click in logs area - set focus
+				if (key == "mouse_click") {
+					if (mouse_pos[0] >= Logs::x and mouse_pos[0] < Logs::x + Logs::width
+						and mouse_pos[1] >= Logs::y and mouse_pos[1] < Logs::y + Logs::height) {
+						//? Clicked in Logs panel - set focus
+						if (not Logs::focused) {
+							Logs::focused = true;
+							Logs::redraw = true;
+						}
+					}
+					else {
+						//? Clicked outside Logs panel - remove focus
+						if (Logs::focused) {
+							Logs::focused = false;
+							Logs::redraw = true;
+						}
+						keep_going = true;
+					}
+				}
+				//? Scroll in logs area
+				else if (is_in(key, "mouse_scroll_up", "mouse_scroll_down")) {
+					if (mouse_pos[0] >= Logs::x and mouse_pos[0] < Logs::x + Logs::width
+						and mouse_pos[1] >= Logs::y and mouse_pos[1] < Logs::y + Logs::height) {
+						if (key == "mouse_scroll_up") {
+							Logs::scroll_offset++;
+						} else {
+							if (Logs::scroll_offset > 0) Logs::scroll_offset--;
+						}
+						Logs::redraw = true;
+					}
+					else keep_going = true;
+				}
+				//? Mouse click on status bar buttons (work regardless of focus)
+				else if (key == "logs_pause") {
+					Logs::toggle_pause();
+				}
+				else if (key == "logs_export") {
+					//? Toggle export to file - clear any previous error first
+					Logs::export_error.clear();
+					if (Logs::exporting) {
+						Logs::stop_export();
+					} else {
+						Logs::start_export();
+					}
+				}
+				else if (key == "logs_filter") {
+					Logs::show_filter_modal();
+				}
+				else if (key == "logs_sort") {
+					Logs::toggle_sort_order();
+				}
+				else if (key == "logs_buffer") {
+					Logs::show_buffer_modal();
+				}
+				//? Keyboard shortcuts ONLY when Logs panel is focused
+				else if (Logs::focused) {
+					if (key == "space") {
+						//? Space = Toggle pause (non-conflicting)
+						Logs::toggle_pause();
+					}
+					else if (key == "E") {
+						//? Shift+E = Toggle export to file - clear any previous error first
+						Logs::export_error.clear();
+						if (Logs::exporting) {
+							Logs::stop_export();
+						} else {
+							Logs::start_export();
+						}
+					}
+					else if (key == "F") {
+						//? Shift+F = Show filter modal (F is follow in Proc, but we're focused on Logs)
+						Logs::show_filter_modal();
+					}
+					else if (key == "R") {
+						//? Shift+R = Reverse sort order
+						Logs::toggle_sort_order();
+					}
+					else if (key == "B") {
+						//? Shift+B = Show buffer size modal
+						Logs::show_buffer_modal();
+					}
+					else if (key == "page_up") {
+						//? Scroll up (towards older entries) with upper bound
+						int visible_rows = Logs::height - 3;
+						int max_scroll = std::max(0, static_cast<int>(Logs::entries.size()) - visible_rows);
+						Logs::scroll_offset = std::min(max_scroll, Logs::scroll_offset + visible_rows);
+						Logs::redraw = true;
+					}
+					else if (key == "page_down") {
+						//? Scroll down (towards newer entries) with lower bound
+						Logs::scroll_offset = std::max(0, Logs::scroll_offset - (Logs::height - 3));
+						Logs::redraw = true;
+					}
+					else keep_going = true;
+				}
+				else keep_going = true;
+
+				if (not keep_going) {
+					Runner::run("all", true, redraw);
+					return;
+				}
+			}
+
 			//? Input actions for proc box
 			if (Proc::shown) {
 				bool keep_going = false;
@@ -534,11 +749,21 @@ namespace Input {
 						Config::set("follow_process", true);
 						Config::set("followed_pid", Config::getI("selected_pid"));
 						Config::set("update_following", true);
+						//? Stop export and reset Logs state for new process
+						Logs::stop_export();
+						Logs::current_pid = Config::getI("selected_pid");
+						Logs::paused = false;
+						Logs::clear();
 					}
 					else if (Config::getB("show_detailed") and Config::getI("proc_selected") == 0 and Config::getI("followed_pid") != Config::getI("detailed_pid")) {
 						Config::set("follow_process", true);
 						Config::set("followed_pid", Config::getI("detailed_pid"));
 						Config::set("update_following", true);
+						//? Stop export and reset Logs state for new process
+						Logs::stop_export();
+						Logs::current_pid = Config::getI("detailed_pid");
+						Logs::paused = false;
+						Logs::clear();
 					}
 					else if (Config::getB("follow_process")) {
 						Config::flip("follow_process");
@@ -548,6 +773,11 @@ namespace Input {
 							Config::set("restore_detailed_pid", Config::getI("detailed_pid"));
 						Config::set("followed_pid", 0);
 						Config::set("proc_followed", 0);
+						//? Stop export and clear Logs when unfollowing
+						Logs::stop_export();
+						Logs::current_pid = 0;
+						Logs::paused = false;
+						Logs::clear();
 					}
 				}
 				else if (key == "r") {
@@ -616,11 +846,20 @@ namespace Input {
 								else if (current_selection == 0 or line - y - 1 == 0)
 									redraw = true;
 
+								//? Only release follow mode on double-click (two clicks within 400ms)
 								if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
-									Config::flip("follow_process");
-									Config::set("followed_pid", 0);
-									Config::set("proc_followed", 0);
-									redraw = true;
+									uint64_t now = time_ms();
+									bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
+									                       and (last_proc_click_line == line);
+									last_proc_click_time = now;
+									last_proc_click_line = line;
+									
+									if (is_double_click) {
+										Config::flip("follow_process");
+										Config::set("followed_pid", 0);
+										Config::set("proc_followed", 0);
+										redraw = true;
+									}
 								}
 
 								Config::set("proc_selected", line - y - 1);
@@ -639,15 +878,28 @@ namespace Input {
 						}
 						else if (Config::getI("proc_selected") > 0){
 							Config::set("proc_selected", 0);
+							//? Only release follow mode on double-click
 							if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
-								Config::flip("follow_process");
-								Config::set("followed_pid", 0);
-								Config::set("proc_followed", 0);
+								uint64_t now = time_ms();
+								bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
+								                       and (last_proc_click_line == line);
+								last_proc_click_time = now;
+								last_proc_click_line = line;
+								
+								if (is_double_click) {
+									Config::flip("follow_process");
+									Config::set("followed_pid", 0);
+									Config::set("proc_followed", 0);
+								}
 							}
 							redraw = true;
 						}
 					}
 					else if (key.starts_with("mouse_scroll_") and in_proc_box) {
+						//? Disable mouse scroll when following to prevent accidental release (Magic Mouse)
+						if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
+							return;  //? Ignore mouse scroll while following
+						}
 						goto proc_mouse_scroll;
 					}
 					else if (key == "mouse_drag" and dragging_scroll) {
@@ -1098,6 +1350,7 @@ namespace Input {
 					return;
 				}
 			}
+
 		}
 
 		catch (const std::exception& e) {

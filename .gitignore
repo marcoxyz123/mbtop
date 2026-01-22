@@ -89,3 +89,10 @@ CMakeUserPresets.json
 # CLion
 cmake-build-*
 CLAUDE.md
+
+# Distribution files (built by CI)
+dist/*.pkg
+dist/*.tar.gz
+
+# Wiki submodule
+wiki/

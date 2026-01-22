@@ -604,5 +604,101 @@ namespace Proc {
 	void _collect_prefixes(tree_proc& t, bool is_last, const string &header = "");
 }
 
+namespace Logs {
+	extern string box;
+	extern int x, y, width, height, min_width, min_height;
+	extern bool shown, redraw;
+	
+	//? Minimum Proc width when Logs panel is shown beside (Proc can shrink to this by hiding optional columns)
+	constexpr int proc_min_for_logs = 60;
+	extern bool focused;          //? true when Logs panel has input focus
+	extern bool paused;           //? Pause log streaming for reading
+	extern bool exporting;        //? true when exporting logs to file
+	extern string export_filename; //? Current export filename
+	extern string export_error;   //? Error message when export fails
+	extern bool reverse_order;    //? true = oldest first, false = newest first (default)
+	extern int scroll_offset;     //? Scroll position (0 = latest)
+	extern pid_t current_pid;     //? PID being monitored
+	extern string current_name;   //? Name of process being monitored
+
+	//? Log level filter bitmask: bit 0=Default, 1=Info, 2=Debug, 3=Error, 4=Fault
+	extern uint8_t level_filter;
+
+	struct LogEntry {
+		string timestamp;
+		string level;        //? Default, Info, Debug, Error, Fault
+		string subsystem;
+		string category;
+		string message;
+	};
+
+	extern deque<LogEntry> entries;  //? Ring buffer of log entries
+	extern size_t max_entries;       //? Max entries to keep
+
+	//* Collect logs from macOS unified logging for the current process
+	void collect();
+
+	//* Draw contents of logs panel
+	string draw(bool force_redraw = false, bool data_same = false);
+
+	//* Clear log buffer and reset state
+	void clear();
+
+	//* Toggle pause state
+	void toggle_pause();
+
+	//* Start exporting logs to file
+	void start_export();
+
+	//* Stop exporting logs to file
+	void stop_export();
+
+	//* Toggle sort order (newest first / oldest first)
+	void toggle_sort_order();
+
+	//* Get filter name string
+	string get_filter_name();
+
+	//* Get filter color based on current filter
+	string get_filter_color();
+
+	//? Filter modal state
+	extern bool filter_modal_active;
+	extern int filter_modal_selected;  //? 0=All, 1=Debug, 2=Info, 3=Error, 4=Fault
+
+	//* Show filter selection modal
+	void show_filter_modal();
+
+	//* Handle filter modal input, returns true if modal closed
+	bool filter_modal_input(const std::string_view key);
+
+	//* Set filter directly by index
+	void set_filter(int filter_idx);
+
+	//? Buffer size modal state
+	extern bool buffer_modal_active;
+	extern int buffer_modal_selected;   //? 0-5 for presets, 6=Custom
+	extern string buffer_custom_input;  //? Custom input string
+
+	//* Show buffer size selection modal
+	void show_buffer_modal();
+
+	//* Handle buffer modal input, returns true if modal closed
+	bool buffer_modal_input(const std::string_view key);
+
+	//* Set buffer size directly
+	void set_buffer_size(size_t size);
+
+	//? Error modal state
+	extern bool error_modal_active;
+	extern string error_modal_message;
+
+	//* Show error modal with message
+	void show_error_modal(const string& message);
+
+	//* Handle error modal input (any key closes it)
+	bool error_modal_input(const std::string_view key);
+}
+
 /// Detect container engine.
 auto detect_container() -> std::optional<std::string>;

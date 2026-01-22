@@ -3564,34 +3564,40 @@ namespace Proc {
 				//? No braille graphs - just text values with heat colors
 				//? Columns: Pid | Program | User | Sta | Pri | Ni | Thr | Ports | IO/R | IO/W | Mem | Virt | CpuT | GpuT | Time | Cpu% | Gpu% | Command
 				gpu_adjustment = show_gpu ? 6 : 0;  // Bottom layout: just 5 chars + space (no graph)
+				
+				//? When Logs is beside Proc, use MUCH lower thresholds to allow Proc to shrink
+				//? This ensures columns are hidden progressively as terminal narrows
+				bool logs_beside = Logs::shown and not Config::getB("logs_below_proc");
+				int shrink = logs_beside ? 60 : 0;  //? Subtract from thresholds when Logs beside
 
 				//? When Command is hidden, use lower thresholds and more generous column sizes
 				//? Priority: Data columns get comfortable space first, Program gets the rest
 				if (show_cmd) {
-					user_size = show_user_cfg ? (width < 140 ? 8 : 10) : 0;
-					ports_size = (show_ports_cfg and width > 120) ? 5 : 0;
-					io_read_size = (show_io_read_cfg and width > 100) ? 5 : 0;
-					io_write_size = (show_io_write_cfg and width > 100) ? 5 : 0;
-					virt_size = (show_virt_cfg and width > 130) ? 6 : 0;
-					cpu_time_size = (show_cputime_cfg and width > 140) ? 8 : 0;
-					gpu_time_size = (show_gputime_cfg and show_gpu and width > 150) ? 8 : 0;
-					runtime_size = (show_runtime_cfg and width > 110) ? 8 : 0;
+					user_size = show_user_cfg ? (width < 140 - shrink ? (width < 50 ? 0 : 8) : 10) : 0;
+					ports_size = (show_ports_cfg and width > 120 - shrink) ? 5 : 0;
+					io_read_size = (show_io_read_cfg and width > 100 - shrink) ? 5 : 0;
+					io_write_size = (show_io_write_cfg and width > 100 - shrink) ? 5 : 0;
+					virt_size = (show_virt_cfg and width > 130 - shrink) ? 6 : 0;
+					cpu_time_size = (show_cputime_cfg and width > 140 - shrink) ? 8 : 0;
+					gpu_time_size = (show_gputime_cfg and show_gpu and width > 150 - shrink) ? 8 : 0;
+					runtime_size = (show_runtime_cfg and width > 110 - shrink) ? 8 : 0;
 				} else {
 					//? No Command: lower thresholds, more generous sizing for data columns
-					user_size = show_user_cfg ? (width < 100 ? 10 : 12) : 0;
-					ports_size = (show_ports_cfg and width > 80) ? 6 : 0;
-					io_read_size = (show_io_read_cfg and width > 80) ? 6 : 0;
-					io_write_size = (show_io_write_cfg and width > 80) ? 6 : 0;
-					virt_size = (show_virt_cfg and width > 90) ? 7 : 0;
-					cpu_time_size = (show_cputime_cfg and width > 100) ? 9 : 0;
-					gpu_time_size = (show_gputime_cfg and show_gpu and width > 110) ? 9 : 0;
-					runtime_size = (show_runtime_cfg and width > 90) ? 9 : 0;
+					user_size = show_user_cfg ? (width < 100 - shrink ? (width < 50 ? 0 : 10) : 12) : 0;
+					ports_size = (show_ports_cfg and width > 80 - shrink) ? 6 : 0;
+					io_read_size = (show_io_read_cfg and width > 80 - shrink) ? 6 : 0;
+					io_write_size = (show_io_write_cfg and width > 80 - shrink) ? 6 : 0;
+					virt_size = (show_virt_cfg and width > 90 - shrink) ? 7 : 0;
+					cpu_time_size = (show_cputime_cfg and width > 100 - shrink) ? 9 : 0;
+					gpu_time_size = (show_gputime_cfg and show_gpu and width > 110 - shrink) ? 9 : 0;
+					runtime_size = (show_runtime_cfg and width > 90 - shrink) ? 9 : 0;
 				}
 
-				state_size = show_state_cfg ? 3 : 0;      // "Sta" column: R/S/I/Z/T
-				priority_size = show_priority_cfg ? 3 : 0;   // Priority value (0-127)
-				nice_size = show_nice_cfg ? 3 : 0;       // Nice value: -20 to 19
-				thread_size = show_threads_cfg ? 4 : 0;     // Thread count
+				//? Sta, Pri, Ni, Thr: Width-dependent when Logs is beside (hide early to save space)
+				state_size = show_state_cfg ? (logs_beside and width < 55 ? 0 : 3) : 0;
+				priority_size = show_priority_cfg ? (logs_beside and width < 55 ? 0 : 3) : 0;
+				nice_size = show_nice_cfg ? (logs_beside and width < 55 ? 0 : 3) : 0;
+				thread_size = show_threads_cfg ? (logs_beside and width < 60 ? 0 : 4) : 0;
 				io_size = 0;  // Disable combined IO in bottom layout
 
 				//? Calculate fixed column space (excluding prog_size and cmd_size)
@@ -3620,7 +3626,7 @@ namespace Proc {
 				constexpr int PROG_MIN = 10;
 				if (remaining < PROG_MIN) {
 					//? Not enough space - progressively hide optional columns
-					//? Priority (hide first to last): GpuT, CpuT, Virt, Runtime, IO, Ports
+					//? Priority (hide first to last): GpuT, CpuT, Virt, Runtime, IO, Ports, Thr, Ni, Pri, Sta
 					if (gpu_time_size > 0 and remaining < PROG_MIN) {
 						remaining += gpu_time_size + 2;
 						gpu_time_size = 0;
@@ -3646,13 +3652,31 @@ namespace Proc {
 						remaining += ports_size + 2;
 						ports_size = 0;
 					}
+					//? Additional columns to hide before disabling Logs panel
+					if (thread_size > 0 and remaining < PROG_MIN) {
+						remaining += thread_size + 2;
+						thread_size = 0;
+					}
+					if (nice_size > 0 and remaining < PROG_MIN) {
+						remaining += nice_size + 2;
+						nice_size = 0;
+					}
+					if (priority_size > 0 and remaining < PROG_MIN) {
+						remaining += priority_size + 2;
+						priority_size = 0;
+					}
+					if (state_size > 0 and remaining < PROG_MIN) {
+						remaining += state_size + 2;
+						state_size = 0;
+					}
 				}
 
 				if (show_cmd) {
 					//? Split remaining space between Program and Command
 					//? Give Program ~25% minimum, rest to Command
+					//? Account for "  " (2 spaces) between Program and Command in the output
 					prog_size = max(PROG_MIN, min(18, remaining / 4));
-					cmd_size = max(1, remaining - prog_size - 1);
+					cmd_size = max(1, remaining - prog_size - 2);
 				} else {
 					//? Command hidden: all remaining space to Program
 					cmd_size = -1;
@@ -3662,8 +3686,12 @@ namespace Proc {
 			else {
 				//? Side layout or tree view: original compact columns
 				//? Columns: Pid | Program | Command | Threads | User | MemB | IO | Cpu% | Gpu%
-				user_size = show_user_cfg ? (width < 75 ? 5 : 10) : 0;
-				thread_size = show_threads_cfg ? (width < 75 ? -1 : 4) : -1;
+				//? When Logs is beside Proc, use tighter thresholds to give space to Logs
+				bool logs_beside = Logs::shown and not Config::getB("logs_below_proc");
+				int tight = logs_beside ? 15 : 0;  //? Tighter thresholds when Logs beside
+				
+				user_size = show_user_cfg ? (width < 75 + tight ? (width < 60 + tight ? 0 : 5) : 10) : 0;
+				thread_size = show_threads_cfg ? (width < 75 + tight ? -1 : 4) : -1;
 				state_size = 0;     // Hidden in side layout
 				priority_size = 0;  // Hidden in side layout
 				nice_size = 0;      // Hidden in side layout
@@ -3674,13 +3702,13 @@ namespace Proc {
 				runtime_size = 0;   // Hidden in side layout
 				io_read_size = 0;
 				io_write_size = 0;
-				io_size = (show_io_cfg and width > 75) ? 5 : 0;  // Single combined I/O column (5 chars)
+				io_size = (show_io_cfg and width > 75 + tight) ? 5 : 0;  // Single combined I/O column (5 chars)
 				int io_adjustment = (io_size > 0 ? 6 : 0);  // Account for I/O column + space
 
-				prog_size = (width > 70 ? 16 : (width > 55 ? 8 : width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment));
-				cmd_size = (show_cmd and width > 55 ? width - prog_size - user_size - thread_size - 33 - gpu_adjustment - io_adjustment : -1);
+				prog_size = (width > 70 + tight ? 16 : (width > 55 + tight ? 8 : max(4, width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment)));
+				cmd_size = (show_cmd and width > 55 + tight ? width - prog_size - user_size - thread_size - 33 - gpu_adjustment - io_adjustment : -1);
 				//? If Command column hidden, give extra space to Program column
-				if (not show_cmd and width > 55) {
+				if (not show_cmd and width > 55 + tight) {
 					prog_size = width - user_size - thread_size - 33 - gpu_adjustment - io_adjustment;
 				}
 				if (not show_graphs) {
@@ -3699,6 +3727,11 @@ namespace Proc {
 			prog_size = max(1, prog_size);
 			tree_size = max(1, tree_size);
 			if (cmd_size > 0) cmd_size = max(1, cmd_size);
+
+			if (Logs::shown) {
+				Logger::debug("Proc::draw column calc: width={}, prog_size={}, cmd_size={}, Logs::shown={}, bottom_layout={}",
+					width, prog_size, cmd_size, Logs::shown, bottom_layout);
+			}
 
 			//? Update visible sort fields based on current layout, column visibility, and config settings
 			//? This controls which sort fields are available via left/right arrow keys
@@ -3971,6 +4004,13 @@ namespace Proc {
 			if (width > 82) {
 			    out += title_left_down + Fx::b + Theme::c("hi_fg") + 'T' + Theme::c("title") + "oggle" + Fx::ub + title_right_down;
 			    Input::mouse_mappings["T"] = {y + height - 1, mouse_x, 1, 6};
+			    mouse_x += 8;
+			}
+			//? Logs panel button (key 8)
+			if (width > 92) {
+			    out += title_left_down + (Logs::shown ? Fx::b : "") + Theme::c("hi_fg") + '8'
+			        + Theme::c("title") + "Logs" + Fx::ub + title_right_down;
+			    Input::mouse_mappings["8"] = {y + height - 1, mouse_x, 1, 5};
 			}
 
 			//? Labels for fields in list
@@ -4487,7 +4527,7 @@ namespace Proc {
 					+ (render_show_cpu ? cpu_heat + rjust(cpu_str, 5) + "  " + end : "")
 					+ (show_gpu ? gpu_heat + rjust(gpu_str, 5) + "  " + end : "")
 					+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) : "")
-					+ Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
+					+ end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			else {
 				//? Side layout or tree view: original column order
@@ -4502,7 +4542,7 @@ namespace Proc {
 					+ (show_gpu ? " " + (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_gpu_graphs ? graph_bg * 5 : "")
 						+ (show_gpu_graphs and p_gpu_graphs.contains(p.pid) ? Mv::l(5) + gp_color + p_gpu_graphs.at(p.pid)({scale_to_graph(p.gpu_p)}, data_same) : "") + end + ' '
 						+ gp_color + rjust(gpu_str, 4) : "")
-					+ "  " + Term::clear_eol + end;  //? Clear to end of line to prevent ghosting
+					+ "  " + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			if (lc++ > height - 5) break;
 			else if (lc > height - 5 and proc_banner_shown) break;
@@ -4596,6 +4636,457 @@ namespace Proc {
 
 }
 
+namespace Logs {
+	string box;
+	int x = 0, y = 0, width = 0, height = 0;
+	int min_width = 50, min_height = 10;  //? Minimum to show status bar buttons
+	bool shown = false, redraw = true;
+	bool focused = false;         //? true when Logs panel has input focus
+	bool paused = false;
+	bool exporting = false;
+	string export_filename;
+	string export_error;          //? Error message when export fails
+	bool reverse_order = false;   //? true = oldest first, false = newest first
+	int scroll_offset = 0;
+	pid_t current_pid = 0;
+	string current_name;          //? Name of process being monitored
+	uint8_t level_filter = 0x1F;  //? All levels enabled by default
+
+	deque<LogEntry> entries;
+	size_t max_entries = 500;
+
+	//? Get filter name based on current filter
+	//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
+	string get_filter_name() {
+		if (level_filter == 0x1F) return "All";
+		if (level_filter == 0x05) return "Debug";   //? Debug (d) + Default (D) combined
+		if (level_filter == 0x02) return "Info";
+		if (level_filter == 0x08) return "Error";
+		if (level_filter == 0x10) return "Fault";
+		return "Custom";
+	}
+
+	//? Get filter color based on current filter (Nord Aurora colors from theme)
+	string get_filter_color() {
+		if (level_filter == 0x1F) return Theme::c("main_fg");        //? All - default
+		if (level_filter == 0x05) return Theme::c("log_debug");      //? Debug - violet (d + D combined)
+		if (level_filter == 0x02) return Theme::c("log_info");       //? Info - yellow
+		if (level_filter == 0x08) return Theme::c("log_error");      //? Error - orange
+		if (level_filter == 0x10) return Theme::c("log_fault");      //? Fault - red
+		return Theme::c("main_fg");
+	}
+
+	//? Toggle sort order
+	void toggle_sort_order() {
+		reverse_order = not reverse_order;
+		redraw = true;
+	}
+
+	string draw(bool force_redraw, bool data_same) {
+		if (Runner::stopping) return "";
+		if (force_redraw) redraw = true;
+		if (not data_same) redraw = true;
+
+		if (redraw) {
+			string out;
+			const auto& theme = Theme::c;
+
+			//? Clean up modal mouse mappings when modals are not active
+			if (not filter_modal_active) {
+				for (int i = 0; i < 5; i++) {
+					Input::mouse_mappings.erase("filter_" + to_string(i));
+				}
+			}
+			if (not buffer_modal_active) {
+				for (int i = 0; i < 7; i++) {
+					Input::mouse_mappings.erase("buffer_" + to_string(i));
+				}
+			}
+
+			//? DEBUG: Log dimensions to verify correct positioning
+			Logger::debug("Logs::draw: x={}, y={}, width={}, height={}, Proc::width={}", 
+				x, y, width, height, Proc::width);
+
+			out += box;
+
+			const int content_width = width - 2;
+			const int content_height = height - 2;
+
+			//? Helper lambda to clear a row
+			auto clear_row = [&](int row) {
+				out += Mv::to(row, x + 1) + string(static_cast<size_t>(content_width), ' ');
+			};
+
+			//? Empty state: check if following a process
+			if (current_pid == 0) {
+				//? Clear all content rows
+				for (int row = y + 1; row < y + height - 1; row++) {
+					clear_row(row);
+				}
+				string msg = Config::getB("follow_process") 
+					? "Waiting for logs from followed process..."
+					: "Press 'F' to follow a process, then '8' for logs";
+				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
+				int msg_y = y + height / 2;
+				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
+				redraw = false;
+				return out + Fx::reset;
+			}
+
+			//? Calculate visible range (entries already filtered at collection time)
+			int visible_rows = content_height - 1;  //? Reserve 1 row for status bar
+			int total_entries = static_cast<int>(entries.size());
+			int max_scroll = std::max(0, total_entries - visible_rows);
+
+			//? Clamp scroll offset
+			if (scroll_offset > max_scroll) scroll_offset = max_scroll;
+			if (scroll_offset < 0) scroll_offset = 0;
+
+			//? Start index (from the end, since newest logs are at the back)
+			int start_idx = std::max(0, total_entries - visible_rows - scroll_offset);
+			int end_idx = std::min(total_entries, start_idx + visible_rows);
+
+			//? No logs available - show message but continue to draw status bar
+			if (entries.empty()) {
+				//? Clear all content rows
+				for (int row = y + 1; row < y + height - 1; row++) {
+					clear_row(row);
+				}
+				string msg = "No logs for PID " + std::to_string(current_pid);
+				int msg_x = x + (width - static_cast<int>(ulen(msg))) / 2;
+				int msg_y = y + height / 2;
+				out += Mv::to(msg_y, msg_x) + theme("inactive_fg") + msg;
+				//? Don't return - continue to draw status bar below
+			}
+			else {
+
+			//? Clear ALL content rows first to prevent Proc artifacts from showing through
+			for (int row = y + 1; row < y + height - 1; row++) {
+				clear_row(row);
+			}
+
+			//? Draw log entries
+			//? When reverse_order is true, show oldest at top (newest at bottom when scrolled to 0)
+			//? When reverse_order is false (default), show newest at bottom
+			for (int i = start_idx; i < end_idx; i++) {
+				//? Calculate entry index based on display order
+				int entry_idx = reverse_order 
+					? (end_idx - 1 - (i - start_idx))  //? Reverse: newest at top of visible range
+					: i;                                //? Normal: oldest at top of visible range
+				const auto& entry = entries[static_cast<size_t>(entry_idx)];
+				int row = y + 1 + (i - start_idx);
+
+				//? Color based on log level - using theme colors (default: Nord Aurora)
+				string level_color;
+				char level_char = 'D';
+				if (entry.level == "Fault") {
+					level_color = theme("log_fault");
+					level_char = 'F';
+				} else if (entry.level == "Error") {
+					level_color = theme("log_error");
+					level_char = 'E';
+				} else if (entry.level == "Info") {
+					level_color = theme("log_info");
+					level_char = 'I';
+				} else if (entry.level == "Debug") {
+					level_color = theme("log_debug");
+					level_char = 'd';
+				} else {
+					//? "Default" level from macOS = Debug+ (green)
+					level_color = theme("log_debug_plus");
+					level_char = 'D';
+				}
+
+				//? Format: [L] HH:MM:SS message
+				string timestamp_short;
+				if (entry.timestamp.length() >= 19) {
+					//? Extract HH:MM:SS from "YYYY-MM-DD HH:MM:SS..."
+					timestamp_short = entry.timestamp.substr(11, 8);
+				} else {
+					timestamp_short = "??:??:??";
+				}
+
+				//? Build log line - sanitize message to remove control chars (like \r \n \t)
+				//? that would cause cursor movement and display corruption
+				string safe_message = replace_ascii_control(entry.message);
+				
+				//? Config option: color full line or just the marker
+				bool color_full_line = Config::getB("log_color_full_line");
+				string line;
+				if (color_full_line) {
+					//? Full line colored
+					line = "[" + string(1, level_char) + "] " + timestamp_short + " " + safe_message;
+				} else {
+					//? Only marker [X] colored - brackets white, letter colored
+					//? We'll handle this specially in the output below
+					line = timestamp_short + " " + safe_message;
+				}
+
+				//? Calculate display width and truncate if needed
+				//? Account for "[X] " prefix (4 chars) when not coloring full line
+				int prefix_len = color_full_line ? 0 : 4;
+				int available_width = content_width - prefix_len;
+				int display_len = static_cast<int>(ulen(line));
+				if (display_len > available_width) {
+					//? Truncate by characters, not bytes
+					line = uresize(line, static_cast<size_t>(available_width - 3)) + "...";
+					display_len = available_width;
+				}
+
+				//? Pad to full width to clear old content
+				int padding = available_width - display_len;
+				string padded_line = line + string(static_cast<size_t>(std::max(0, padding)), ' ');
+
+				if (color_full_line) {
+					//? Full line colored
+					out += Mv::to(row, x + 1) + level_color + padded_line + Fx::reset + theme("main_fg");
+				} else {
+					//? Only marker colored: [ (white) + letter (colored) + ] (white) + space + rest (default)
+					out += Mv::to(row, x + 1) + theme("main_fg") + "[" + level_color + string(1, level_char) + theme("main_fg") + "] " + padded_line;
+				}
+			}
+			}  //? End of else block (entries not empty)
+
+			//? Status bar at bottom - ALWAYS drawn even when no logs
+			//? Status bar with proper colors and mouse support
+			//? Colors: active (focused) vs inactive, hotkeys highlighted
+			const string fg = focused ? theme("main_fg") : theme("inactive_fg");
+			const string hi = focused ? theme("hi_fg") : theme("inactive_fg");
+			const string filter_color = focused ? get_filter_color() : theme("inactive_fg");
+			
+			//? Build status components
+			string filter_name = get_filter_name();
+			//? Position string: show "0/0" when empty, otherwise "start-end/total"
+			string pos_str = (total_entries == 0) 
+				? "0/0" 
+				: std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + "/" + std::to_string(total_entries);
+			string sort_str = reverse_order ? "Old" : "New";
+			
+			//? Calculate positions for mouse mappings
+			int status_y = y + height - 1;
+			int cur_x = x + 1;
+			bool compact = (width < 65);  //? Use compact buttons when narrow
+			
+			//? Build status line with colors and mouse mappings
+			out += Mv::to(status_y, cur_x);
+			
+			//? [LIVE], [PAUSED], [REC], or [ERR] status
+			if (not export_error.empty()) {
+				//? Show error briefly - truncate if needed
+				int max_err_len = compact ? 10 : 20;
+				string err_display = export_error.length() > static_cast<size_t>(max_err_len) 
+					? export_error.substr(0, static_cast<size_t>(max_err_len - 3)) + "..." : export_error;
+				out += theme("log_fault") + Fx::b + "[ERR] " + err_display + Fx::ub + fg + " ";
+				cur_x += 7 + static_cast<int>(err_display.length());
+			} else if (exporting) {
+				out += theme("log_error") + Fx::b + "[REC]" + Fx::ub + fg + " ";
+				cur_x += 6;
+			} else if (paused) {
+				out += fg + (compact ? "[P] " : "[PAUSED] ");
+				cur_x += compact ? 4 : 9;
+			} else {
+				out += fg + (compact ? "[L] " : "[LIVE] ");
+				cur_x += compact ? 4 : 7;
+			}
+			
+			//? Filter name in color (abbreviate in compact mode)
+			string filter_display = compact ? filter_name.substr(0, 1) : filter_name;
+			out += filter_color + filter_display + fg + " ";
+			cur_x += static_cast<int>(filter_display.length()) + 1;
+			
+			//? Position counter (shorter format in compact)
+			string short_pos = compact ? to_string(total_entries) : pos_str;
+			out += short_pos + " ";
+			cur_x += static_cast<int>(short_pos.length()) + 1;
+			
+			//? Separator and buttons
+			out += fg + "| ";
+			cur_x += 2;
+			
+			//? Buttons - full or compact labels
+			if (compact) {
+				//? Compact: Spc E F R B
+				int p_x = cur_x;
+				out += hi + "Spc" + fg + " ";
+				cur_x += 4;
+				Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 3};
+				
+				int e_x = cur_x;
+				out += hi + "E" + fg + " ";
+				cur_x += 2;
+				Input::mouse_mappings["logs_export"] = {status_y, e_x, 1, 1};
+				
+				int f_x = cur_x;
+				out += hi + "F" + fg + " ";
+				cur_x += 2;
+				Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 1};
+				
+				int r_x = cur_x;
+				out += hi + "R" + fg + " ";
+				cur_x += 2;
+				Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 1};
+				
+				int b_x = cur_x;
+				out += hi + "B" + fg + ":" + to_string(max_entries);
+				cur_x += 2 + static_cast<int>(to_string(max_entries).length());
+				Input::mouse_mappings["logs_buffer"] = {status_y, b_x, 1, 2 + static_cast<int>(to_string(max_entries).length())};
+			} else {
+				//? Full: SPC:Pause E:Export F:Filter R:New B:500
+				int p_x = cur_x;
+				out += hi + "SPC" + fg + ":Pause ";
+				cur_x += 10;
+				Input::mouse_mappings["logs_pause"] = {status_y, p_x, 1, 9};
+				
+				int e_x = cur_x;
+				out += hi + "E" + fg + ":Export ";
+				cur_x += 9;
+				Input::mouse_mappings["logs_export"] = {status_y, e_x, 1, 8};
+				
+				int f_x = cur_x;
+				out += hi + "F" + fg + ":Filter ";
+				cur_x += 9;
+				Input::mouse_mappings["logs_filter"] = {status_y, f_x, 1, 8};
+				
+				int r_x = cur_x;
+				out += hi + "R" + fg + ":" + sort_str + " ";
+				cur_x += 3 + static_cast<int>(sort_str.length());
+				Input::mouse_mappings["logs_sort"] = {status_y, r_x, 1, 2 + static_cast<int>(sort_str.length())};
+				
+				int b_x = cur_x;
+				out += hi + "B" + fg + ":" + to_string(max_entries);
+				cur_x += 2 + static_cast<int>(to_string(max_entries).length());
+				Input::mouse_mappings["logs_buffer"] = {status_y, b_x, 1, 2 + static_cast<int>(to_string(max_entries).length())};
+			}
+			
+			//? Pad remaining space
+			int remaining = content_width - (cur_x - x - 1);
+			if (remaining > 0) {
+				out += string(static_cast<size_t>(remaining), ' ');
+			}
+
+			//? Draw filter selection modal if active
+			if (filter_modal_active) {
+				const int modal_w = 20;
+				const int modal_h = 9;  //? 5 options + header + footer
+				const int modal_x = x + (width - modal_w) / 2;
+				const int modal_y = y + (height - modal_h) / 2;
+				
+				//? Draw modal box
+				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Filter");
+				
+				//? Filter options: All, Debug, Info, Error, Fault (single level each)
+				const array<string, 5> filters = {"All", "Debug", "Info", "Error", "Fault"};
+				
+				int opt_y = modal_y + 2;
+				for (int i = 0; i < 5; i++) {
+					out += Mv::to(opt_y + i, modal_x + 2);
+					if (i == filter_modal_selected) {
+						out += theme("selected_bg") + theme("selected_fg") + Fx::b;
+						out += " " + to_string(i + 1) + ". " + ljust(filters[static_cast<size_t>(i)], 10) + " ";
+						out += Fx::reset;
+					} else {
+						out += theme("hi_fg") + to_string(i + 1) + "." + theme("main_fg");
+						out += " " + filters[static_cast<size_t>(i)];
+					}
+					//? Mouse mapping for each option
+					Input::mouse_mappings["filter_" + to_string(i)] = {opt_y + i, modal_x + 1, 1, modal_w - 2};
+				}
+				
+				//? Instructions
+				out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
+				out += theme("inactive_fg") + "1-5/Enter/Esc" + Fx::reset;
+			}
+
+			//? Draw buffer size selection modal if active
+			if (buffer_modal_active) {
+				const int modal_w = 24;
+				const int modal_h = 11;  //? 7 options + header + footer
+				const int modal_x = x + (width - modal_w) / 2;
+				const int modal_y = y + (height - modal_h) / 2;
+				
+				//? Draw modal box
+				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Buffer Size");
+				
+				//? Buffer size options
+				const array<string, 7> sizes = {"100", "250", "500", "1000", "2500", "5000", "Custom"};
+				
+				int opt_y = modal_y + 2;
+				for (int i = 0; i < 7; i++) {
+					out += Mv::to(opt_y + i, modal_x + 2);
+					if (i == buffer_modal_selected) {
+						out += theme("selected_bg") + theme("selected_fg") + Fx::b;
+						if (i == 6) {
+							//? Custom with input field
+							string custom_display = buffer_custom_input.empty() ? "____" : buffer_custom_input + "_";
+							out += " " + to_string(i + 1) + ". Custom: " + custom_display + " ";
+						} else {
+							out += " " + to_string(i + 1) + ". " + ljust(sizes[static_cast<size_t>(i)], 14) + " ";
+						}
+						out += Fx::reset;
+					} else {
+						out += theme("hi_fg") + to_string(i + 1) + "." + theme("main_fg");
+						if (i == 6) {
+							out += " Custom";
+						} else {
+							out += " " + sizes[static_cast<size_t>(i)];
+						}
+					}
+					//? Mouse mapping for each option
+					Input::mouse_mappings["buffer_" + to_string(i)] = {opt_y + i, modal_x + 1, 1, modal_w - 2};
+				}
+				
+				//? Instructions
+				out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
+				out += theme("inactive_fg") + "1-7/Enter/Esc" + Fx::reset;
+			}
+
+			//? Draw error modal if active
+			if (error_modal_active) {
+				//? Calculate modal size based on message
+				vector<string> lines;
+				string line;
+				for (char c : error_modal_message) {
+					if (c == '\n') {
+						lines.push_back(line);
+						line.clear();
+					} else {
+						line += c;
+					}
+				}
+				if (not line.empty()) lines.push_back(line);
+				
+				int max_line_len = 10;
+				for (const auto& l : lines) {
+					max_line_len = std::max(max_line_len, static_cast<int>(l.length()));
+				}
+				
+				const int modal_w = std::min(width - 4, max_line_len + 6);
+				const int modal_h = static_cast<int>(lines.size()) + 5;
+				const int modal_x = x + (width - modal_w) / 2;
+				const int modal_y = y + (height - modal_h) / 2;
+				
+				//? Draw modal box with error styling
+				out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("log_fault"), true, "Export Error");
+				
+				//? Draw message lines
+				int line_y = modal_y + 2;
+				for (const auto& l : lines) {
+					out += Mv::to(line_y++, modal_x + 3);
+					out += theme("main_fg") + l;
+				}
+				
+				//? Instructions
+				out += Mv::to(modal_y + modal_h - 2, modal_x + (modal_w - 18) / 2);
+				out += theme("inactive_fg") + "Press any key..." + Fx::reset;
+			}
+
+			redraw = false;
+			return out + Fx::reset;
+		}
+		return "";
+	}
+}
+
 namespace Draw {
 	void calcSizes() {
 		atomic_wait(Runner::active);
@@ -4615,6 +5106,7 @@ namespace Draw {
 		Mem::box.clear();
 		Net::box.clear();
 		Proc::box.clear();
+		Logs::box.clear();
 		Global::clock.clear();
 		Global::instance_indicator.clear();
 		Global::overlay.clear();
@@ -4628,11 +5120,11 @@ namespace Draw {
 
 		Input::mouse_mappings.clear();
 
-		Cpu::x = Mem::x = Net::x = Proc::x = 1;
-		Cpu::y = Mem::y = Net::y = Proc::y = 1;
-		Cpu::width = Mem::width = Net::width = Proc::width = 0;
-		Cpu::height = Mem::height = Net::height = Proc::height = 0;
-		Cpu::redraw = Mem::redraw = Net::redraw = Proc::redraw = true;
+		Cpu::x = Mem::x = Net::x = Proc::x = Logs::x = 1;
+		Cpu::y = Mem::y = Net::y = Proc::y = Logs::y = 1;
+		Cpu::width = Mem::width = Net::width = Proc::width = Logs::width = 0;
+		Cpu::height = Mem::height = Net::height = Proc::height = Logs::height = 0;
+		Cpu::redraw = Mem::redraw = Net::redraw = Proc::redraw = Logs::redraw = true;
 
 		Cpu::shown = boxes.contains("cpu");
 
@@ -5432,6 +5924,144 @@ namespace Draw {
 
 			select_max = height - 3;
 			box = createBox(x, y, width, height, Theme::c("proc_box"), true, "proc", "", 4);
+
+		}
+
+		//? If Logs panel is shown, adjust Proc dimensions and set Logs dimensions
+		if (Logs::shown and Proc::shown) {
+			auto logs_below = Config::getB("logs_below_proc");
+			
+			//? Proc is "effectively full-width" if it has the entire terminal width
+			//? This happens when proc_full_width=true OR when Mem/Net are hidden
+			bool proc_is_full_width = (Proc::width == Term::width);
+			
+			//? Compact view (sharing horizontal space with Mem/Net): Disable Logs
+			if (not proc_is_full_width) {
+				Logs::shown = false;
+				Logs::width = Logs::height = 0;
+			}
+			//? Full-width view: Logs can be shown beside or below
+			else {
+				//? Check minimum combined space requirement
+				int min_combined_height = Proc::min_height + Logs::min_height;
+
+				//? Check if below mode was requested but not enough height
+				if (logs_below and Proc::height < min_combined_height) {
+					//? Not enough vertical space - show error dialog and revert to beside
+					Menu::logs_min_height_required = min_combined_height;
+					Menu::logs_current_proc_height = Proc::height;
+					Menu::logs_error_is_height = true;
+					Menu::show(Menu::Menus::LogsSizeError);
+					Config::set("logs_below_proc", false);
+					logs_below = false;  //? Fall through to beside mode
+				}
+
+				if (logs_below) {
+					//? Horizontal split: Logs below Proc - check if it fits
+					int logs_height = std::max(Logs::min_height, Proc::height / 3);
+					//? Ensure Proc keeps min height
+					if (Proc::height - logs_height < Proc::min_height) {
+						logs_height = Proc::height - Proc::min_height;
+					}
+					//? Ensure Logs height doesn't exceed terminal bounds
+					int max_logs_y = Proc::y + Proc::height - logs_height;
+					if (max_logs_y + logs_height > Term::height) {
+						logs_height = Term::height - max_logs_y;
+					}
+
+					if (logs_height >= Logs::min_height) {
+						Proc::height -= logs_height;
+						Proc::select_max = Proc::height - 3;
+
+						Logs::width = Proc::width;
+						Logs::x = Proc::x;
+						Logs::y = Proc::y + Proc::height;
+						Logs::height = logs_height;
+
+						//? Recreate Proc box with new height
+						Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
+						Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
+					} else {
+						//? Not enough space - show dialog and revert to beside
+						//? Show: available space for logs vs required, and terminal height needed
+						Menu::logs_current_proc_height = logs_height;  //? Available space for logs
+						Menu::logs_min_height_required = Term::height + (Logs::min_height - logs_height);  //? Required terminal height
+						Menu::logs_error_is_height = true;
+						Menu::show(Menu::Menus::LogsSizeError);
+						Config::set("logs_below_proc", false);
+						logs_below = false;  //? Fall through to beside mode below
+					}
+				}
+				
+				//? Separate check so we fall through if below mode failed
+				if (not logs_below) {
+				//? Vertical split: Logs right of Proc (no gap between panels)
+				//? Priority: Logs keeps minimum width, Proc shrinks (columns reduce automatically)
+				//? In full-width layout, Proc can shrink to Logs::proc_min_for_logs (hiding optional columns)
+				//? Min layout: Pid(8) + Prog(14) + User(5) + Mem(6) + Cpu(6) + Gpu(6) + borders(8) = ~53, use 60 for comfort
+				int proc_min = proc_is_full_width ? Logs::proc_min_for_logs : Proc::min_width;
+				int min_combined_beside = proc_min + Logs::min_width;
+				
+				bool can_show_logs = false;
+				int logs_width = 0;
+				
+				if (Proc::width >= min_combined_beside) {
+					//? Calculate available width for Logs
+					//? Give Logs at least min_width, prefer 1/3 of space if available
+					int available = Proc::width - proc_min;  //? What's left after Proc minimum
+					int preferred_logs = Proc::width / 3;
+					
+					//? Logs gets: min_width first, then up to 1/3 if space allows
+					//? IMPORTANT: preferred_logs must be >= min_width, otherwise use min_width
+					if (available >= preferred_logs and preferred_logs >= Logs::min_width) {
+						//? Plenty of space - give Logs preferred size (1/3)
+						logs_width = preferred_logs;
+						can_show_logs = true;
+					} else if (available >= Logs::min_width) {
+						//? Tight space OR preferred too small - Logs gets minimum
+						logs_width = Logs::min_width;
+						can_show_logs = true;
+					}
+				}
+				
+				if (can_show_logs) {
+					//? Ensure Logs doesn't exceed terminal bounds (1-based coords: last col = x + width - 1)
+					int new_proc_width = Proc::width - logs_width;
+					int logs_x = Proc::x + new_proc_width;
+					if (logs_x + logs_width - 1 > Term::width) {  //? Fix: check last column, not one past end
+						logs_width = Term::width - logs_x + 1;
+					}
+
+					if (logs_width >= Logs::min_width and new_proc_width >= proc_min) {
+						Proc::width = new_proc_width;
+						Proc::select_max = Proc::height - 3;
+
+						Logs::width = logs_width;
+						Logs::x = Proc::x + Proc::width;  //? No gap - Logs starts right after Proc
+						Logs::y = Proc::y;
+						Logs::height = Proc::height;
+
+						Logger::debug("calcSizes: Logs side-by-side: Proc::width={}, Logs::x={}, Logs::width={}, Term::width={}",
+							Proc::width, Logs::x, Logs::width, Term::width);
+
+						//? Recreate Proc box with new width
+						Proc::box = createBox(Proc::x, Proc::y, Proc::width, Proc::height, Theme::c("proc_box"), true, "proc", "", 4);
+						Logs::box = createBox(Logs::x, Logs::y, Logs::width, Logs::height, Theme::c("proc_box"), true, "logs", "", 8);
+					} else {
+						Logs::shown = false;
+						Logs::width = Logs::height = 0;
+					}
+				} else {
+					//? Not enough horizontal space
+					Logs::shown = false;
+					Logs::width = Logs::height = 0;
+				}
+			}
+			}  //? End of proc_full_width check
+		} else if (Logs::shown and not Proc::shown) {
+			//? Logs requires Proc to be shown
+			Logs::shown = false;
+			Logs::width = Logs::height = 0;
 		}
 	}
 }

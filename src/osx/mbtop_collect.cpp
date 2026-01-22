@@ -46,6 +46,7 @@ tab-size = 4
 #include <sys/types.h>
 #include <netinet/in.h> // for inet_ntop
 #include <unistd.h>
+#include <fcntl.h> // for fcntl, O_NONBLOCK
 #include <stdexcept>
 #include <utility>
 
@@ -2320,6 +2321,662 @@ namespace Proc {
 		return current_procs;
 	}
 }  // namespace Proc
+
+namespace Logs {
+	//? Pipe handle for streaming logs (file-local)
+	static int log_fd = -1;           //? File descriptor for reading logs
+	static pid_t log_child_pid = 0;   //? PID of the log stream child process
+	static pid_t streaming_pid = 0;   //? PID of the process we're streaming logs for
+	static string line_buffer;        //? Buffer for partial line reads
+	static FILE* export_file_handle = nullptr;  //? File handle for log export
+
+	//? Parse a single JSON log entry from ndjson output
+	static bool parse_log_entry(const string& json_line, LogEntry& entry) {
+		//? Simple JSON parsing for known fields
+		//? Format: {"timestamp":"...","messageType":"...","subsystem":"...","category":"...","eventMessage":"..."}
+
+		auto extract_value = [&json_line](const string& key) -> string {
+			string search_key = "\"" + key + "\":";
+			size_t pos = json_line.find(search_key);
+			if (pos == string::npos) return "";
+
+			pos += search_key.length();
+			//? Skip whitespace
+			while (pos < json_line.length() && (json_line[pos] == ' ' || json_line[pos] == '\t')) pos++;
+
+			if (pos >= json_line.length()) return "";
+
+			//? Check if value is a string (starts with ")
+			if (json_line[pos] == '"') {
+				pos++;  //? Skip opening quote
+				string value;
+				while (pos < json_line.length() && json_line[pos] != '"') {
+					if (json_line[pos] == '\\' && pos + 1 < json_line.length()) {
+						//? Handle escape sequences
+						pos++;
+						switch (json_line[pos]) {
+							case 'n': value += '\n'; break;
+							case 't': value += '\t'; break;
+							case 'r': value += '\r'; break;
+							case '"': value += '"'; break;
+							case '\\': value += '\\'; break;
+							case '/': value += '/'; break;
+							case 'u': {
+								//? Unicode escape: \uXXXX (4 hex digits)
+								if (pos + 4 < json_line.length()) {
+									string hex_str = json_line.substr(pos + 1, 4);
+									bool valid_hex = true;
+									for (char c : hex_str) {
+										if (not isxdigit(c)) { valid_hex = false; break; }
+									}
+									if (valid_hex) {
+										unsigned int codepoint = std::stoul(hex_str, nullptr, 16);
+										//? Convert codepoint to UTF-8
+										if (codepoint < 0x80) {
+											value += static_cast<char>(codepoint);
+										} else if (codepoint < 0x800) {
+											value += static_cast<char>(0xC0 | (codepoint >> 6));
+											value += static_cast<char>(0x80 | (codepoint & 0x3F));
+										} else {
+											value += static_cast<char>(0xE0 | (codepoint >> 12));
+											value += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+											value += static_cast<char>(0x80 | (codepoint & 0x3F));
+										}
+										pos += 4;  //? Skip the 4 hex digits (pos++ at end of loop handles 'u')
+									} else {
+										value += 'u';  //? Invalid hex, keep literal
+									}
+								} else {
+									value += 'u';  //? Not enough chars, keep literal
+								}
+								break;
+							}
+							default: value += json_line[pos]; break;
+						}
+					} else {
+						value += json_line[pos];
+					}
+					pos++;
+				}
+				return value;
+			}
+			//? For non-string values, read until comma or closing brace
+			string value;
+			while (pos < json_line.length() && json_line[pos] != ',' && json_line[pos] != '}') {
+				value += json_line[pos];
+				pos++;
+			}
+			return value;
+		};
+
+		entry.timestamp = extract_value("timestamp");
+		entry.level = extract_value("messageType");
+		entry.subsystem = extract_value("subsystem");
+		entry.category = extract_value("category");
+		entry.message = extract_value("eventMessage");
+
+		//? Validate that we got at least a message
+		return not entry.message.empty() or not entry.timestamp.empty();
+	}
+
+	//? Get log level bit from level string
+	static uint8_t level_to_bit(const string& level) {
+		if (level == "Default") return 0x01;
+		if (level == "Info") return 0x02;
+		if (level == "Debug") return 0x04;
+		if (level == "Error") return 0x08;
+		if (level == "Fault") return 0x10;
+		return 0x01;  //? Default
+	}
+
+	//? Check if level passes the current filter
+	static bool passes_filter(const string& level) {
+		return (level_filter & level_to_bit(level)) != 0;
+	}
+
+	//? Stop any existing log stream
+	static void stop_stream() {
+		if (log_child_pid > 0) {
+			//? Kill the child process
+			kill(log_child_pid, SIGKILL);
+			//? Wait for child to die with retry loop (up to 10ms)
+			//? SIGKILL is asynchronous, so we need to wait briefly for termination
+			for (int i = 0; i < 10; i++) {
+				pid_t result = waitpid(log_child_pid, nullptr, WNOHANG);
+				if (result != 0) break;  //? Child reaped or error
+				usleep(1000);  //? Wait 1ms before retry
+			}
+			log_child_pid = 0;
+		}
+		if (log_fd >= 0) {
+			close(log_fd);
+			log_fd = -1;
+		}
+		streaming_pid = 0;
+		line_buffer.clear();
+	}
+
+	//? Start a new log stream for the given PID (using fork/exec to avoid pclose blocking)
+	static bool start_stream(pid_t pid) {
+		stop_stream();
+
+		if (pid <= 0) return false;
+
+		//? Create a pipe for reading the log output
+		int pipe_fds[2];
+		if (pipe(pipe_fds) < 0) {
+			Logger::warning("Failed to create pipe for log stream");
+			return false;
+		}
+
+		//? Fork to run the log command
+		pid_t child = fork();
+		if (child < 0) {
+			Logger::warning("Failed to fork for log stream");
+			close(pipe_fds[0]);
+			close(pipe_fds[1]);
+			return false;
+		}
+
+		if (child == 0) {
+			//? Child process
+			close(pipe_fds[0]);  //? Close read end
+			dup2(pipe_fds[1], STDOUT_FILENO);  //? Redirect stdout to pipe
+			close(pipe_fds[1]);
+
+			//? Redirect stderr to /dev/null
+			int devnull = open("/dev/null", O_WRONLY);
+			if (devnull >= 0) {
+				dup2(devnull, STDERR_FILENO);
+				close(devnull);
+			}
+
+			//? Execute log stream command
+			string pid_str = std::to_string(pid);
+			execlp("/usr/bin/log", "log", "stream", "--process", pid_str.c_str(), "--style", "ndjson", "--level", "debug", nullptr);
+
+			//? If exec fails, exit
+			_exit(1);
+		}
+
+		//? Parent process
+		close(pipe_fds[1]);  //? Close write end
+		log_fd = pipe_fds[0];
+		log_child_pid = child;
+
+		//? Set non-blocking mode on the read end
+		int flags = fcntl(log_fd, F_GETFL, 0);
+		fcntl(log_fd, F_SETFL, flags | O_NONBLOCK);
+
+		streaming_pid = pid;
+		return true;
+	}
+
+	void collect() {
+		if (not shown) return;
+
+		//? Load buffer size from config on first call
+		static bool config_loaded = false;
+		if (not config_loaded) {
+			int cfg_size = Config::getI("log_buffer_size");
+			if (cfg_size > 0) {
+				max_entries = static_cast<size_t>(cfg_size);
+			}
+			config_loaded = true;
+		}
+
+		//? Logs panel only works with Follow process mode
+		bool following = Config::getB("follow_process");
+		pid_t followed_pid = following ? Config::getI("followed_pid") : 0;
+
+		//? Check if we need to switch to a new process or stop
+		if (followed_pid != current_pid) {
+			clear();
+			stop_export();  //? Stop export when switching processes
+			current_pid = followed_pid;
+
+			if (current_pid > 0) {
+				//? Start streaming
+				if (not paused) {
+					start_stream(current_pid);
+				}
+			}
+			redraw = true;
+		}
+
+		//? Read from the stream if active and not paused (non-blocking)
+		if (not paused && log_fd >= 0 && current_pid > 0) {
+			char buffer[4096];
+			int lines_processed = 0;
+			const int max_lines_per_collect = 50;
+
+			//? Pre-allocate line buffer capacity to reduce reallocations
+			if (line_buffer.capacity() < 16384) {
+				line_buffer.reserve(16384);
+			}
+
+			//? Non-blocking read loop
+			while (lines_processed < max_lines_per_collect) {
+				ssize_t bytes_read = read(log_fd, buffer, sizeof(buffer) - 1);
+
+				if (bytes_read < 0) {
+					if (errno == EAGAIN || errno == EWOULDBLOCK) {
+						//? No data available right now - this is normal for non-blocking I/O
+						break;
+					}
+					//? Actual error - stop streaming
+					Logger::debug("Log stream read error: {}", strerror(errno));
+					stop_stream();
+					break;
+				}
+
+				if (bytes_read == 0) {
+					//? EOF - stream closed (process may have exited)
+					stop_stream();
+					break;
+				}
+
+				//? Append to line buffer
+				buffer[bytes_read] = '\0';
+				line_buffer += buffer;
+
+				//? Process complete lines
+				size_t newline_pos;
+				while ((newline_pos = line_buffer.find('\n')) != string::npos && lines_processed < max_lines_per_collect) {
+					string line = line_buffer.substr(0, newline_pos);
+					line_buffer.erase(0, newline_pos + 1);
+
+					//? Skip empty lines and summary lines
+					if (line.empty() || (line.find("\"count\":") != string::npos && line.find("\"finished\":") != string::npos)) {
+						continue;
+					}
+
+					LogEntry entry;
+					if (parse_log_entry(line, entry) && passes_filter(entry.level)) {
+						//? Write to export file if exporting
+						if (exporting && export_file_handle != nullptr) {
+							fprintf(export_file_handle, "[%c] %s %s\n",
+								entry.level.empty() ? 'D' : entry.level[0],
+								entry.timestamp.c_str(),
+								entry.message.c_str());
+							fflush(export_file_handle);
+						}
+						//? Only store entries that pass filter (prevents buffer overflow with non-matching entries)
+						entries.push_back(std::move(entry));
+						if (entries.size() > max_entries) {
+							entries.pop_front();
+						}
+						redraw = true;
+					}
+					lines_processed++;
+				}
+			}
+
+			//? Prevent line buffer from growing too large (truncate if needed)
+			if (line_buffer.size() > 16384) {
+				line_buffer.clear();
+			}
+		}
+	}
+
+	void clear() {
+		stop_stream();
+		entries.clear();
+		scroll_offset = 0;
+		current_pid = 0;
+		redraw = true;
+	}
+
+	void toggle_pause() {
+		paused = not paused;
+
+		if (paused) {
+			//? Stop the stream when paused
+			stop_stream();
+		} else if (current_pid > 0) {
+			//? Resume streaming
+			start_stream(current_pid);
+		}
+		redraw = true;
+	}
+
+	void start_export() {
+		if (exporting) return;  //? Already exporting
+		if (current_pid <= 0) {
+			show_error_modal("No process being followed.\nFollow a process first (F key).");
+			return;
+		}
+
+		//? Get export path from config (default: ~/Desktop)
+		string export_path = Config::getS("log_export_path");
+		if (export_path.empty()) {
+			const char* home = getenv("HOME");
+			if (home) {
+				export_path = string(home) + "/Desktop";
+			} else {
+				export_path = "/tmp";
+			}
+		}
+		
+		//? Expand ~ to home directory if present
+		if (export_path.size() > 0 && export_path[0] == '~') {
+			const char* home = getenv("HOME");
+			if (home) {
+				export_path = string(home) + export_path.substr(1);
+			}
+		}
+		
+		//? Check if directory exists
+		struct stat st;
+		if (stat(export_path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) {
+			Logger::warning("Export path does not exist or is not a directory: {}", export_path);
+			show_error_modal("Invalid export path:\n" + Config::getS("log_export_path") + "\n\nCheck: Settings > Panels > Proc | Logs");
+			return;
+		}
+
+		//? Get process name from Logs namespace (set when following started)
+		string proc_name = "unknown";
+		if (not current_name.empty()) {
+			proc_name = current_name;
+		}
+		//? Sanitize process name for filename
+		for (char& c : proc_name) {
+			if (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') {
+				c = '_';
+			}
+		}
+
+		//? Generate filename: <PID>-<Program>-<datetime>.log
+		time_t now = time(nullptr);
+		struct tm t_buf;
+		localtime_r(&now, &t_buf);
+		char datetime[32];
+		strftime(datetime, sizeof(datetime), "%Y%m%d-%H%M%S", &t_buf);
+
+		export_filename = fmt::format("{}/{}-{}-{}.log", export_path, current_pid, proc_name, datetime);
+
+		//? Open file for writing
+		export_file_handle = fopen(export_filename.c_str(), "w");
+		if (export_file_handle == nullptr) {
+			Logger::warning("Failed to open log export file: {}", export_filename);
+			show_error_modal("Cannot write to path:\n" + export_path + "\n\nCheck permissions.");
+			export_filename.clear();
+			return;
+		}
+
+		//? Write header
+		fprintf(export_file_handle, "# mbtop Log Export\n");
+		fprintf(export_file_handle, "# PID: %d\n", current_pid);
+		fprintf(export_file_handle, "# Process: %s\n", proc_name.c_str());
+		fprintf(export_file_handle, "# Started: %s\n", datetime);
+		fprintf(export_file_handle, "# Format: [Level] Timestamp Message\n");
+		fprintf(export_file_handle, "#\n");
+		fflush(export_file_handle);
+
+		exporting = true;
+		redraw = true;
+		Logger::info("Started log export to: {}", export_filename);
+	}
+
+	void stop_export() {
+		if (not exporting) return;
+
+		if (export_file_handle != nullptr) {
+			//? Write footer
+			time_t now = time(nullptr);
+			struct tm t_buf;
+			localtime_r(&now, &t_buf);
+			char datetime[32];
+			strftime(datetime, sizeof(datetime), "%Y-%m-%d %H:%M:%S", &t_buf);
+			fprintf(export_file_handle, "#\n# Export ended: %s\n", datetime);
+			fclose(export_file_handle);
+			export_file_handle = nullptr;
+		}
+
+		Logger::info("Stopped log export: {}", export_filename);
+		exporting = false;
+		export_filename.clear();
+		redraw = true;
+	}
+
+	//? Filter modal state
+	bool filter_modal_active = false;
+	int filter_modal_selected = 0;  //? 0=All, 1=Debug, 2=Info, 3=Error, 4=Fault
+
+	void show_filter_modal() {
+		filter_modal_active = true;
+		//? Set selected based on current filter
+		//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
+		if (level_filter == 0x1F) filter_modal_selected = 0;       //? All
+		else if (level_filter == 0x05) filter_modal_selected = 1;  //? Debug (d + D)
+		else if (level_filter == 0x02) filter_modal_selected = 2;  //? Info only
+		else if (level_filter == 0x08) filter_modal_selected = 3;  //? Error only
+		else if (level_filter == 0x10) filter_modal_selected = 4;  //? Fault only
+		else filter_modal_selected = 0;
+		redraw = true;
+	}
+
+	void set_filter(int filter_idx) {
+		uint8_t old_filter = level_filter;
+		switch (filter_idx) {
+			case 0: level_filter = 0x1F; break;  //? All (Default, Debug, Info, Error, Fault)
+			case 1: level_filter = 0x05; break;  //? Debug (d + D) - includes macOS Debug and Default levels
+			case 2: level_filter = 0x02; break;  //? Info only
+			case 3: level_filter = 0x08; break;  //? Error only
+			case 4: level_filter = 0x10; break;  //? Fault only
+			default: level_filter = 0x1F; break;
+		}
+		//? Clear buffer when filter changes to prevent old non-matching entries from taking up space
+		if (old_filter != level_filter) {
+			entries.clear();
+			scroll_offset = 0;
+		}
+		redraw = true;
+	}
+
+	bool filter_modal_input(const std::string_view key) {
+		if (key == "escape" or key == "q") {
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "enter" or key == "space") {
+			set_filter(filter_modal_selected);
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "up" or key == "k") {
+			if (filter_modal_selected > 0) filter_modal_selected--;
+			redraw = true;
+		}
+		else if (key == "down" or key == "j") {
+			if (filter_modal_selected < 4) filter_modal_selected++;
+			redraw = true;
+		}
+		else if (key == "1") {
+			set_filter(0);  //? All
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "2") {
+			set_filter(1);  //? Debug+
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "3") {
+			set_filter(2);  //? Info+
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "4") {
+			set_filter(3);  //? Error+
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key == "5") {
+			set_filter(4);  //? Fault
+			filter_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		else if (key.starts_with("filter_")) {
+			//? Mouse click on filter option
+			int idx = key.back() - '0';
+			if (idx >= 0 and idx <= 4) {
+				set_filter(idx);
+				filter_modal_active = false;
+				redraw = true;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	//? Buffer size modal state
+	bool buffer_modal_active = false;
+	int buffer_modal_selected = 2;      //? Default to 500 (index 2)
+	string buffer_custom_input;         //? For custom input mode
+
+	//? Buffer size presets
+	static const array<size_t, 6> buffer_presets = {100, 250, 500, 1000, 2500, 5000};
+
+	void show_buffer_modal() {
+		buffer_modal_active = true;
+		buffer_custom_input.clear();
+		//? Find current size in presets
+		size_t current = max_entries;
+		buffer_modal_selected = 6;  //? Default to Custom if not found
+		for (size_t i = 0; i < buffer_presets.size(); i++) {
+			if (buffer_presets[i] == current) {
+				buffer_modal_selected = static_cast<int>(i);
+				break;
+			}
+		}
+		redraw = true;
+	}
+
+	void set_buffer_size(size_t size) {
+		if (size < 50) size = 50;        //? Minimum 50
+		if (size > 10000) size = 10000;  //? Maximum 10000
+		max_entries = size;
+		Config::set("log_buffer_size", static_cast<int>(size));
+		//? Trim buffer if needed
+		while (entries.size() > max_entries) {
+			entries.pop_front();
+		}
+		redraw = true;
+	}
+
+	bool buffer_modal_input(const std::string_view key) {
+		if (key == "escape" || key == "q") {
+			buffer_modal_active = false;
+			buffer_custom_input.clear();
+			redraw = true;
+			return true;
+		}
+		else if (key == "enter") {
+			if (buffer_modal_selected < 6) {
+				//? Preset selected
+				set_buffer_size(buffer_presets[static_cast<size_t>(buffer_modal_selected)]);
+			} else if (not buffer_custom_input.empty()) {
+				//? Custom value entered - use stoi_safe to prevent crashes on invalid input
+				int val = stoi_safe(buffer_custom_input, 0);
+				if (val > 0) {
+					set_buffer_size(static_cast<size_t>(val));
+				}
+				//? If val <= 0, just close modal without changing buffer size
+			}
+			buffer_modal_active = false;
+			buffer_custom_input.clear();
+			redraw = true;
+			return true;
+		}
+		else if (key == "up" || key == "k") {
+			if (buffer_modal_selected > 0) {
+				buffer_modal_selected--;
+				buffer_custom_input.clear();
+			}
+			redraw = true;
+		}
+		else if (key == "down" || key == "j") {
+			if (buffer_modal_selected < 6) {
+				buffer_modal_selected++;
+				buffer_custom_input.clear();
+			}
+			redraw = true;
+		}
+		else if (key == "backspace" && buffer_modal_selected == 6 && not buffer_custom_input.empty()) {
+			buffer_custom_input.pop_back();
+			redraw = true;
+		}
+		else if (key.size() == 1 && isdigit(key[0])) {
+			if (buffer_modal_selected == 6) {
+				//? Custom mode - append digit
+				if (buffer_custom_input.size() < 5) {  //? Max 5 digits (99999)
+					buffer_custom_input += key[0];
+				}
+			} else {
+				//? Quick select preset 1-6
+				int idx = key[0] - '1';
+				if (idx >= 0 && idx < 6) {
+					set_buffer_size(buffer_presets[static_cast<size_t>(idx)]);
+					buffer_modal_active = false;
+					buffer_custom_input.clear();
+					redraw = true;
+					return true;
+				}
+			}
+			redraw = true;
+		}
+		else if (key == "7" && buffer_modal_selected != 6) {
+			//? Select Custom
+			buffer_modal_selected = 6;
+			buffer_custom_input.clear();
+			redraw = true;
+		}
+		else if (key.starts_with("buffer_")) {
+			//? Mouse click on option
+			int idx = key.back() - '0';
+			if (idx >= 0 && idx < 6) {
+				set_buffer_size(buffer_presets[static_cast<size_t>(idx)]);
+				buffer_modal_active = false;
+				buffer_custom_input.clear();
+				redraw = true;
+				return true;
+			} else if (idx == 6) {
+				//? Custom selected
+				buffer_modal_selected = 6;
+				buffer_custom_input.clear();
+				redraw = true;
+			}
+		}
+		return false;
+	}
+
+	//? Error modal state
+	bool error_modal_active = false;
+	string error_modal_message;
+
+	void show_error_modal(const string& message) {
+		error_modal_message = message;
+		error_modal_active = true;
+		redraw = true;
+	}
+
+	bool error_modal_input(const std::string_view key) {
+		(void)key;  //? Any key closes the modal
+		error_modal_active = false;
+		error_modal_message.clear();
+		redraw = true;
+		return true;
+	}
+
+}  // namespace Logs
 
 namespace Tools {
 	double system_uptime() {

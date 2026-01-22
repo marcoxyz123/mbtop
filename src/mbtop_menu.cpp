@@ -70,6 +70,12 @@ namespace Menu {
    msgBox messageBox;
    int signalToSend{};
    int signalKillRet{};
+   
+   //? Logs panel size error info
+   int logs_min_width_required{110};
+   int logs_min_height_required{26};
+   int logs_current_proc_height{0};
+   bool logs_error_is_height{false};
 
    const array<string, 32> P_Signals = {
 	   "0",
@@ -194,6 +200,10 @@ namespace Menu {
 		{"5", "Toggle GPU box."},
 		{"6", "Toggle ANE split view (Apple Silicon)."},
 		{"7", "Toggle Power panel (Apple Silicon)."},
+		{"8", "Toggle Logs panel (requires Follow mode)."},
+		{"P (Logs)", "Pause/resume log streaming."},
+		{"L (Logs)", "Toggle live/historical log mode."},
+		{"O (Logs)", "Cycle log level filter (All/Error/Info+)."},
 		{"A", "GPU memory allocation menu (Apple Silicon)."},
 		{"d", "Toggle disks view in MEM box."},
 		{"F2, o", "Shows options."},
@@ -1228,6 +1238,51 @@ namespace Menu {
 				"Tip: Rearrange panels (keys 1-5,7)",
 				"or resize terminal window.",
 				"(Proc details needs height ≥13)" + Fx::reset };
+
+			messageBox = Menu::msgBox{45, 0, cont_vec, "error"};
+			Global::overlay = messageBox();
+		}
+
+		auto ret = messageBox.input(key);
+		if (ret == msgBox::Ok_Yes or ret == msgBox::No_Esc) {
+			messageBox.clear();
+			return Closed;
+		}
+		else if (redraw) {
+			return Changed;
+		}
+		return NoChange;
+	}
+
+	static int logsSizeError(const string& key) {
+		if (redraw) {
+			vector<string> cont_vec;
+			
+			if (logs_error_is_height) {
+				//? Height error: show available space vs required terminal height
+				cont_vec = {
+					Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
+					"Not enough height for Logs below!" + Fx::reset,
+					"",
+					"Terminal height: " + to_string(Term::height),
+					"Required height: " + to_string(logs_min_height_required),
+					"(Logs needs " + to_string(Logs::min_height - logs_current_proc_height) + " more row" + (Logs::min_height - logs_current_proc_height == 1 ? "" : "s") + ")",
+					"",
+					"Tip: Increase terminal height",
+					"or keep Logs beside Proc." + Fx::reset };
+			} else {
+				//? Width error: show terminal width
+				cont_vec = {
+					Fx::b + Theme::g("used")[100] + "Logs Panel Error:" + Theme::c("main_fg") + Fx::ub,
+					"Not enough width for Logs panel!" + Fx::reset,
+					"",
+					"Terminal width:  " + to_string(Term::width),
+					"Required width:  " + to_string(logs_min_width_required),
+					"(Proc:" + to_string(60) + " + Logs:" + to_string(Logs::min_width) + ")",
+					"",
+					"Tip: Increase terminal width",
+					"or press 8 to hide Logs." + Fx::reset };
+			}
 
 			messageBox = Menu::msgBox{45, 0, cont_vec, "error"};
 			Global::overlay = messageBox();
@@ -2293,6 +2348,7 @@ namespace Menu {
 	//* Add menus here and update enum Menus in header
 	const auto menuFunc = vector{
 		ref(sizeError),
+		ref(logsSizeError),
 		ref(signalChoose),
 		ref(signalSend),
 		ref(signalReturn),
@@ -3276,6 +3332,12 @@ namespace MenuV2 {
 						{"proc_gpu", "GPU Column", "Show GPU usage column (Apple Silicon)", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"proc_gpu_graphs", "GPU Graphs", "Show mini GPU graphs in process list", ControlType::Toggle, {}, "", 0, 0, 0},
 						{"graph_symbol_proc", "Graph Symbol", "Symbol for process graphs", ControlType::Radio, {"default", "braille", "block", "tty"}, "", 0, 0, 0},
+					}},
+					{"Proc | Logs", {
+						{"logs_below_proc", "Position Below", "Show logs panel below proc instead of beside", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"log_color_full_line", "Color Full Line", "Color entire log line (off = only [X] marker colored)", ControlType::Toggle, {}, "", 0, 0, 0},
+						{"log_buffer_size", "Buffer Size", "Max log entries to keep (100-10000)", ControlType::Slider, {}, "", 100, 10000, 100},
+						{"log_export_path", "Export Path", "Path for exported logs (empty = ~/Desktop)", ControlType::Text, {}, "", 0, 0, 0},
 					}},
 				},
 				true, {"CPU", "GPU", "PWR", "Memory", "Network", "Processes"}
@@ -4435,6 +4497,13 @@ namespace MenuV2 {
 								const auto is_mouse_enabled = not Config::getB("disable_mouse");
 								std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
 							}
+							//? Logs layout change requires size recalculation
+							else if (opt->key == "logs_below_proc") {
+								if (Logs::shown) {
+									Draw::calcSizes();
+									Global::resized = true;
+								}
+							}
 						}
 					}
 					else if (opt->control == ControlType::Text) {
@@ -4597,6 +4666,13 @@ namespace MenuV2 {
 									else if (opt.key == "disable_mouse") {
 										const auto is_mouse_enabled = not Config::getB("disable_mouse");
 										std::cout << (is_mouse_enabled ? Term::mouse_on : Term::mouse_off) << std::flush;
+									}
+									else if (opt.key == "logs_below_proc") {
+										//? Logs layout change requires size recalculation
+										if (Logs::shown) {
+											Draw::calcSizes();
+											Global::resized = true;
+										}
 									}
 								}
 							}

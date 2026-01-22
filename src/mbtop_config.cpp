@@ -247,6 +247,14 @@ namespace Config {
 
 		{"proc_full_width",		"#* When net_beside_mem is active, show proc panel full width under both mem+net. Pressing '4' cycles: hidden -> under net -> full width."},
 
+		{"logs_below_proc",		"#* Position the logs panel below proc panel instead of beside it. Pressing '8' toggles the logs panel."},
+
+		{"log_color_full_line",	"#* Color the full log line based on level, or only the level marker [X]. Colors from theme: log_fault, log_error, log_info, log_debug_plus, log_debug."},
+
+		{"log_export_path",		"#* Path for log export files. Default: ~/Desktop. Filename format: <PID>-<Process>-<datetime>.log"},
+
+		{"log_buffer_size",		"#* Maximum number of log entries to keep in buffer. Default: 500. Higher values use more memory."},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -371,6 +379,7 @@ namespace Config {
 		{"net_iface_filter", ""},
 		{"base_10_bitrate", "Auto"},
 		{"log_level", "WARNING"},
+		{"log_export_path", ""},
 		{"proc_filter", ""},
 		{"proc_command", ""},
 		{"selected_name", ""},
@@ -443,6 +452,8 @@ namespace Config {
 		{"mem_below_net", false},
 		{"net_beside_mem", true},
 		{"proc_full_width", false},
+		{"logs_below_proc", false},
+		{"log_color_full_line", false},
 		{"stacked_layout", false},
 		{"zfs_arc_cached", true},
 		{"show_swap", true},
@@ -520,7 +531,8 @@ namespace Config {
 		{"swap_toggle_mode", 0},
 		{"vram_toggle_mode", 0},
 		{"mem_start", 0},
-		{"mem_selected", 0}
+		{"mem_selected", 0},
+		{"log_buffer_size", 500}
 	};
 	std::unordered_map<std::string_view, int> intsTmp;
 
