@@ -2330,6 +2330,11 @@ namespace Logs {
 	static string line_buffer;        //? Buffer for partial line reads
 	static FILE* export_file_handle = nullptr;  //? File handle for log export
 
+	//=== Application Log File State ===
+	static std::ifstream app_log_stream;  //? Open file handle for app logs
+	static std::streampos app_log_pos = 0; //? Last read position
+	static string app_line_buffer;        //? Buffer for partial line reads from app log
+
 	//? Parse a single JSON log entry from ndjson output
 	static bool parse_log_entry(const string& json_line, LogEntry& entry) {
 		//? Simple JSON parsing for known fields
@@ -2434,6 +2439,217 @@ namespace Logs {
 		return (level_filter & level_to_bit(level)) != 0;
 	}
 
+	//=== Application Log Format Parsers ===
+
+	//? Parse JSON Lines format: {"timestamp":"...", "level":"...", "message":"..."}
+	static bool parse_json_app_log(const string& line, LogEntry& entry) {
+		if (line.empty() || line[0] != '{') return false;
+
+		auto extract = [&line](const string& key) -> string {
+			string search = "\"" + key + "\":";
+			size_t pos = line.find(search);
+			if (pos == string::npos) return "";
+			pos += search.length();
+			while (pos < line.length() && (line[pos] == ' ' || line[pos] == '\t')) pos++;
+			if (pos >= line.length() || line[pos] != '"') return "";
+			pos++;
+			string value;
+			while (pos < line.length() && line[pos] != '"') {
+				if (line[pos] == '\\' && pos + 1 < line.length()) {
+					pos++;
+					switch (line[pos]) {
+						case 'n': value += '\n'; break;
+						case 't': value += '\t'; break;
+						case 'r': break;
+						case '"': value += '"'; break;
+						case '\\': value += '\\'; break;
+						default: value += line[pos]; break;
+					}
+				} else {
+					value += line[pos];
+				}
+				pos++;
+			}
+			return value;
+		};
+
+		entry.timestamp = extract("timestamp");
+		if (entry.timestamp.empty()) entry.timestamp = extract("time");
+		if (entry.timestamp.empty()) entry.timestamp = extract("ts");
+		entry.level = extract("level");
+		if (entry.level.empty()) entry.level = extract("severity");
+		if (entry.level.empty()) entry.level = "Info";
+		entry.message = extract("message");
+		if (entry.message.empty()) entry.message = extract("msg");
+		entry.subsystem = extract("logger");
+		entry.category = extract("module");
+
+		//? Normalize level to macOS style
+		string lvl_lower = entry.level;
+		for (char& c : lvl_lower) c = tolower(c);
+		if (lvl_lower == "debug" || lvl_lower == "trace") entry.level = "Debug";
+		else if (lvl_lower == "info") entry.level = "Info";
+		else if (lvl_lower == "warn" || lvl_lower == "warning") entry.level = "Error";
+		else if (lvl_lower == "error" || lvl_lower == "err") entry.level = "Error";
+		else if (lvl_lower == "fatal" || lvl_lower == "critical") entry.level = "Fault";
+		else entry.level = "Default";
+
+		return !entry.message.empty();
+	}
+
+	//? Parse bracketed level format: "2025-01-22 10:30:00 [INFO] Message text"
+	static bool parse_bracketed_log(const string& line, LogEntry& entry) {
+		//? Look for [LEVEL] pattern
+		size_t bracket_start = line.find('[');
+		if (bracket_start == string::npos) return false;
+		size_t bracket_end = line.find(']', bracket_start);
+		if (bracket_end == string::npos || bracket_end - bracket_start > 10) return false;
+
+		//? Extract level
+		string level = line.substr(bracket_start + 1, bracket_end - bracket_start - 1);
+
+		//? Check if it's a valid level indicator
+		string lvl_lower = level;
+		for (char& c : lvl_lower) c = tolower(c);
+		if (lvl_lower != "debug" && lvl_lower != "info" && lvl_lower != "warn" &&
+		    lvl_lower != "warning" && lvl_lower != "error" && lvl_lower != "err" &&
+		    lvl_lower != "fatal" && lvl_lower != "critical" && lvl_lower != "trace") {
+			return false;
+		}
+
+		//? Timestamp is everything before the bracket
+		entry.timestamp = line.substr(0, bracket_start);
+		while (!entry.timestamp.empty() && entry.timestamp.back() == ' ')
+			entry.timestamp.pop_back();
+
+		//? Message is everything after the bracket
+		entry.message = (bracket_end + 1 < line.length()) ? line.substr(bracket_end + 1) : "";
+		while (!entry.message.empty() && entry.message[0] == ' ')
+			entry.message.erase(0, 1);
+
+		//? Normalize level
+		if (lvl_lower == "debug" || lvl_lower == "trace") entry.level = "Debug";
+		else if (lvl_lower == "info") entry.level = "Info";
+		else if (lvl_lower == "warn" || lvl_lower == "warning") entry.level = "Error";
+		else if (lvl_lower == "error" || lvl_lower == "err") entry.level = "Error";
+		else if (lvl_lower == "fatal" || lvl_lower == "critical") entry.level = "Fault";
+		else entry.level = "Default";
+
+		return !entry.message.empty() || !entry.timestamp.empty();
+	}
+
+	//? Parse colon level format: "2025-01-22 10:30:00 INFO: Message text"
+	static bool parse_colon_log(const string& line, LogEntry& entry) {
+		//? Look for "LEVEL:" pattern with common levels
+		static const vector<string> levels = {"DEBUG:", "INFO:", "WARN:", "WARNING:", "ERROR:", "FATAL:", "CRITICAL:", "TRACE:"};
+
+		for (const auto& lvl : levels) {
+			size_t pos = line.find(lvl);
+			if (pos != string::npos && pos < 30) {  //? Level should be near start
+				//? Timestamp is everything before the level
+				entry.timestamp = line.substr(0, pos);
+				while (!entry.timestamp.empty() && entry.timestamp.back() == ' ')
+					entry.timestamp.pop_back();
+
+				//? Message is everything after the colon
+				entry.message = (pos + lvl.length() < line.length()) ? line.substr(pos + lvl.length()) : "";
+				while (!entry.message.empty() && entry.message[0] == ' ')
+					entry.message.erase(0, 1);
+
+				//? Set level (remove colon for comparison)
+				string lvl_name = lvl.substr(0, lvl.length() - 1);
+				for (char& c : lvl_name) c = tolower(c);
+				if (lvl_name == "debug" || lvl_name == "trace") entry.level = "Debug";
+				else if (lvl_name == "info") entry.level = "Info";
+				else if (lvl_name == "warn" || lvl_name == "warning") entry.level = "Error";
+				else if (lvl_name == "error") entry.level = "Error";
+				else if (lvl_name == "fatal" || lvl_name == "critical") entry.level = "Fault";
+				else entry.level = "Default";
+
+				return !entry.message.empty() || !entry.timestamp.empty();
+			}
+		}
+		return false;
+	}
+
+	//? Parse syslog format: "Jan 22 10:30:00 hostname process[pid]: message"
+	static bool parse_syslog(const string& line, LogEntry& entry) {
+		//? Syslog starts with month name (3 chars)
+		static const vector<string> months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+		if (line.length() < 16) return false;
+
+		string first_word = line.substr(0, 3);
+		bool is_month = false;
+		for (const auto& m : months) {
+			if (first_word == m) { is_month = true; break; }
+		}
+		if (!is_month) return false;
+
+		//? Find the colon after process[pid]
+		size_t colon_pos = line.find(": ");
+		if (colon_pos == string::npos || colon_pos < 15) return false;
+
+		//? Timestamp is typically first 15 chars (e.g., "Jan 22 10:30:00")
+		entry.timestamp = line.substr(0, 15);
+
+		//? Message is after the colon
+		entry.message = (colon_pos + 2 < line.length()) ? line.substr(colon_pos + 2) : "";
+
+		//? Try to extract hostname/process from between timestamp and colon
+		string middle = line.substr(16, colon_pos - 16);
+		entry.subsystem = middle;
+
+		entry.level = "Info";  //? Syslog doesn't have standard level in basic format
+		return !entry.message.empty();
+	}
+
+	//? Parse plain text (fallback) - just use the line as the message
+	static void parse_plain_text(const string& line, LogEntry& entry) {
+		entry.timestamp = "";
+		entry.level = "Info";
+		entry.message = line;
+	}
+
+	//? Stop application log streaming
+	static void stop_app_stream() {
+		if (app_log_stream.is_open()) {
+			app_log_stream.close();
+		}
+		app_log_pos = 0;
+		app_line_buffer.clear();
+	}
+
+	//? Start application log streaming for the current process
+	static bool start_app_stream() {
+		stop_app_stream();
+
+		if (app_log_path.empty() || !app_log_available) return false;
+
+		app_log_stream.open(app_log_path, std::ios::in);
+		if (!app_log_stream.good()) {
+			app_log_available = false;
+			return false;
+		}
+
+		//? Seek to end minus a reasonable amount to show recent logs
+		app_log_stream.seekg(0, std::ios::end);
+		std::streampos file_size = app_log_stream.tellg();
+
+		//? Start from last 50KB or beginning (whichever is closer)
+		const std::streampos max_initial_read = 51200;  //? 50KB
+		if (file_size > max_initial_read) {
+			app_log_stream.seekg(-max_initial_read, std::ios::end);
+			//? Skip partial line
+			string discard;
+			std::getline(app_log_stream, discard);
+		} else {
+			app_log_stream.seekg(0, std::ios::beg);
+		}
+
+		app_log_pos = app_log_stream.tellg();
+		return true;
+	}
+
 	//? Stop any existing log stream
 	static void stop_stream() {
 		if (log_child_pid > 0) {
@@ -2536,12 +2752,31 @@ namespace Logs {
 			current_pid = followed_pid;
 
 			if (current_pid > 0) {
-				//? Start streaming
+				//? Resolve config for the new process (get app log path, etc.)
+				string proc_name = Config::getS("selected_name");
+				string proc_cmd = Config::getS("proc_command");
+				resolve_config(current_pid, proc_name, proc_cmd);
+
+				//? Start streaming based on source
 				if (not paused) {
-					start_stream(current_pid);
+					if (source == Source::System) {
+						start_stream(current_pid);
+					} else if (source == Source::Application && app_log_available) {
+						start_app_stream();
+					} else {
+						//? Fall back to system if app log not available
+						source = Source::System;
+						start_stream(current_pid);
+					}
 				}
 			}
 			redraw = true;
+		}
+
+		//? Collect from appropriate source
+		if (source == Source::Application) {
+			collect_app_logs();
+			return;
 		}
 
 		//? Read from the stream if active and not paused (non-blocking)
@@ -2621,9 +2856,11 @@ namespace Logs {
 
 	void clear() {
 		stop_stream();
+		stop_app_stream();
 		entries.clear();
 		scroll_offset = 0;
 		current_pid = 0;
+		source = Source::System;  //? Reset to default source
 		redraw = true;
 	}
 
@@ -2633,11 +2870,112 @@ namespace Logs {
 		if (paused) {
 			//? Stop the stream when paused
 			stop_stream();
+			stop_app_stream();
 		} else if (current_pid > 0) {
 			//? Resume streaming
-			start_stream(current_pid);
+			if (source == Source::System) {
+				start_stream(current_pid);
+			} else {
+				start_app_stream();
+			}
 		}
 		redraw = true;
+	}
+
+	void collect_app_logs() {
+		if (!shown || paused || !app_log_available) return;
+
+		//? Open stream if not already open
+		if (!app_log_stream.is_open()) {
+			if (!start_app_stream()) return;
+		}
+
+		//? Check if file has been truncated/rotated
+		app_log_stream.clear();  //? Clear any error flags
+		std::streampos current_end;
+		app_log_stream.seekg(0, std::ios::end);
+		current_end = app_log_stream.tellg();
+
+		if (current_end < app_log_pos) {
+			//? File was truncated, restart from beginning
+			app_log_stream.seekg(0, std::ios::beg);
+			app_log_pos = 0;
+			entries.clear();  //? Clear old entries
+		} else {
+			//? Resume from last position
+			app_log_stream.seekg(app_log_pos);
+		}
+
+		//? Read new lines (limit per collection cycle)
+		int lines_processed = 0;
+		const int max_lines_per_collect = 50;
+		string line;
+
+		//? Pre-allocate buffer
+		if (app_line_buffer.capacity() < 16384) {
+			app_line_buffer.reserve(16384);
+		}
+
+		while (lines_processed < max_lines_per_collect && std::getline(app_log_stream, line)) {
+			if (line.empty()) continue;
+
+			//? Remove carriage return if present (Windows-style line endings)
+			if (!line.empty() && line.back() == '\r') {
+				line.pop_back();
+			}
+			if (line.empty()) continue;
+
+			LogEntry entry;
+			bool parsed = false;
+
+			//? Try JSON first (most structured)
+			if (line[0] == '{') {
+				parsed = parse_json_app_log(line, entry);
+			}
+
+			//? Try bracketed format: [LEVEL]
+			if (!parsed) {
+				parsed = parse_bracketed_log(line, entry);
+			}
+
+			//? Try colon format: LEVEL:
+			if (!parsed) {
+				parsed = parse_colon_log(line, entry);
+			}
+
+			//? Try syslog format
+			if (!parsed) {
+				parsed = parse_syslog(line, entry);
+			}
+
+			//? Fallback: plain text
+			if (!parsed) {
+				parse_plain_text(line, entry);
+			}
+
+			//? Apply filter
+			if (passes_filter(entry.level)) {
+				//? Write to export file if exporting
+				if (exporting && export_file_handle != nullptr) {
+					fprintf(export_file_handle, "[%c] %s %s\n",
+						entry.level.empty() ? 'I' : entry.level[0],
+						entry.timestamp.c_str(),
+						entry.message.c_str());
+					fflush(export_file_handle);
+				}
+
+				entries.push_back(std::move(entry));
+				if (entries.size() > max_entries) {
+					entries.pop_front();
+				}
+				redraw = true;
+			}
+			lines_processed++;
+		}
+
+		//? Save current position for next read
+		app_log_stream.clear();  //? Clear EOF flag
+		app_log_pos = app_log_stream.tellg();
 	}
 
 	void start_export() {

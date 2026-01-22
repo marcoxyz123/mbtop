@@ -4736,11 +4736,6 @@ namespace Logs {
 		}
 	}
 
-	void collect_app_logs() {
-		//? Stub - will be implemented in Phase 4
-		//? This function will parse application log files
-	}
-
 	bool has_app_log() {
 		return app_log_available;
 	}
