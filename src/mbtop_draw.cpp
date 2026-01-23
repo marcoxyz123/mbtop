@@ -4691,6 +4691,16 @@ namespace Proc {
 			selected_pid = 0;
 			selected_name.clear();
 		}
+
+		//? Draw Logs modals (color picker and config) - they use Proc panel coordinates
+		//? This allows them to work even when Logs panel is not shown
+		if (Logs::color_modal_active) {
+			out += Logs::draw_color_modal();
+		}
+		if (Logs::config_modal_active) {
+			out += Logs::draw_config_modal();
+		}
+
 		redraw = false;
 		return out + Fx::reset;
 	}
@@ -4931,8 +4941,11 @@ namespace Logs {
 
 		const int modal_w = 22;
 		const int modal_h = 7;
-		const int modal_x = x + (width - modal_w) / 2;
-		const int modal_y = y + (height - modal_h) / 2;
+
+		//? Use Proc panel coordinates for modal position
+		//? This allows the modal to work even when Logs panel is not shown
+		const int modal_x = Proc::x + (Proc::width - modal_w) / 2;
+		const int modal_y = Proc::y + (Proc::height - modal_h) / 2;
 
 		//? Draw modal box
 		out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Tag Color");
@@ -5201,8 +5214,16 @@ namespace Logs {
 
 		const int modal_w = 54;
 		const int modal_h = 18;
-		const int modal_x = x + (width - modal_w) / 2;
-		const int modal_y = y + (height - modal_h) / 2;
+
+		//? Use Proc panel coordinates for modal position
+		//? This allows the modal to work even when Logs panel is not shown
+		int panel_x = Proc::x;
+		int panel_y = Proc::y;
+		int panel_w = Proc::width;
+		int panel_h = Proc::height;
+
+		const int modal_x = panel_x + (panel_w - modal_w) / 2;
+		const int modal_y = panel_y + (panel_h - modal_h) / 2;
 		const int pad_x = modal_x + 3;  //? Horizontal padding
 
 		//? Draw modal box
@@ -5763,15 +5784,8 @@ namespace Logs {
 				out += theme("inactive_fg") + "Press any key..." + Fx::reset;
 			}
 
-			//? Draw color picker modal if active
-			if (color_modal_active) {
-				out += draw_color_modal();
-			}
-
-			//? Draw log config modal if active
-			if (config_modal_active) {
-				out += draw_config_modal();
-			}
+			//? Note: Color picker and config modals are now drawn in Proc::draw()
+			//? since they use Proc panel coordinates and should work even when Logs is hidden
 
 			redraw = false;
 			return out + Fx::reset;
