@@ -571,12 +571,11 @@ namespace Input {
 					}
 				}
 
-				//? Handle config modal input if active
+				//? Handle config modal input if active - consume ALL keys when modal is open
 				if (Logs::config_modal_active) {
-					if (Logs::config_modal_input(key)) {
-						Runner::run("all", true, true);
-						return;
-					}
+					Logs::config_modal_input(key);
+					Runner::run("all", true, true);
+					return;  //? Always return - modal captures all input
 				}
 
 				//? Handle filter modal input if active
