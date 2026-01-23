@@ -316,9 +316,10 @@ namespace Input {
 								Config::set("followed_pid", Config::getI("selected_pid"));
 								Config::set("update_following", true);
 							}
-							//? Initialize with followed PID/name and reset state
+							//? Initialize with followed PID/name/cmd and reset state
 							Logs::current_pid = Config::getI("followed_pid");
 							Logs::current_name = Proc::selected_name;
+							Logs::current_cmdline = Proc::selected_cmd;
 							Logs::paused = false;
 							Logs::clear();
 							Logs::shown = true;
@@ -651,7 +652,7 @@ namespace Input {
 					Logs::toggle_source();
 				}
 				//? Color picker modal clicks
-				else if (key == "color_0" or key == "color_1" or key == "color_2" or key == "color_3" or key == "color_4") {
+				else if (key == "color_0" or key == "color_1" or key == "color_2" or key == "color_3" or key == "color_4" or key == "color_5") {
 					if (Logs::color_modal_active) {
 						Logs::color_modal_selected = key.back() - '0';
 						Logs::color_modal_input("enter");
@@ -788,6 +789,8 @@ namespace Input {
 						//? Stop export and reset Logs state for new process
 						Logs::stop_export();
 						Logs::current_pid = Config::getI("selected_pid");
+						Logs::current_name = Proc::selected_name;
+						Logs::current_cmdline = Proc::selected_cmd;
 						Logs::paused = false;
 						Logs::clear();
 					}
@@ -798,6 +801,8 @@ namespace Input {
 						//? Stop export and reset Logs state for new process
 						Logs::stop_export();
 						Logs::current_pid = Config::getI("detailed_pid");
+						Logs::current_name = Proc::detailed.entry.name;
+						Logs::current_cmdline = Proc::detailed.entry.cmd;
 						Logs::paused = false;
 						Logs::clear();
 					}
@@ -812,6 +817,8 @@ namespace Input {
 						//? Stop export and clear Logs when unfollowing
 						Logs::stop_export();
 						Logs::current_pid = 0;
+						Logs::current_name.clear();
+						Logs::current_cmdline.clear();
 						Logs::paused = false;
 						Logs::clear();
 					}

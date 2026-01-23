@@ -472,6 +472,7 @@ namespace Proc {
 	extern int selected_pid, start, selected, collapse, expand, filter_found, selected_depth, toggle_children;
 	extern int scroll_pos;
 	extern string selected_name;
+	extern string selected_cmd;
 	extern bool filter_tagged;  //? When true, show only tagged processes
 
 	//? Contains the valid sorting options for processes
@@ -749,15 +750,16 @@ namespace Logs {
 	//* Draw color picker modal
 	string draw_color_modal();
 
-	//? Tag color definitions (Nord Aurora)
+	//? Tag color definitions (Nord Aurora + Frost)
 	namespace TagColors {
-		const array<string, 5> names = {"Rd", "Or", "Yl", "Gn", "Vi"};
-		const array<string, 5> themes = {
+		const array<string, 6> names = {"Rd", "Or", "Yl", "Gn", "Vi", "Bl"};
+		const array<string, 6> themes = {
 			"log_fault",      //? Red
 			"log_error",      //? Orange
 			"log_info",       //? Yellow
 			"log_debug_plus", //? Green
-			"log_debug"       //? Violet
+			"log_debug",      //? Violet
+			"tag_blue"        //? Blue (Nord Frost)
 		};
 	}
 

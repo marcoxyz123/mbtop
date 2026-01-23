@@ -110,6 +110,7 @@ namespace Theme {
 		{ "log_info", "#EBCB8B" },       //? Nord Yellow
 		{ "log_debug_plus", "#A3BE8C" }, //? Nord Green - macOS "Default" level (Debug+)
 		{ "log_debug", "#B48EAD" },      //? Nord Aurora Violet - macOS "Debug" level
+		{ "tag_blue", "#81A1C1" },        //? Nord Frost Blue - tag color
 	};
 
 	const std::unordered_map<string, string> TTY_theme = {

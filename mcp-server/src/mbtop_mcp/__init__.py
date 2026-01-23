@@ -19,7 +19,7 @@ mcp = FastMCP(
     "mbtop",
     instructions="""
     MCP server for mbtop process monitor. Use these tools to:
-    - Tag important processes with colors (Red, Orange, Yellow, Green, Violet)
+    - Tag important processes with colors (Red, Orange, Yellow, Green, Violet, Blue)
     - Give processes meaningful display names
     - Filter mbtop to show only tagged processes
     
@@ -27,13 +27,14 @@ mcp = FastMCP(
     """,
 )
 
-# Nord Aurora color mapping
+# Nord Aurora + Frost color mapping
 AURORA_COLORS = {
     "red": "log_fault",
     "orange": "log_error",
     "yellow": "log_info",
     "green": "log_debug_plus",
     "violet": "log_debug",
+    "blue": "tag_blue",
 }
 
 # Default config path

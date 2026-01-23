@@ -3307,6 +3307,7 @@ namespace Proc {
 	int selected_pid = 0, selected_depth = 0;
 	int scroll_pos;
 	string selected_name;
+	string selected_cmd;
 	bool filter_tagged = false;  //? When true, show only tagged processes
 	std::unordered_map<size_t, Draw::Graph> p_graphs;
 	std::unordered_map<size_t, Draw::Graph> p_gpu_graphs;
@@ -4227,8 +4228,8 @@ namespace Proc {
 				+ Theme::c("proc_misc") + detailed_mem_graph(detailed.mem_bytes, (redraw or data_same or not alive)) + ' '
 				+ Theme::c("title") + Fx::b + detailed.memory;
 
-			//? Tag control: "Tag [●] ██" after memory value
-			{
+			//? Tag control: "Tag [●] ██" after memory value - only shown when process is followed
+			if (followed_pid == Config::getI("detailed_pid")) {
 				auto tag_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
 				bool is_tagged = tag_cfg.has_value() && tag_cfg->has_tagging();
 				string tag_color_name = is_tagged ? tag_cfg->tag_color : "log_debug_plus";  //? Default to green
@@ -4248,6 +4249,11 @@ namespace Proc {
 				out += " " + Theme::c_safe(tag_color_name) + "██";
 				Input::mouse_mappings["proc_tag_color"] = {tag_y, tag_x + 8, 1, 2};
 				out += Fx::reset;
+			}
+			else {
+				//? Clear tag mouse mappings when not followed
+				Input::mouse_mappings.erase("proc_tag_toggle");
+				Input::mouse_mappings.erase("proc_tag_color");
 			}
 		}
 		skip_detailed_draw:  //? Label for skipping detailed draw when dimensions are invalid
@@ -4275,6 +4281,7 @@ namespace Proc {
 			if (is_selected) {
 				selected_pid = (int)p.pid;
 				selected_name = p.name;
+				selected_cmd = p.cmd;
 				selected_depth = p.depth;
 			}
 
@@ -4712,6 +4719,7 @@ namespace Proc {
 		if (selected == 0 and selected_pid != 0) {
 			selected_pid = 0;
 			selected_name.clear();
+			selected_cmd.clear();
 		}
 
 		//? Draw Logs modals (color picker and config) - they use Proc panel coordinates
@@ -4921,17 +4929,17 @@ namespace Logs {
 			return true;
 		}
 		if (key == "left" || key == "h") {
-			color_modal_selected = (color_modal_selected - 1 + 5) % 5;
+			color_modal_selected = (color_modal_selected - 1 + 6) % 6;
 			redraw = true;
 			return false;
 		}
 		if (key == "right" || key == "l") {
-			color_modal_selected = (color_modal_selected + 1) % 5;
+			color_modal_selected = (color_modal_selected + 1) % 6;
 			redraw = true;
 			return false;
 		}
-		//? Number keys 1-5 to select color directly
-		if (key.length() == 1 && key[0] >= '1' && key[0] <= '5') {
+		//? Number keys 1-6 to select color directly
+		if (key.length() == 1 && key[0] >= '1' && key[0] <= '6') {
 			color_modal_selected = key[0] - '1';
 			//? Apply immediately and close
 			Config::ProcessLogConfig cfg;
@@ -4973,7 +4981,7 @@ namespace Logs {
 			return true;
 		}
 		//? Mouse clicks on colors
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < 6; i++) {
 			if (key == "color_" + to_string(i)) {
 				color_modal_selected = i;
 				Config::ProcessLogConfig cfg;
@@ -5001,8 +5009,8 @@ namespace Logs {
 		const auto& theme = Theme::c;
 		string out;
 
-		//? Tiny modal - just 5 color swatches
-		const int modal_w = 19;  //? 5 colors * 3 chars + 4 padding
+		//? Tiny modal - 6 color swatches
+		const int modal_w = 21;  //? 6 colors * 3 chars + 3 padding
 		const int modal_h = 3;
 
 		//? Use Proc panel coordinates for modal position
@@ -5016,7 +5024,7 @@ namespace Logs {
 		//? Draw color swatches - click to select and close
 		int color_y = modal_y + 1;
 		out += Mv::to(color_y, modal_x + 2);
-		for (size_t i = 0; i < 5; i++) {
+		for (size_t i = 0; i < 6; i++) {
 			string color = theme(TagColors::themes[i]);
 			out += color + "██" + Fx::reset + " ";
 			Input::mouse_mappings["color_" + to_string(i)] = {color_y, modal_x + 2 + static_cast<int>(i) * 3, 1, 2};
@@ -5083,7 +5091,7 @@ namespace Logs {
 		//? Mouse click on color
 		if (key.starts_with("config_color_") && config_modal_tagged) {
 			int color_idx = key.back() - '0';
-			if (color_idx >= 0 && color_idx <= 4) {
+			if (color_idx >= 0 && color_idx <= 5) {
 				config_modal_field = 3;
 				config_modal_color_idx = color_idx;
 				redraw = true;
@@ -5207,12 +5215,12 @@ namespace Logs {
 			//? Color selection (only if tagged)
 			if (config_modal_tagged) {
 				if (key == "left" || key == "h") {
-					config_modal_color_idx = (config_modal_color_idx - 1 + 5) % 5;
+					config_modal_color_idx = (config_modal_color_idx - 1 + 6) % 6;
 					redraw = true;
 				} else if (key == "right" || key == "l") {
-					config_modal_color_idx = (config_modal_color_idx + 1) % 5;
+					config_modal_color_idx = (config_modal_color_idx + 1) % 6;
 					redraw = true;
-				} else if (key.length() == 1 && key[0] >= '1' && key[0] <= '5') {
+				} else if (key.length() == 1 && key[0] >= '1' && key[0] <= '6') {
 					config_modal_color_idx = key[0] - '1';
 					redraw = true;
 				}
@@ -5364,18 +5372,18 @@ namespace Logs {
 		if (!config_modal_tagged) {
 			out += theme("inactive_fg") + "(enable Tagged first)";
 			//? Clear color mappings when disabled
-			for (int i = 0; i < 5; i++) {
+			for (int i = 0; i < 6; i++) {
 				Input::mouse_mappings.erase("config_color_" + to_string(i));
 			}
 		} else {
-			for (size_t i = 0; i < 5; i++) {
+			for (size_t i = 0; i < 6; i++) {
 				bool color_sel = field_sel && (static_cast<int>(i) == config_modal_color_idx);
 				if (color_sel) out += theme("selected_bg");
 				out += theme(TagColors::themes[i]) + "██" + Fx::reset + " ";
 				//? Mouse mapping for each color: 2 chars wide + 1 space
 				Input::mouse_mappings["config_color_" + to_string(i)] = {color_row, pad_x + 9 + static_cast<int>(i) * 3, 1, 2};
 			}
-			out += theme("inactive_fg") + "(1-5)";
+			out += theme("inactive_fg") + "(1-6)";
 		}
 		row_y++;
 
@@ -5436,6 +5444,8 @@ namespace Logs {
 			if (not config_modal_active) {
 				for (int i = 0; i < 5; i++) {
 					Input::mouse_mappings.erase("config_field_" + to_string(i));
+				}
+				for (int i = 0; i < 6; i++) {
 					Input::mouse_mappings.erase("config_color_" + to_string(i));
 				}
 				for (int i = 0; i < 3; i++) {

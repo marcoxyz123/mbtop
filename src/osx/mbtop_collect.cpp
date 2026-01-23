@@ -2767,7 +2767,7 @@ namespace Logs {
 			if (current_pid > 0) {
 				//? Resolve config for the new process (get app log path, etc.)
 				string proc_name = Config::getS("selected_name");
-				string proc_cmd = Config::getS("proc_command");
+				string proc_cmd = Config::getS("selected_cmd");
 				resolve_config(current_pid, proc_name, proc_cmd);
 
 				//? Start streaming based on source
