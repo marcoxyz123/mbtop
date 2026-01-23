@@ -1459,8 +1459,7 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 
 			//? Check for config file changes and reload process configs dynamically
 			if (Config::check_config_changed()) {
-				//? Sync filter_tagged from config
-				Proc::filter_tagged = Config::getB("proc_filter_tagged");
+				//? Note: proc_filter_tagged is session-only, NOT synced from config
 				Proc::redraw = true;
 				//? Refresh Logs config for current process (updates app_log_available)
 				Logs::refresh_config();
