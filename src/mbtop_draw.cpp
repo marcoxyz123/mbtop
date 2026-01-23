@@ -3886,14 +3886,14 @@ namespace Proc {
 				    mouse_x += 8;
 				}
 
-				//? Log config button: [Log◉◉] with availability dots
+				//? Log config button: [Log◉◉] with availability dots (green=Sys, red=App)
 				if (width > 93) {
 				    auto log_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
 				    bool has_app_log = log_cfg.has_value() && log_cfg->has_logging();
 				    
 				    out += title_left + Fx::b + hi_color + 'L' + t_color + "og"
-				    	+ Theme::c("main_fg") + "◉"  //? System always available
-				    	+ (has_app_log ? Theme::c("main_fg") : Theme::c("inactive_fg")) + "◉"
+				    	+ Theme::c("log_debug_plus") + "◉"  //? System always available (green)
+				    	+ (has_app_log ? Theme::c("log_fault") : Theme::c("inactive_fg")) + "◉"  //? App (red if available)
 				    	+ Fx::ub + title_right;
 				    if (alive and selected == 0) {
 				        Input::mouse_mappings["L"] = {d_y, mouse_x, 1, 7};
