@@ -5156,7 +5156,7 @@ namespace Logs {
 		string out;
 
 		const int modal_w = 52;
-		const int modal_h = 16;
+		const int modal_h = 15;
 		const int modal_x = x + (width - modal_w) / 2;
 		const int modal_y = y + (height - modal_h) / 2;
 
@@ -5230,14 +5230,9 @@ namespace Logs {
 		}
 		row_y++;
 
-		//? Color labels
+		//? Selection indicator (below colors)
 		if (config_modal_tagged) {
-			out += Mv::to(row_y, modal_x + 11);
-			for (size_t i = 0; i < 5; i++) {
-				out += theme("main_fg") + string(TagColors::names[i]) + " ";
-			}
-			//? Selection indicator
-			out += Mv::to(row_y + 1, modal_x + 11 + config_modal_color_idx * 3);
+			out += Mv::to(row_y, modal_x + 11 + config_modal_color_idx * 3);
 			out += theme("hi_fg") + "▲";
 		}
 		row_y += 2;
