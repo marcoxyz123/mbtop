@@ -3886,21 +3886,6 @@ namespace Proc {
 				    mouse_x += 8;
 				}
 
-				//? Quick tag button: (●)██ or (○)██ - radio button + color preview
-				if (width > 85) {
-				    auto tag_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
-				    bool is_tagged = tag_cfg.has_value() && tag_cfg->has_tagging();
-				    string tag_preview_color = is_tagged ? Theme::c(tag_cfg->tag_color) : Theme::c("inactive_fg");
-				    
-				    out += title_left + hi_color + (is_tagged ? "(●)" : "(○)")
-				    	+ tag_preview_color + "██" + Fx::reset + title_right;
-				    if (alive and selected == 0) {
-				        Input::mouse_mappings["proc_tag_toggle"] = {d_y, mouse_x + 1, 1, 3};
-				        Input::mouse_mappings["proc_tag_color"] = {d_y, mouse_x + 4, 1, 2};
-				    }
-				    mouse_x += 8;
-				}
-
 				//? Log config button: [Log◉◉] with availability dots
 				if (width > 93) {
 				    auto log_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
@@ -4228,7 +4213,7 @@ namespace Proc {
 				+ Theme::c("proc_misc") + detailed_mem_graph(detailed.mem_bytes, (redraw or data_same or not alive)) + ' '
 				+ Theme::c("title") + Fx::b + detailed.memory;
 
-			//? Tag control: "Tag [x] ██" after memory value
+			//? Tag control: "Tag [●] ██" after memory value
 			{
 				auto tag_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
 				bool is_tagged = tag_cfg.has_value() && tag_cfg->has_tagging();
@@ -4241,8 +4226,8 @@ namespace Proc {
 				out += Mv::to(tag_y, tag_x);
 				out += Theme::c("main_fg") + "Tag ";
 				
-				//? Checkbox
-				out += Theme::c("hi_fg") + "[" + (is_tagged ? "x" : " ") + "]";
+				//? Checkbox with dot indicator
+				out += Theme::c("hi_fg") + "[" + (is_tagged ? "●" : " ") + "]";
 				Input::mouse_mappings["proc_tag_toggle"] = {tag_y, tag_x + 4, 1, 3};
 				
 				//? Color swatch
