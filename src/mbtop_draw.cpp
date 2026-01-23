@@ -4353,9 +4353,9 @@ namespace Proc {
 				if (tag_cfg->has_tagging()) {
 					string tag_color_str = Theme::c(tag_cfg->tag_color);
 					if (Config::getS("proc_tag_mode") == "line" and not is_selected and not is_followed) {
-						//? Line mode: use dim tag color for entire line (skip for selected/followed rows)
-						tag_bg_start = tag_color_str + Fx::d;
-						tag_bg_end = Fx::ud + Theme::c("main_fg");
+						//? Line mode: override ALL line colors with tag color (skip for selected/followed rows)
+						g_color = c_color = m_color = t_color = gp_color = tag_color_str;
+						end = Theme::c("main_fg") + Fx::ub;
 					} else {
 						//? Name mode: always override program name color (even when selected/followed)
 						c_color = tag_color_str + Fx::b;
