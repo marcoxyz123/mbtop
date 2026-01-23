@@ -5050,6 +5050,7 @@ namespace Logs {
 			//? Use saved command pattern (may include wildcards)
 			if (!cfg->command.empty()) {
 				config_modal_cmdline = cfg->command;
+				config_modal_original_cmd = cfg->command;  //? Track original pattern for removal
 			}
 			config_modal_display = cfg->display_name;
 			config_modal_path = cfg->log_path;
