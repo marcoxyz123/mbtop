@@ -1592,11 +1592,12 @@ namespace Config {
 		}
 	}
 
-	void write_toml() {
+	void write_toml(bool force_process_config) {
 		if (toml_file.empty()) return;
 
 		// Check permissions for secondary instances
-		if (another_instance_running && getB("prevent_autosave")) {
+		// Exception: process config changes (tagging) are always allowed to write
+		if (!force_process_config && another_instance_running && getB("prevent_autosave")) {
 			Logger::debug("Skipping TOML write - secondary instance with prevent_autosave enabled");
 			return;
 		}
@@ -1797,7 +1798,7 @@ namespace Config {
 				} else {
 					cfg.compiled_pattern = std::nullopt;
 				}
-				write_toml();
+				write_toml(true);  //? Force write - process configs always persist
 				return;
 			}
 		}
@@ -1812,7 +1813,7 @@ namespace Config {
 			}
 		}
 		logging.processes.push_back(std::move(new_cfg));
-		write_toml();
+		write_toml(true);  //? Force write - process configs always persist
 	}
 
 	void remove_process_config(const string& name, const string& command) {
@@ -1823,7 +1824,7 @@ namespace Config {
 			});
 		if (it != logging.processes.end()) {
 			logging.processes.erase(it);
-			write_toml();
+			write_toml(true);  //? Force write - process configs always persist
 		}
 	}
 

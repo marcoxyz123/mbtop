@@ -192,7 +192,8 @@ namespace Config {
 	void load_toml(const std::filesystem::path& toml_file, vector<string>& load_warnings);
 
 	// Write config to TOML file
-	void write_toml();
+	// force_process_config: if true, bypass secondary instance check (for process tagging)
+	void write_toml(bool force_process_config = false);
 
 	// Ensure default mbtop process config exists
 	void ensure_default_mbtop_config();
