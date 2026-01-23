@@ -5062,17 +5062,20 @@ namespace Logs {
 					Config::save_process_config(cfg);
 					config_modal_active = false;
 					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
 					return true;
 				} else if (btn_idx == 1) {
 					//? Remove
 					Config::remove_process_config(config_modal_name);
 					config_modal_active = false;
 					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
 					return true;
 				} else {
 					//? Cancel
 					config_modal_active = false;
 					redraw = true;
+					Proc::redraw = true;  //? Refresh display
 					return true;
 				}
 			}
@@ -5187,17 +5190,20 @@ namespace Logs {
 					Config::save_process_config(cfg);
 					config_modal_active = false;
 					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
 					return true;
 				} else if (config_modal_button == 1) {
 					//? Remove
 					Config::remove_process_config(config_modal_name);
 					config_modal_active = false;
 					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
 					return true;
 				} else {
 					//? Cancel
 					config_modal_active = false;
 					redraw = true;
+					Proc::redraw = true;  //? Refresh display
 					return true;
 				}
 			}
