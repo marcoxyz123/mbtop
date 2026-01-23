@@ -6815,8 +6815,8 @@ namespace Draw {
 				if (logs_below) {
 					//? Horizontal split: Logs below Proc - proportional 50/50 split
 					int total_height = Proc::height;
-					int logs_height = total_height / 2;  //? Start with 50% each
-					int proc_height = total_height - logs_height;
+					int proc_height = total_height / 2;  //? Proc gets half (integer division)
+					int logs_height = total_height - proc_height;  //? Logs gets remainder (extra line if odd)
 
 					//? Ensure both panels get at least their minimum height
 					if (proc_height < Proc::min_height) {
