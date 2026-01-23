@@ -216,30 +216,20 @@ def remove_process_config(name: str, command: str) -> str:
 @mcp.tool()
 def set_filter_tagged(enabled: bool) -> str:
     """
-    Enable or disable the tagged process filter in mbtop.
-    When enabled, mbtop only shows tagged processes.
+    NOTE: The tagged filter is now session-only and cannot be controlled via MCP.
+    Use the 'a' key in mbtop to toggle the filter.
 
     Args:
         enabled: True to show only tagged processes, False to show all
 
     Returns:
-        Success message
+        Message explaining the filter is session-only
     """
-    try:
-        config = load_config()
-    except FileNotFoundError as e:
-        return str(e)
-
-    # Ensure process section exists
-    if "process" not in config:
-        config["process"] = tomlkit.table()
-
-    config["process"]["proc_filter_tagged"] = enabled
-
-    save_config(config)
-
-    status = "enabled" if enabled else "disabled"
-    return f"Tagged filter {status}. mbtop will reload automatically."
+    return (
+        "The tagged filter is now session-only (v1.7.0+) and cannot be controlled via MCP. "
+        "Use the 'a' key in mbtop to toggle the filter. "
+        "This prevents tagging operations from accidentally enabling the filter."
+    )
 
 
 @mcp.tool()
@@ -279,9 +269,8 @@ def list_tagged_processes() -> str:
             line += f" cmd: {command[:50]}..."
         lines.append(line)
 
-    # Also show filter status
-    filter_enabled = config.get("process", {}).get("proc_filter_tagged", False)
-    lines.append(f"\nTagged filter: {'enabled' if filter_enabled else 'disabled'}")
+    # Note about filter
+    lines.append(f"\nTagged filter: session-only (use 'a' key in mbtop)")
 
     return "\n".join(lines)
 
@@ -308,7 +297,7 @@ def get_mbtop_status() -> str:
     Get the current mbtop configuration status.
 
     Returns:
-        Summary of mbtop config including tagged filter state and process count
+        Summary of mbtop config including process count
     """
     try:
         config = load_config()
@@ -317,13 +306,12 @@ def get_mbtop_status() -> str:
 
     processes = config.get("logging", {}).get("processes", [])
     tagged_count = len([p for p in processes if p.get("tagged", False)])
-    filter_enabled = config.get("process", {}).get("proc_filter_tagged", False)
 
     return f"""mbtop Status:
   Config path: {get_config_path()}
   Process configs: {len(processes)}
   Tagged processes: {tagged_count}
-  Tagged filter: {"enabled" if filter_enabled else "disabled"}"""
+  Tagged filter: session-only (use 'a' key in mbtop)"""
 
 
 def main():
