@@ -4336,18 +4336,16 @@ namespace Proc {
 			//? Check for process tagging
 			string tag_bg_start;
 			string tag_bg_end;
-			if (not is_selected and not is_followed) {
-				if (auto tag_cfg = Config::find_process_config(p.name, p.cmd)) {
-					if (tag_cfg->has_tagging()) {
-						string tag_color_str = Theme::c(tag_cfg->tag_color);
-						if (Config::getS("proc_tag_mode") == "line") {
-							// Line mode: use dim tag color for entire line
-							tag_bg_start = tag_color_str + Fx::d;
-							tag_bg_end = Fx::ud + Theme::c("main_fg");
-						} else {
-							// Name mode: override program name color
-							c_color = tag_color_str + Fx::b;
-						}
+			if (auto tag_cfg = Config::find_process_config(p.name, p.cmd)) {
+				if (tag_cfg->has_tagging()) {
+					string tag_color_str = Theme::c(tag_cfg->tag_color);
+					if (Config::getS("proc_tag_mode") == "line" and not is_selected and not is_followed) {
+						//? Line mode: use dim tag color for entire line (skip for selected/followed rows)
+						tag_bg_start = tag_color_str + Fx::d;
+						tag_bg_end = Fx::ud + Theme::c("main_fg");
+					} else {
+						//? Name mode: always override program name color (even when selected/followed)
+						c_color = tag_color_str + Fx::b;
 					}
 				}
 			}
