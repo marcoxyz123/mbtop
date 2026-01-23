@@ -5155,24 +5155,25 @@ namespace Logs {
 		const auto& theme = Theme::c;
 		string out;
 
-		const int modal_w = 52;
-		const int modal_h = 15;
+		const int modal_w = 54;
+		const int modal_h = 17;
 		const int modal_x = x + (width - modal_w) / 2;
 		const int modal_y = y + (height - modal_h) / 2;
+		const int pad_x = modal_x + 3;  //? Horizontal padding
 
 		//? Draw modal box
 		out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Process Log Config");
 
-		int row_y = modal_y + 2;
+		int row_y = modal_y + 3;  //? Start with 1 row padding after title
 
 		//? Process info (read-only)
-		out += Mv::to(row_y, modal_x + 2);
+		out += Mv::to(row_y, pad_x);
 		out += theme("inactive_fg") + "Process: " + theme("main_fg") + config_modal_name;
 		row_y += 2;
 
 		//? Display Name field
 		int display_row = row_y;
-		out += Mv::to(row_y, modal_x + 2);
+		out += Mv::to(row_y, pad_x);
 		bool field_sel = (config_modal_field == 0);
 		out += theme("main_fg") + "Display: ";
 		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
@@ -5180,12 +5181,12 @@ namespace Logs {
 			(config_modal_display + (field_sel ? "_" : "") + string(max(0, 25 - static_cast<int>(config_modal_display.length())), ' '));
 		out += "[" + disp_text.substr(0, 25) + "]";
 		out += Fx::reset;
-		Input::mouse_mappings["config_field_0"] = {display_row, modal_x + 11, 1, 27};
+		Input::mouse_mappings["config_field_0"] = {display_row, pad_x + 9, 1, 27};
 		row_y++;
 
 		//? Log Path field
 		int logpath_row = row_y;
-		out += Mv::to(row_y, modal_x + 2);
+		out += Mv::to(row_y, pad_x);
 		field_sel = (config_modal_field == 1);
 		out += theme("main_fg") + "LogPath: ";
 		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
@@ -5193,23 +5194,23 @@ namespace Logs {
 			(config_modal_path + (field_sel ? "_" : "") + string(max(0, 35 - static_cast<int>(config_modal_path.length())), ' '));
 		out += "[" + path_text.substr(0, 35) + "]";
 		out += Fx::reset;
-		Input::mouse_mappings["config_field_1"] = {logpath_row, modal_x + 11, 1, 37};
+		Input::mouse_mappings["config_field_1"] = {logpath_row, pad_x + 9, 1, 37};
 		row_y += 2;
 
 		//? Tagged checkbox
 		int tagged_row = row_y;
-		out += Mv::to(row_y, modal_x + 2);
+		out += Mv::to(row_y, pad_x);
 		field_sel = (config_modal_field == 2);
-		out += theme("main_fg") + "Tagged: ";
+		out += theme("main_fg") + "Tagged:  ";
 		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
 		out += "[" + string(config_modal_tagged ? "x" : " ") + "]";
 		out += Fx::reset + theme("inactive_fg") + " (highlight in list)";
-		Input::mouse_mappings["config_field_2"] = {tagged_row, modal_x + 10, 1, 3};
+		Input::mouse_mappings["config_field_2"] = {tagged_row, pad_x + 9, 1, 3};
 		row_y += 2;
 
 		//? Color selection (only if tagged)
 		int color_row = row_y;
-		out += Mv::to(row_y, modal_x + 2);
+		out += Mv::to(row_y, pad_x);
 		field_sel = (config_modal_field == 3);
 		out += theme("main_fg") + "Color:   ";
 		if (!config_modal_tagged) {
@@ -5223,8 +5224,8 @@ namespace Logs {
 				bool color_sel = field_sel && (static_cast<int>(i) == config_modal_color_idx);
 				if (color_sel) out += theme("selected_bg");
 				out += theme(TagColors::themes[i]) + "██" + Fx::reset + " ";
-				//? Mouse mapping for each color: 2 chars wide + 1 space, starting at modal_x + 11
-				Input::mouse_mappings["config_color_" + to_string(i)] = {color_row, modal_x + 11 + static_cast<int>(i) * 3, 1, 2};
+				//? Mouse mapping for each color: 2 chars wide + 1 space
+				Input::mouse_mappings["config_color_" + to_string(i)] = {color_row, pad_x + 9 + static_cast<int>(i) * 3, 1, 2};
 			}
 			out += theme("inactive_fg") + "(1-5)";
 		}
@@ -5232,16 +5233,16 @@ namespace Logs {
 
 		//? Selection indicator (below colors)
 		if (config_modal_tagged) {
-			out += Mv::to(row_y, modal_x + 11 + config_modal_color_idx * 3);
+			out += Mv::to(row_y, pad_x + 9 + config_modal_color_idx * 3);
 			out += theme("hi_fg") + "▲";
 		}
 		row_y += 2;
 
 		//? Buttons
-		int btn_row = modal_y + modal_h - 3;
-		out += Mv::to(btn_row, modal_x + 4);
+		int btn_row = modal_y + modal_h - 4;
+		out += Mv::to(btn_row, pad_x + 1);
 		const array<string, 3> buttons = {"Save", "Remove", "Cancel"};
-		int btn_x = modal_x + 4;
+		int btn_x = pad_x + 1;
 		for (size_t i = 0; i < 3; i++) {
 			bool btn_sel = (config_modal_field == 4 && config_modal_button == static_cast<int>(i));
 			if (btn_sel) {
@@ -5257,7 +5258,7 @@ namespace Logs {
 		}
 
 		//? Instructions
-		out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
+		out += Mv::to(modal_y + modal_h - 2, pad_x);
 		out += theme("inactive_fg") + "Tab:Next  Enter:Select  Esc:Cancel  Click:Select";
 
 		return out;
