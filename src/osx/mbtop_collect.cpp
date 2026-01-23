@@ -2786,6 +2786,20 @@ namespace Logs {
 			redraw = true;
 		}
 
+		//? Handle source toggle - restart the appropriate stream
+		if (source_changed) {
+			source_changed = false;
+			stop_stream();
+			stop_app_stream();
+			if (current_pid > 0 && !paused) {
+				if (source == Source::System) {
+					start_stream(current_pid);
+				} else if (source == Source::Application && app_log_available) {
+					start_app_stream();
+				}
+			}
+		}
+
 		//? Collect from appropriate source
 		if (source == Source::Application) {
 			collect_app_logs();

@@ -4718,6 +4718,7 @@ namespace Logs {
 
 	//=== Log Source State ===
 	Source source = Source::System;      //? Current source (default: System)
+	bool source_changed = false;         //? Flag to trigger stream restart on toggle
 	string app_log_path;                 //? Path to application log file
 	bool app_log_available = false;      //? Whether app log exists/readable
 	string custom_display_name;          //? Display name from config
@@ -4775,6 +4776,7 @@ namespace Logs {
 	void toggle_source() {
 		if (!app_log_available) return;  //? Can't switch if no app log
 		source = (source == Source::System) ? Source::Application : Source::System;
+		source_changed = true;  //? Signal collect() to restart the stream
 		entries.clear();  //? Clear buffer on source change
 		scroll_offset = 0;
 		redraw = true;

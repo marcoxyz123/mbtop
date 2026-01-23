@@ -629,6 +629,7 @@ namespace Logs {
 	};
 
 	extern Source source;              //? Current log source (default: System)
+	extern bool source_changed;        //? Flag to trigger stream restart on source toggle
 	extern string app_log_path;        //? Path to application log file
 	extern bool app_log_available;     //? Whether app log exists/readable
 	extern string custom_display_name; //? Display name from config (optional)
