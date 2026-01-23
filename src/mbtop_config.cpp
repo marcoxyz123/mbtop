@@ -326,7 +326,7 @@ namespace Config {
 
 		{"show_battery_watts",	"#* Show power stats of battery next to charge indicator."},
 
-		{"log_level", 			"#* Set loglevel for \"~/.local/state/mbtop.log\" levels are: \"ERROR\" \"WARNING\" \"INFO\" \"DEBUG\".\n"
+		{"log_level", 			"#* Set loglevel for \"~/.config/mbtop/mbtop.log\" levels are: \"ERROR\" \"WARNING\" \"INFO\" \"DEBUG\".\n"
 								"#* The level set includes all lower levels, i.e. \"DEBUG\" will show all logging info."},
 		{"save_config_on_exit",  "#* Automatically save current settings to config file on exit."},
 
@@ -1341,34 +1341,12 @@ namespace Config {
 		}
 	}
 
-	static auto get_xdg_state_dir() -> std::optional<fs::path> {
-		std::optional<fs::path> xdg_state_home;
-
-		{
-			const auto* xdg_state_home_ptr = std::getenv("XDG_STATE_HOME");
-			if (xdg_state_home_ptr != nullptr) {
-				xdg_state_home = std::make_optional(fs::path(xdg_state_home_ptr));
-			} else {
-				const auto* home_ptr = std::getenv("HOME");
-				if (home_ptr != nullptr) {
-					xdg_state_home = std::make_optional(fs::path(home_ptr) / ".local" / "state");
-				}
-			}
-		}
-
-		if (xdg_state_home.has_value()) {
-			std::error_code err;
-			fs::create_directories(xdg_state_home.value(), err);
-			if (err) {
-				return std::nullopt;
-			}
-			return xdg_state_home;
-		}
-		return std::nullopt;
-	}
-
 	auto get_log_file() -> std::optional<fs::path> {
-		return get_xdg_state_dir().transform([](auto&& state_home) -> auto { return state_home / "mbtop.log"; });
+		//? Use config directory for log file (~/.config/mbtop/mbtop.log)
+		if (conf_dir.empty()) {
+			return std::nullopt;
+		}
+		return conf_dir / "mbtop.log";
 	}
 
 	auto current_config() -> std::string {
