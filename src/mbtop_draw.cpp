@@ -3888,12 +3888,9 @@ namespace Proc {
 
 				//? Log config button: [Log◉◉] with availability dots (green=Sys, red=App)
 				if (width > 93) {
-				    auto log_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
-				    bool has_app_log = log_cfg.has_value() && log_cfg->has_logging();
-				    
 				    out += title_left + Fx::b + hi_color + 'L' + t_color + "og"
 				    	+ Theme::c("log_debug_plus") + "◉"  //? System always available (green)
-				    	+ (has_app_log ? Theme::c("log_fault") : Theme::c("inactive_fg")) + "◉"  //? App (red if available)
+				    	+ (Logs::app_log_available ? Theme::c("log_fault") : Theme::c("inactive_fg")) + "◉"  //? App (red if available)
 				    	+ Fx::ub + title_right;
 				    if (alive and selected == 0) {
 				        Input::mouse_mappings["L"] = {d_y, mouse_x, 1, 7};
@@ -4792,6 +4789,13 @@ namespace Logs {
 	//=== Source Management Functions ===
 
 	void toggle_source() {
+		//? Re-check if app log file exists (it might have been created since resolve_config)
+		if (!app_log_path.empty() && !app_log_available) {
+			std::error_code ec;
+			if (fs::exists(app_log_path, ec) && !ec) {
+				app_log_available = true;
+			}
+		}
 		if (!app_log_available) return;  //? Can't switch if no app log
 		source = (source == Source::System) ? Source::Application : Source::System;
 		source_changed = true;  //? Signal collect() to restart the stream
