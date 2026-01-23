@@ -5583,8 +5583,8 @@ namespace Logs {
 
 			//? Source indicator with availability dots (format: S:Sys ◉◉)
 			{
-				//? Color dots: Aurora red for active source, gray for inactive
-				string sys_dot_color = (source == Source::System) ? theme("log_fault") : theme("inactive_fg");
+				//? Color dots: Green for System active, Red for App active, gray for inactive
+				string sys_dot_color = (source == Source::System) ? theme("log_debug_plus") : theme("inactive_fg");
 				string app_dot_color = (source == Source::Application && app_log_available) 
 					? theme("log_fault") : theme("inactive_fg");
 
