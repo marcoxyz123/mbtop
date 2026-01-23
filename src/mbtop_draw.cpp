@@ -5156,7 +5156,7 @@ namespace Logs {
 		string out;
 
 		const int modal_w = 54;
-		const int modal_h = 17;
+		const int modal_h = 18;
 		const int modal_x = x + (width - modal_w) / 2;
 		const int modal_y = y + (height - modal_h) / 2;
 		const int pad_x = modal_x + 3;  //? Horizontal padding
@@ -5231,15 +5231,16 @@ namespace Logs {
 		}
 		row_y++;
 
-		//? Selection indicator (below colors)
+		//? Selection indicator (centered below selected color)
 		if (config_modal_tagged) {
-			out += Mv::to(row_y, pad_x + 9 + config_modal_color_idx * 3);
+			//? Each color is "██ " (2 chars + space = 3 total), center triangle under the 2-char block
+			out += Mv::to(row_y, pad_x + 10 + config_modal_color_idx * 3);
 			out += theme("hi_fg") + "▲";
 		}
 		row_y += 2;
 
-		//? Buttons
-		int btn_row = modal_y + modal_h - 4;
+		//? Buttons (with extra space below before instructions)
+		int btn_row = modal_y + modal_h - 5;
 		out += Mv::to(btn_row, pad_x + 1);
 		const array<string, 3> buttons = {"Save", "Remove", "Cancel"};
 		int btn_x = pad_x + 1;
