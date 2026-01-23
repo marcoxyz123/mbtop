@@ -224,6 +224,24 @@ namespace Input {
 	void process(const std::string_view key) {
 		if (key.empty()) return;
 		try {
+			//? Handle Logs modals FIRST - they must capture ALL input before global handlers
+			if (Logs::config_modal_active) {
+				Logs::config_modal_input(key);
+				Runner::run("all", true, true);
+				return;
+			}
+			if (Logs::color_modal_active) {
+				if (Logs::color_modal_input(key)) {
+					Runner::run("all", true, true);
+					return;
+				}
+			}
+			if (Logs::error_modal_active) {
+				Logs::error_modal_input(key);
+				Runner::run("all", true, true);
+				return;
+			}
+
 			auto filtering = Config::getB("proc_filtering");
 			auto vim_keys = Config::getB("vim_keys");
 			auto help_key = (vim_keys ? "H" : "h");
@@ -556,27 +574,8 @@ namespace Input {
 				bool keep_going = false;
 				bool redraw = true;
 
-				//? Handle error modal input first - any key closes it
-				if (Logs::error_modal_active) {
-					Logs::error_modal_input(key);
-					Runner::run("all", true, true);
-					return;
-				}
-
-				//? Handle color picker modal input if active
-				if (Logs::color_modal_active) {
-					if (Logs::color_modal_input(key)) {
-						Runner::run("all", true, true);
-						return;
-					}
-				}
-
-				//? Handle config modal input if active - consume ALL keys when modal is open
-				if (Logs::config_modal_active) {
-					Logs::config_modal_input(key);
-					Runner::run("all", true, true);
-					return;  //? Always return - modal captures all input
-				}
+				//? Note: config_modal, color_modal, error_modal are now handled at the top of process()
+				//? to ensure they capture input before global handlers (like 'o' for Options menu)
 
 				//? Handle filter modal input if active
 				if (Logs::filter_modal_active) {
