@@ -1620,8 +1620,7 @@ namespace Config {
 			auto is_session_only = [](const std::string_view key) {
 				return key == "show_detailed" || key == "detailed_pid" || 
 				       key == "proc_selected" || key == "selected_pid" ||
-				       key == "followed_pid" || key == "proc_followed" ||
-				       key == "proc_filter_tagged";  //? Tagged filter is session-only
+				       key == "followed_pid" || key == "proc_followed";
 			};
 
 			// Write all config values to sections
@@ -1909,7 +1908,12 @@ namespace Config {
 				}
 			}
 			
-			//? Note: proc_filter_tagged is session-only, not loaded from config
+			//? Reload proc_filter_tagged setting
+			if (auto proc_section = root["process"].as_table()) {
+				if (auto val = (*proc_section)["proc_filter_tagged"].value<bool>()) {
+					bools.at("proc_filter_tagged") = *val;
+				}
+			}
 			
 			Logger::info("Reloaded {} process configs", logging.processes.size());
 			

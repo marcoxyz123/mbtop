@@ -1459,8 +1459,10 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 
 			//? Check for config file changes and reload process configs dynamically
 			if (Config::check_config_changed()) {
-				//? Only trigger redraws for panels that are actually shown
+				//? Only trigger redraws/syncs for panels that are actually shown
 				if (Proc::shown) {
+					//? Sync filter_tagged from config (only for instances showing PROC)
+					Proc::filter_tagged = Config::getB("proc_filter_tagged");
 					Proc::redraw = true;
 					if (not Menu::active and not Runner::active) {
 						Runner::run("proc", false, true);
