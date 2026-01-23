@@ -1610,18 +1610,28 @@ namespace Config {
 				root[section].as_table()->insert(key, value);
 			};
 
+			//? Session-only settings that should NOT be persisted
+			auto is_session_only = [](const std::string_view key) {
+				return key == "show_detailed" || key == "detailed_pid" || 
+				       key == "proc_selected" || key == "selected_pid" ||
+				       key == "followed_pid" || key == "proc_followed";
+			};
+
 			// Write all config values to sections
 			for (const auto& [key, value] : strings) {
+				if (is_session_only(key)) continue;
 				string section = get_section_for_key(string(key));
 				add_to_section(section, string(key), value);
 			}
 
 			for (const auto& [key, value] : bools) {
+				if (is_session_only(key)) continue;
 				string section = get_section_for_key(string(key));
 				add_to_section(section, string(key), value);
 			}
 
 			for (const auto& [key, value] : ints) {
+				if (is_session_only(key)) continue;
 				string section = get_section_for_key(string(key));
 				add_to_section(section, string(key), static_cast<int64_t>(value));
 			}
