@@ -5234,7 +5234,7 @@ namespace Logs {
 		string out;
 
 		const int modal_w = 54;
-		const int modal_h = 18;
+		const int modal_h = 19;  //? +1 for command line
 
 		//? Use Proc panel coordinates for modal position
 		//? This allows the modal to work even when Logs panel is not shown
@@ -5255,6 +5255,12 @@ namespace Logs {
 		//? Process info (read-only)
 		out += Mv::to(row_y, pad_x);
 		out += theme("inactive_fg") + "Process: " + theme("main_fg") + config_modal_name;
+		row_y++;
+		//? Command line (truncated to fit modal width)
+		out += Mv::to(row_y, pad_x);
+		string cmd_display = config_modal_cmdline.empty() ? "(no command)" : config_modal_cmdline;
+		if (cmd_display.length() > 45) cmd_display = cmd_display.substr(0, 42) + "...";
+		out += theme("inactive_fg") + "Command: " + theme("main_fg") + cmd_display;
 		row_y += 2;
 
 		//? Display Name field
