@@ -5329,7 +5329,7 @@ namespace Logs {
 		string out;
 
 		const int modal_w = 54;
-		const int modal_h = 19;  //? +1 for command line
+		const int modal_h = 20;  //? +2 for command field with hint
 
 		//? Use Proc panel coordinates for modal position
 		//? This allows the modal to work even when Logs panel is not shown
@@ -5373,8 +5373,11 @@ namespace Logs {
 		}
 		out += "[" + cmd_text.substr(0, 36) + "]";
 		out += Fx::reset;
-		if (field_sel) out += theme("inactive_fg") + " (use * for wildcard)";
 		Input::mouse_mappings["config_field_0"] = {cmd_row, pad_x + 9, 1, 37};
+		row_y++;
+		//? Hint below command field
+		out += Mv::to(row_y, pad_x + 9);
+		out += theme("inactive_fg") + "(use * for wildcard)";
 		row_y += 2;
 
 		//? Display Name field
