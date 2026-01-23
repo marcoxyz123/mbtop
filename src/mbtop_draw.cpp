@@ -5761,12 +5761,12 @@ namespace Logs {
 					//? Compact: S:S or S:A with dots
 					out += hi + "S" + fg + ":" + (source == Source::System ? "S" : "A") + " ";
 					out += sys_dot_color + "●" + app_dot_color + (app_log_available ? "●" : "○") + fg + " ";
-					cur_x += 8;  //? "S:S ●○ " = 8 chars
+					cur_x += 7;  //? "S:S ●○ " = 7 chars (S:S =3, space=1, ●○=2, space=1)
 				} else {
 					//? Full: S:Sys or S:App with dots
 					out += hi + "S" + fg + ":" + (source == Source::System ? "Sys" : "App") + " ";
 					out += sys_dot_color + "●" + app_dot_color + (app_log_available ? "●" : "○") + fg + " ";
-					cur_x += 10;  //? "S:Sys ●○ " = 10 chars
+					cur_x += 9;  //? "S:Sys ●○ " = 9 chars (S:Sys=5, space=1, ●○=2, space=1)
 				}
 				//? Add mouse mapping for source toggle
 				Input::mouse_mappings["logs_source"] = {status_y, src_start_x, 1, compact ? 3 : 5};
