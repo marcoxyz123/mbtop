@@ -869,6 +869,12 @@ namespace Input {
 				else if (key == "delete" and not Config::getS("proc_filter").empty())
 					Config::set("proc_filter", ""s);
 
+				//? Toggle tagged filter when clicking on the indicator
+				else if (key == "proc_tagged_filter") {
+					Proc::filter_tagged = not Proc::filter_tagged;
+					no_update = false;
+				}
+
 				//? Copy PID to clipboard when clicking on it in process details
 				else if (key == "copy_pid" and Config::getB("show_detailed")) {
 					const string pid_str = to_string(Proc::detailed.entry.pid);

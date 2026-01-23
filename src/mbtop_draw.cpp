@@ -3943,6 +3943,17 @@ namespace Proc {
 				+ Theme::c("title") + (not filter_text.empty() ? ' ' + filter_text : "ilter")
 				+ (not filtering and not filter_text.empty() ? Theme::c("hi_fg") + " del" : "")
 				+ (filtering ? Theme::c("hi_fg") + ' ' + Symbols::enter : "") + Fx::ub + title_right;
+			
+			//? Calculate filter end position for tagged indicator
+			int filter_end_x = x + 10 + ind_offset;  //? Start after "┐f"
+			if (filter_text.empty()) {
+				filter_end_x += 6;  //? "ilter" + "┌"
+			} else {
+				filter_end_x += 1 + static_cast<int>(ulen(filter_text));  //? " " + text
+				if (not filtering) filter_end_x += 4;  //? " del"
+			}
+			filter_end_x += 1;  //? closing bracket
+			
 			if (not filtering) {
 				int f_len = (filter_text.empty() ? 6 : ulen(filter_text) + 2);
 				Input::mouse_mappings["f"] = {y, x + 10 + ind_offset, 1, f_len};
@@ -3950,6 +3961,12 @@ namespace Proc {
 					Input::mouse_mappings.erase("delete");
 				else if (not filter_text.empty())
 					Input::mouse_mappings["delete"] = {y, x + 11 + ind_offset + f_len, 1, 3};
+			}
+
+			//? Tagged filter indicator (next to filter)
+			if (filter_tagged) {
+				out += Mv::to(y, filter_end_x) + title_left + Fx::b + Theme::c("hi_fg") + "T" + Theme::c("title") + "agged" + Fx::ub + title_right;
+				Input::mouse_mappings["proc_tagged_filter"] = {y, filter_end_x + 1, 1, 6};
 			}
 
 			//? pause, per-core, reverse, tree and sorting
