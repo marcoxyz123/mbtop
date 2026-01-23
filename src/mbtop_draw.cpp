@@ -3944,7 +3944,7 @@ namespace Proc {
 				+ (not filtering and not filter_text.empty() ? Theme::c("hi_fg") + " del" : "")
 				+ (filtering ? Theme::c("hi_fg") + ' ' + Symbols::enter : "") + Fx::ub + title_right;
 			
-			//? Calculate filter end position for tagged indicator
+			//? Calculate filter end position for tagged button
 			int filter_end_x = x + 10 + ind_offset;  //? Start after "┐f"
 			if (filter_text.empty()) {
 				filter_end_x += 6;  //? "ilter" + "┌"
@@ -3963,11 +3963,10 @@ namespace Proc {
 					Input::mouse_mappings["delete"] = {y, x + 11 + ind_offset + f_len, 1, 3};
 			}
 
-			//? Tagged filter indicator (next to filter)
-			if (filter_tagged) {
-				out += Mv::to(y, filter_end_x) + title_left + Fx::b + Theme::c("hi_fg") + "T" + Theme::c("title") + "agged" + Fx::ub + title_right;
-				Input::mouse_mappings["proc_tagged_filter"] = {y, filter_end_x + 1, 1, 6};
-			}
+			//? Tagged filter button (next to filter, 'a' hotkey)
+			out += Mv::to(y, filter_end_x) + title_left + (filter_tagged ? Fx::b : "") + Theme::c("title") + "t"
+				+ Theme::c("hi_fg") + 'a' + Theme::c("title") + "gged" + Fx::ub + title_right;
+			Input::mouse_mappings["a"] = {y, filter_end_x + 1, 1, 6};
 
 			//? pause, per-core, reverse, tree and sorting
 			const auto& sorting = Config::getS("proc_sorting");
@@ -3990,11 +3989,6 @@ namespace Proc {
 				out += Mv::to(y, sort_pos - 22) + title_left + (Config::getB("proc_reversed") ? Fx::b : "") + Theme::c("hi_fg")
 					+ 'r' + Theme::c("title") + "everse" + Fx::ub + title_right;
 				Input::mouse_mappings["r"] = {y, sort_pos - 21, 1, 7};
-			}
-			if (width > 45 + sort_len) {
-				out += Mv::to(y, sort_pos - 13) + title_left + (filter_tagged ? Fx::b : "") + Theme::c("title") + "t"
-					+ Theme::c("hi_fg") + 'a' + Theme::c("title") + "gged" + Fx::ub + title_right;
-				Input::mouse_mappings["a"] = {y, sort_pos - 12, 1, 6};
 			}
 			if (width > 35 + sort_len) {
 				out += Mv::to(y, sort_pos - 6) + title_left + (Config::getB("proc_tree") ? Fx::b : "") + Theme::c("title") + "tre"
@@ -4248,7 +4242,7 @@ namespace Proc {
 				Input::mouse_mappings["proc_tag_toggle"] = {tag_y, tag_x + 4, 1, 3};
 				
 				//? Color swatch
-				out += " " + Theme::c(tag_color_name) + "██";
+				out += " " + Theme::c_safe(tag_color_name) + "██";
 				Input::mouse_mappings["proc_tag_color"] = {tag_y, tag_x + 8, 1, 2};
 				out += Fx::reset;
 			}
@@ -4368,7 +4362,7 @@ namespace Proc {
 					display_name = tag_cfg->display_name;
 				}
 				if (tag_cfg->has_tagging()) {
-					string tag_color_str = Theme::c(tag_cfg->tag_color);
+					string tag_color_str = Theme::c_safe(tag_cfg->tag_color);
 					if (Config::getS("proc_tag_mode") == "line" and not is_selected and not is_followed) {
 						//? Line mode: override ALL line colors with tag color (skip for selected/followed rows)
 						g_color = c_color = m_color = t_color = gp_color = tag_color_str;
