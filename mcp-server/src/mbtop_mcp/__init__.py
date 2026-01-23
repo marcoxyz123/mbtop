@@ -188,6 +188,90 @@ def untag_process(name: str, command: str) -> str:
 
 
 @mcp.tool()
+def set_process_log(name: str, command: str, log_path: str) -> str:
+    """
+    Set or update the log file path for a process.
+
+    This configures which application log file mbtop should read when viewing
+    logs for this process (when switching to 'application' log source with 'S' key).
+
+    Args:
+        name: Process name (e.g., "python", "node", "nginx")
+        command: Full command line to match (REQUIRED - e.g., "node server.js")
+        log_path: Path to the log file (e.g., "/var/log/myapp.log", "~/logs/app.log")
+
+    Returns:
+        Success or error message
+    """
+    if not command:
+        return "Error: 'command' is required"
+    if not log_path:
+        return "Error: 'log_path' is required"
+
+    try:
+        config = load_config()
+    except FileNotFoundError as e:
+        return str(e)
+
+    # Ensure logging.processes exists
+    if "logging" not in config:
+        config["logging"] = tomlkit.table()
+    if "processes" not in config["logging"]:
+        config["logging"]["processes"] = tomlkit.aot()
+
+    idx, existing = find_process_config(config, name, command)
+
+    if existing is not None:
+        # Update existing config
+        existing["log_path"] = log_path
+    else:
+        # Create new process config (minimal - just name, command, log_path)
+        proc = tomlkit.table()
+        proc["name"] = name
+        proc["command"] = command
+        proc["log_path"] = log_path
+        config["logging"]["processes"].append(proc)
+
+    save_config(config)
+    return (
+        f"Set log path for '{name}' to '{log_path}'. mbtop will reload automatically."
+    )
+
+
+@mcp.tool()
+def remove_process_log(name: str, command: str) -> str:
+    """
+    Remove the log file configuration from a process.
+
+    Args:
+        name: Process name
+        command: Full command line to match (REQUIRED)
+
+    Returns:
+        Success or error message
+    """
+    if not command:
+        return "Error: 'command' is required"
+
+    try:
+        config = load_config()
+    except FileNotFoundError as e:
+        return str(e)
+
+    idx, existing = find_process_config(config, name, command)
+
+    if existing is None:
+        return f"No config found for process '{name}' with command '{command}'"
+
+    if "log_path" not in existing:
+        return f"Process '{name}' has no log_path configured"
+
+    del existing["log_path"]
+    save_config(config)
+    return f"Removed log path from '{name}'. mbtop will reload automatically."
+
+
+@mcp.tool()
 def remove_process_config(name: str, command: str) -> str:
     """
     Completely remove a process config from mbtop.
@@ -555,6 +639,29 @@ def set_log_level_filter(level: str = "all") -> str:
 
 
 @mcp.tool()
+def set_log_source(source: str = "system") -> str:
+    """
+    Set the log source in the Logs panel.
+
+    Args:
+        source: Log source - one of: "system" (unified log), "application" (app log file), or "toggle"
+
+    Returns:
+        Success or error message
+    """
+    valid_sources = ["system", "unified", "application", "app", "toggle"]
+    if source.lower() not in valid_sources:
+        return f"Error: Invalid source '{source}'. Valid sources: system, application, toggle"
+
+    result = send_socket_command({"cmd": "set_log_source", "source": source.lower()})
+
+    if result.get("status") == "ok":
+        return f"Log source set to '{source}'."
+    else:
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+
+@mcp.tool()
 def get_mbtop_live_state() -> str:
     """
     Get the current live state of mbtop via socket.
@@ -573,9 +680,12 @@ def get_mbtop_live_state() -> str:
         return f"Error: {result.get('message', 'Unknown error')}"
 
     # Format the state nicely
+    log_source = result.get("logs_source", "system")
+    app_log = "available" if result.get("app_log_available") else "not configured"
     return f"""mbtop Live State:
   Logs panel: {"shown" if result.get("logs_shown") else "hidden"}
   Logs position: {"below" if result.get("logs_below") else "beside"}
+  Logs source: {log_source} (app log: {app_log})
   Proc panel: {"shown" if result.get("proc_shown") else "hidden"}
   Current process: {result.get("current_name", "none")} (PID: {result.get("current_pid", 0)})
   Followed PID: {result.get("followed_pid", 0)}

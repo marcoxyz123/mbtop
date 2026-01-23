@@ -43,6 +43,7 @@ namespace Socket {
 		SelectProcess,      //? Select a process in the list
 		ActivateProcessLog, //? Select process AND show its log
 		SetLogFilter,       //? Set log filter text
+		SetLogSource,       //? Set log source (system/application)
 		GetState,           //? Query current state (returns JSON)
 	};
 
@@ -54,6 +55,7 @@ namespace Socket {
 		std::string process_name;
 		std::string process_command;
 		std::string filter_text;
+		std::string source_text;  //? "system" or "application"
 		int pid = 0;
 	};
 	extern CommandParams params;

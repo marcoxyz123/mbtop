@@ -108,6 +108,8 @@ namespace Socket {
 		string json = "{";
 		json += "\"logs_shown\": " + string(Logs::shown ? "true" : "false") + ", ";
 		json += "\"logs_below\": " + string(Config::getB("logs_below_proc") ? "true" : "false") + ", ";
+		json += "\"logs_source\": \"" + string(Logs::source == Logs::Source::System ? "system" : "application") + "\", ";
+		json += "\"app_log_available\": " + string(Logs::app_log_available ? "true" : "false") + ", ";
 		json += "\"proc_shown\": " + string(Proc::shown ? "true" : "false") + ", ";
 		json += "\"current_pid\": " + to_string(Logs::current_pid) + ", ";
 		json += "\"current_name\": \"" + Logs::current_name + "\", ";
@@ -198,6 +200,16 @@ namespace Socket {
 			command_pending.store(true);
 			Input::interrupt();
 			response = "{\"status\": \"ok\", \"message\": \"set_log_filter queued\"}";
+
+		} else if (cmd == "set_log_source") {
+			{
+				std::lock_guard<std::mutex> lock(params_mutex);
+				params.source_text = parse_json_value(request, "source");
+			}
+			pending_command.store(CommandType::SetLogSource);
+			command_pending.store(true);
+			Input::interrupt();
+			response = "{\"status\": \"ok\", \"message\": \"set_log_source queued\"}";
 
 		} else if (cmd == "get_state") {
 			// For get_state, we need to wait for main thread to generate response
@@ -485,6 +497,41 @@ namespace Socket {
 				Runner::run("all", false, true);
 
 				Logger::debug("Socket: Log filter set to: {}", filter);
+				break;
+			}
+
+			case CommandType::SetLogSource: {
+				// Set log source: "system" (unified log) or "application" (app log file)
+				string src = local_params.source_text;
+				std::transform(src.begin(), src.end(), src.begin(), ::tolower);
+
+				if (src == "system" || src == "unified") {
+					if (Logs::source != Logs::Source::System) {
+						Logs::source = Logs::Source::System;
+						Logs::source_changed = true;
+						Logs::entries.clear();
+						Logs::scroll_offset = 0;
+						Logs::redraw = true;
+					}
+					Logger::debug("Socket: Log source set to System");
+				} else if (src == "application" || src == "app") {
+					if (Logs::app_log_available && Logs::source != Logs::Source::Application) {
+						Logs::source = Logs::Source::Application;
+						Logs::source_changed = true;
+						Logs::entries.clear();
+						Logs::scroll_offset = 0;
+						Logs::redraw = true;
+						Logger::debug("Socket: Log source set to Application");
+					} else if (!Logs::app_log_available) {
+						Logger::warning("Socket: Cannot set source to Application - no app log configured");
+					}
+				} else if (src == "toggle") {
+					// Toggle between sources (like pressing 'S')
+					Logs::toggle_source();
+					Logger::debug("Socket: Log source toggled");
+				}
+
+				Runner::run("all", false, true);
 				break;
 			}
 
