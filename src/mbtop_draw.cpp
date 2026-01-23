@@ -5694,6 +5694,9 @@ namespace Logs {
 			int cur_x = x + 1;
 			bool compact = (width < 65);  //? Use compact buttons when narrow
 			
+			//? Clear status line before drawing (prevents ghosting on resize)
+			out += Mv::to(status_y, x + 1) + string(static_cast<size_t>(content_width), ' ');
+			
 			//? Build status line with colors and mouse mappings
 			out += Mv::to(status_y, cur_x);
 			
