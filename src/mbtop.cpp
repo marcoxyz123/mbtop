@@ -408,6 +408,9 @@ void init_config(bool low_color, std::optional<std::string>& filter) {
 		Config::write_new = true;
 	}
 
+	//? Ensure default mbtop process config exists (for new installs or migrated configs)
+	Config::ensure_default_mbtop_config();
+
 	//? Try to acquire instance lock
 	static bool lock_checked = false;
 	if (not lock_checked) {

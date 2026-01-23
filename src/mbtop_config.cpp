@@ -1686,6 +1686,22 @@ namespace Config {
 		}
 	}
 
+	void ensure_default_mbtop_config() {
+		//? Add default mbtop process config if not already configured
+		bool has_mbtop_config = rng::any_of(logging.processes, [](const ProcessLogConfig& cfg) {
+			return cfg.name == "mbtop";
+		});
+		if (!has_mbtop_config) {
+			ProcessLogConfig mbtop_cfg;
+			mbtop_cfg.name = "mbtop";
+			mbtop_cfg.display_name = "MBTOP";
+			mbtop_cfg.log_path = "~/.config/mbtop/mbtop.log";
+			mbtop_cfg.tagged = true;
+			mbtop_cfg.tag_color = "log_debug_plus";  //? Green
+			logging.processes.push_back(std::move(mbtop_cfg));
+		}
+	}
+
 	bool migrate_from_ini(const fs::path& ini_path, const fs::path& toml_path) {
 		std::error_code error;
 		if (!fs::exists(ini_path, error)) {

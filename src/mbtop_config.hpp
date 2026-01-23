@@ -193,6 +193,9 @@ namespace Config {
 	// Write config to TOML file
 	void write_toml();
 
+	// Ensure default mbtop process config exists
+	void ensure_default_mbtop_config();
+
 	// Migrate from INI to TOML format
 	// Returns true if migration successful, false if no INI or error
 	bool migrate_from_ini(const std::filesystem::path& ini_file, const std::filesystem::path& toml_file);
