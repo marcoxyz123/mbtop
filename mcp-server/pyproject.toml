@@ -1,0 +1,20 @@
+[project]
+name = "mbtop-mcp"
+version = "0.1.0"
+description = "MCP server for mbtop process monitor - tag, color, and filter processes"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "tomlkit>=0.13.0",
+]
+
+[project.scripts]
+mbtop-mcp = "mbtop_mcp:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mbtop_mcp"]
