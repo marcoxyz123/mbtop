@@ -5072,6 +5072,7 @@ namespace Logs {
 					//? Save
 					Config::ProcessLogConfig cfg;
 					cfg.name = config_modal_name;
+					cfg.command = config_modal_cmdline;  //? Store exact command for unique matching
 					cfg.display_name = config_modal_display;
 					cfg.log_path = config_modal_path;
 					cfg.tagged = config_modal_tagged;
@@ -5083,7 +5084,7 @@ namespace Logs {
 					return true;
 				} else if (btn_idx == 1) {
 					//? Remove
-					Config::remove_process_config(config_modal_name);
+					Config::remove_process_config(config_modal_name, config_modal_cmdline);
 					config_modal_active = false;
 					redraw = true;
 					Proc::redraw = true;  //? Refresh header Log dots
@@ -5200,6 +5201,7 @@ namespace Logs {
 					//? Save
 					Config::ProcessLogConfig cfg;
 					cfg.name = config_modal_name;
+					cfg.command = config_modal_cmdline;  //? Store exact command for unique matching
 					cfg.display_name = config_modal_display;
 					cfg.log_path = config_modal_path;
 					cfg.tagged = config_modal_tagged;
@@ -5211,7 +5213,7 @@ namespace Logs {
 					return true;
 				} else if (config_modal_button == 1) {
 					//? Remove
-					Config::remove_process_config(config_modal_name);
+					Config::remove_process_config(config_modal_name, config_modal_cmdline);
 					config_modal_active = false;
 					redraw = true;
 					Proc::redraw = true;  //? Refresh header Log dots

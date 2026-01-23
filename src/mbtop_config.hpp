@@ -40,7 +40,8 @@ namespace Config {
 	// Can be used for logging, tagging, or both independently
 	struct ProcessLogConfig {
 		string name;              // Process name to match
-		string command_pattern;   // Optional regex for cmdline matching
+		string command;           // Exact command line (default matching)
+		string command_pattern;   // Optional regex for cmdline (power users, overrides exact match)
 		string log_path;          // Path to log file (optional - for app logs)
 		string display_name;      // Custom display name (optional)
 		bool tagged = false;      // Visual highlighting in process list
@@ -211,7 +212,7 @@ namespace Config {
 	void save_process_config(const ProcessLogConfig& config);
 
 	// Remove a process log config by name
-	void remove_process_config(const string& name);
+	void remove_process_config(const string& name, const string& command = "");
 
 	// Valid tag mode values
 	const vector<string> valid_tag_modes = { "name", "line" };

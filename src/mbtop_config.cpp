@@ -1544,6 +1544,8 @@ namespace Config {
 								ProcessLogConfig cfg;
 								if (auto val = (*tbl)["name"].value<string>())
 									cfg.name = *val;
+								if (auto val = (*tbl)["command"].value<string>())
+									cfg.command = *val;
 								if (auto val = (*tbl)["command_pattern"].value<string>()) {
 									cfg.command_pattern = *val;
 									// Compile the regex
@@ -1651,6 +1653,8 @@ namespace Config {
 				for (const auto& cfg : logging.processes) {
 					toml::table proc;
 					proc.insert("name", cfg.name);
+					if (!cfg.command.empty())
+						proc.insert("command", cfg.command);
 					if (!cfg.command_pattern.empty())
 						proc.insert("command_pattern", cfg.command_pattern);
 					if (!cfg.log_path.empty())
@@ -1740,17 +1744,24 @@ namespace Config {
 	std::optional<ProcessLogConfig> find_process_config(const string& name, const string& cmdline) {
 		// First check complex process configs
 		for (const auto& cfg : logging.processes) {
-			// Match by name
+			// Match by name first
 			if (cfg.name == name) {
-				// If there's a command pattern, verify it matches
+				// Priority 1: If there's a command pattern (regex), use it
 				if (cfg.compiled_pattern.has_value()) {
 					if (std::regex_search(cmdline, *cfg.compiled_pattern)) {
 						return cfg;
 					}
-				} else {
-					// No pattern, name match is enough
-					return cfg;
+					continue;  // Pattern didn't match, try next config
 				}
+				// Priority 2: If there's an exact command, match it
+				if (!cfg.command.empty()) {
+					if (cfg.command == cmdline) {
+						return cfg;
+					}
+					continue;  // Command didn't match, try next config
+				}
+				// Priority 3: No command/pattern, name match is enough (legacy behavior)
+				return cfg;
 			}
 		}
 
@@ -1766,9 +1777,9 @@ namespace Config {
 	}
 
 	void save_process_config(const ProcessLogConfig& config) {
-		// Look for existing config with same name
+		// Look for existing config with same name AND command (unique key)
 		for (auto& cfg : logging.processes) {
-			if (cfg.name == config.name) {
+			if (cfg.name == config.name && cfg.command == config.command) {
 				// Update existing
 				cfg = config;
 				// Recompile regex if pattern changed
@@ -1778,6 +1789,8 @@ namespace Config {
 					} catch (const std::regex_error&) {
 						cfg.compiled_pattern = std::nullopt;
 					}
+				} else {
+					cfg.compiled_pattern = std::nullopt;
 				}
 				write_toml();
 				return;
@@ -1797,16 +1810,20 @@ namespace Config {
 		write_toml();
 	}
 
-	void remove_process_config(const string& name) {
-		// Remove from processes vector
+	void remove_process_config(const string& name, const string& command) {
+		// Remove from processes vector (match by name + command)
 		auto it = rng::find_if(logging.processes,
-			[&name](const ProcessLogConfig& cfg) { return cfg.name == name; });
+			[&name, &command](const ProcessLogConfig& cfg) {
+				return cfg.name == name && cfg.command == command;
+			});
 		if (it != logging.processes.end()) {
 			logging.processes.erase(it);
 		}
 
-		// Also remove from simple applications map
-		logging.applications.erase(name);
+		// Also remove from simple applications map (legacy, name only)
+		if (command.empty()) {
+			logging.applications.erase(name);
+		}
 
 		write_toml();
 	}
