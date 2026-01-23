@@ -772,38 +772,9 @@ namespace Input {
 					Config::set("update_following", true);
 				}
 				else if (key == "a") {
-					//? Context-aware 'a' key:
-					//? - Detailed view (selected == 0) AND detailed process exists: toggle tag for detailed process
-					//? - Otherwise: toggle tagged filter
-					if (Config::getB("show_detailed") and Config::getI("proc_selected") == 0 and Proc::detailed.status != "Dead") {
-						//? Toggle tag for detailed process
-						auto cfg = Config::find_process_config(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
-						if (cfg.has_value() && cfg->has_tagging()) {
-							//? Remove tagging
-							Config::ProcessLogConfig new_cfg = *cfg;
-							new_cfg.tagged = false;
-							new_cfg.tag_color.clear();
-							Config::save_process_config(new_cfg);
-						} else {
-							//? Enable tagging with default color (green)
-							Config::ProcessLogConfig new_cfg;
-							new_cfg.name = Proc::detailed.entry.name;
-							new_cfg.command = Proc::detailed.entry.cmd;  //? REQUIRED for unique key
-							new_cfg.tagged = true;
-							new_cfg.tag_color = "log_debug_plus";  //? Green
-							if (cfg.has_value()) {
-								new_cfg.log_path = cfg->log_path;
-								new_cfg.display_name = cfg->display_name;
-								new_cfg.command_pattern = cfg->command_pattern;
-								if (!cfg->command.empty())
-									new_cfg.command = cfg->command;  //? Preserve existing command
-							}
-							Config::save_process_config(new_cfg);
-						}
-					} else {
-						//? Toggle tagged filter - show only processes with tag configs
-						Proc::filter_tagged = not Proc::filter_tagged;
-					}
+					//? 'a' key ALWAYS toggles tagged filter
+					//? Tag toggle is done via mouse click on Tag checkbox or 'c' for color picker
+					Proc::filter_tagged = not Proc::filter_tagged;
 					no_update = false;
 				}
 				else if (is_in(key, "u")) {
@@ -1045,8 +1016,8 @@ namespace Input {
 					Runner::run("all", true, true);
 					return;
 				}
-				//? Open Color Picker modal (c key when detailed view is showing)
-				else if (key == "proc_tag_color" or (key == "c" and Config::getB("show_detailed") and Config::getI("proc_selected") == 0)) {
+				//? Open Color Picker modal (c key or mouse click on color swatch in detailed view)
+				else if ((key == "proc_tag_color" or key == "c") and Config::getB("show_detailed") and Config::getI("proc_selected") == 0) {
 					if (Proc::detailed.status == "Dead") return;
 					Logs::show_color_modal(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
 					Runner::run("all", true, true);
