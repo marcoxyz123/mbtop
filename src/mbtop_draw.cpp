@@ -4792,8 +4792,25 @@ namespace Logs {
 	//=== Source Management Functions ===
 
 	void toggle_source() {
+		//? If app log state not resolved yet, try to resolve from detailed view info
+		if (app_log_path.empty() && Proc::detailed.entry.pid > 0) {
+			auto cfg = Config::find_process_config(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+			if (cfg.has_value() && cfg->has_logging()) {
+				string expanded = cfg->log_path;
+				//? Expand ~ to home directory
+				if (!expanded.empty() && expanded[0] == '~') {
+					const char* home = getenv("HOME");
+					if (home) expanded = string(home) + expanded.substr(1);
+				}
+				std::error_code ec;
+				if (fs::exists(expanded, ec) && !ec) {
+					app_log_path = expanded;
+					app_log_available = true;
+				}
+			}
+		}
 		//? Re-check if app log file exists (it might have been created since resolve_config)
-		if (!app_log_path.empty() && !app_log_available) {
+		else if (!app_log_path.empty() && !app_log_available) {
 			std::error_code ec;
 			if (fs::exists(app_log_path, ec) && !ec) {
 				app_log_available = true;
