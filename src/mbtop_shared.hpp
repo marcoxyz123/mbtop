@@ -778,6 +778,10 @@ namespace Logs {
 	//* Check if application log is available for current process
 	bool has_app_log();
 
+	//* Refresh config for current process (called when config file changes)
+	//* Re-checks app_log_path and app_log_available for current detailed process
+	void refresh_config();
+
 	//* Get source indicator string for status bar
 	//* Returns "[S:Sys]" or "[S:App]"
 	string get_source_indicator();

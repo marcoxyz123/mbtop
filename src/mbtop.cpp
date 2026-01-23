@@ -1462,6 +1462,9 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 				//? Sync filter_tagged from config
 				Proc::filter_tagged = Config::getB("proc_filter_tagged");
 				Proc::redraw = true;
+				//? Refresh Logs config for current process (updates app_log_available)
+				Logs::refresh_config();
+				Logs::redraw = true;
 				if (not Menu::active and not Runner::active) {
 					Runner::run("proc", false, true);
 				}

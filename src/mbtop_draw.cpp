@@ -4873,6 +4873,13 @@ namespace Logs {
 		return app_log_available;
 	}
 
+	void refresh_config() {
+		//? Re-resolve config for current process (if any)
+		if (current_pid > 0 && !current_name.empty()) {
+			resolve_config(current_pid, current_name, current_cmdline);
+		}
+	}
+
 	string get_source_indicator() {
 		return (source == Source::System) ? "[S:Sys]" : "[S:App]";
 	}

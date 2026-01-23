@@ -63,7 +63,7 @@ namespace Config {
 	bool write_new;
 
 	const vector<array<string, 2>> descriptions = {
-		{"color_theme", 		"#* Name of a btop++/bpytop/bashtop formatted \".theme\" file, \"Default\" and \"TTY\" for builtin themes.\n"
+		{"color_theme", 		"#* Name of a mbtop/btop++/bpytop/bashtop formatted \".theme\" file, \"Default\" and \"TTY\" for builtin themes.\n"
 								"#* Themes should be placed in \"../share/mbtop/themes\" relative to binary or \"$HOME/.config/mbtop/themes\""},
 
 		{"theme_background", 	"#* If the theme set background should be shown, set to False if you want terminal background transparency."},
@@ -1756,15 +1756,11 @@ namespace Config {
 					}
 					continue;  // Pattern didn't match, try next config
 				}
-				// Priority 2: If there's an exact command, match it
-				if (!cfg.command.empty()) {
-					if (cfg.command == cmdline) {
-						return cfg;
-					}
-					continue;  // Command didn't match, try next config
+				// Priority 2: Exact command match required (no name-only entries allowed)
+				if (!cfg.command.empty() && cfg.command == cmdline) {
+					return cfg;
 				}
-				// Priority 3: No command/pattern, name match is enough (legacy behavior)
-				return cfg;
+				// No match - command is required, skip entries without command
 			}
 		}
 
@@ -1780,6 +1776,12 @@ namespace Config {
 	}
 
 	void save_process_config(const ProcessLogConfig& config) {
+		// Command is required - no name-only entries allowed
+		if (config.command.empty()) {
+			Logger::warning("save_process_config: command is required for process '{}'", config.name);
+			return;
+		}
+
 		// Look for existing config with same name AND command (unique key)
 		for (auto& cfg : logging.processes) {
 			if (cfg.name == config.name && cfg.command == config.command) {
@@ -1821,14 +1823,8 @@ namespace Config {
 			});
 		if (it != logging.processes.end()) {
 			logging.processes.erase(it);
+			write_toml();
 		}
-
-		// Also remove from simple applications map (legacy, name only)
-		if (command.empty()) {
-			logging.applications.erase(name);
-		}
-
-		write_toml();
 	}
 
 	//? Track config file modification time for dynamic reload

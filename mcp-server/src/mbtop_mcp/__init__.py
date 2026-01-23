@@ -60,39 +60,43 @@ def save_config(config: tomlkit.TOMLDocument) -> None:
 
 
 def find_process_config(
-    config: tomlkit.TOMLDocument, name: str, command: Optional[str] = None
+    config: tomlkit.TOMLDocument, name: str, command: str
 ) -> tuple[int, Optional[dict]]:
     """
-    Find a process config by name (and optionally command).
+    Find a process config by name AND command (both required).
     Returns (index, config) or (-1, None) if not found.
     """
     processes = config.get("logging", {}).get("processes", [])
     for i, proc in enumerate(processes):
-        if proc.get("name") == name:
-            if command is None or proc.get("command", "") == command:
-                return i, proc
+        if proc.get("name") == name and proc.get("command", "") == command:
+            return i, proc
     return -1, None
 
 
 @mcp.tool()
 def tag_process(
     name: str,
+    command: str,
     color: str = "green",
     display_name: Optional[str] = None,
-    command: Optional[str] = None,
+    log_path: Optional[str] = None,
 ) -> str:
     """
     Tag a process in mbtop with a color and optional display name.
 
     Args:
         name: Process name to tag (e.g., "python", "node", "nginx")
+        command: Full command line to match (REQUIRED - e.g., "mbtop -p 3", "node server.js")
         color: Color name - one of: red, orange, yellow, green, violet
         display_name: Optional custom name to show instead of process name
-        command: Optional command line to match specific process instance
+        log_path: Optional path to log file for this process
 
     Returns:
         Success message with the tagged process details
     """
+    if not command:
+        return "Error: 'command' is required. Use the full command line (e.g., 'mbtop -p 3')"
+
     color_lower = color.lower()
     if color_lower not in AURORA_COLORS:
         return f"Error: Invalid color '{color}'. Valid colors: {', '.join(AURORA_COLORS.keys())}"
@@ -119,14 +123,17 @@ def tag_process(
             existing["display_name"] = display_name
         if command:
             existing["command"] = command
+        if log_path:
+            existing["log_path"] = log_path
     else:
         # Create new process config
         proc = tomlkit.table()
         if display_name:
             proc["display_name"] = display_name
+        if log_path:
+            proc["log_path"] = log_path
         proc["name"] = name
-        if command:
-            proc["command"] = command
+        proc["command"] = command  # Required
         proc["tag_color"] = AURORA_COLORS[color_lower]
         proc["tagged"] = True
         config["logging"]["processes"].append(proc)
@@ -134,21 +141,28 @@ def tag_process(
     save_config(config)
 
     display = display_name or name
-    return f"Tagged '{name}' as '{display}' with {color} color. mbtop will reload automatically."
+    msg = f"Tagged '{name}' as '{display}' with {color} color."
+    if log_path:
+        msg += f" Log: {log_path}"
+    msg += " mbtop will reload automatically."
+    return msg
 
 
 @mcp.tool()
-def untag_process(name: str, command: Optional[str] = None) -> str:
+def untag_process(name: str, command: str) -> str:
     """
     Remove tagging from a process (keeps other config like log_path).
 
     Args:
         name: Process name to untag
-        command: Optional command line to match specific process instance
+        command: Full command line to match (REQUIRED)
 
     Returns:
         Success or error message
     """
+    if not command:
+        return "Error: 'command' is required"
+
     try:
         config = load_config()
     except FileNotFoundError as e:
@@ -157,7 +171,7 @@ def untag_process(name: str, command: Optional[str] = None) -> str:
     idx, existing = find_process_config(config, name, command)
 
     if existing is None:
-        return f"No config found for process '{name}'"
+        return f"No config found for process '{name}' with command '{command}'"
 
     # Remove tagging but keep other config
     existing["tagged"] = False
@@ -168,17 +182,20 @@ def untag_process(name: str, command: Optional[str] = None) -> str:
 
 
 @mcp.tool()
-def remove_process_config(name: str, command: Optional[str] = None) -> str:
+def remove_process_config(name: str, command: str) -> str:
     """
     Completely remove a process config from mbtop.
 
     Args:
         name: Process name to remove
-        command: Optional command line to match specific process instance
+        command: Full command line to match (REQUIRED)
 
     Returns:
         Success or error message
     """
+    if not command:
+        return "Error: 'command' is required"
+
     try:
         config = load_config()
     except FileNotFoundError as e:
@@ -188,7 +205,7 @@ def remove_process_config(name: str, command: Optional[str] = None) -> str:
     idx, existing = find_process_config(config, name, command)
 
     if existing is None:
-        return f"No config found for process '{name}'"
+        return f"No config found for process '{name}' with command '{command}'"
 
     del config["logging"]["processes"][idx]
 

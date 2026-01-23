@@ -125,7 +125,7 @@ namespace Logger {
 
 			std::string buffer {};
 			std::call_once(state.print_header, [&buffer]() {
-				fmt::format_to(std::back_inserter(buffer), "\n===> btop++ v{}\n", Global::Version);
+				fmt::format_to(std::back_inserter(buffer), "\n===> mbtop v{}\n", Global::Version);
 			});
 			auto now = std::chrono::system_clock::now();
 			auto seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
