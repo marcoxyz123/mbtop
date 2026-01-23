@@ -6810,20 +6810,29 @@ namespace Draw {
 				}
 
 				if (logs_below) {
-					//? Horizontal split: Logs below Proc - check if it fits
-					int logs_height = std::max(Logs::min_height, Proc::height / 3);
-					//? Ensure Proc keeps min height
-					if (Proc::height - logs_height < Proc::min_height) {
-						logs_height = Proc::height - Proc::min_height;
+					//? Horizontal split: Logs below Proc - proportional 50/50 split
+					int total_height = Proc::height;
+					int logs_height = total_height / 2;  //? Start with 50% each
+					int proc_height = total_height - logs_height;
+
+					//? Ensure both panels get at least their minimum height
+					if (proc_height < Proc::min_height) {
+						proc_height = Proc::min_height;
+						logs_height = total_height - proc_height;
 					}
+					if (logs_height < Logs::min_height) {
+						logs_height = Logs::min_height;
+						proc_height = total_height - logs_height;
+					}
+
 					//? Ensure Logs height doesn't exceed terminal bounds
-					int max_logs_y = Proc::y + Proc::height - logs_height;
+					int max_logs_y = Proc::y + proc_height;
 					if (max_logs_y + logs_height > Term::height) {
 						logs_height = Term::height - max_logs_y;
 					}
 
-					if (logs_height >= Logs::min_height) {
-						Proc::height -= logs_height;
+					if (logs_height >= Logs::min_height && proc_height >= Proc::min_height) {
+						Proc::height = proc_height;
 						Proc::select_max = Proc::height - 3;
 
 						Logs::width = Proc::width;
