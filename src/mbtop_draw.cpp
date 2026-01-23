@@ -5171,11 +5171,15 @@ namespace Logs {
 			} else if (key == "delete" && config_modal_display_cursor < static_cast<int>(config_modal_display.length())) {
 				config_modal_display.erase(static_cast<size_t>(config_modal_display_cursor), 1);
 				redraw = true;
-			} else if (key.length() == 1 && isprint(key[0]) && config_modal_display.length() < 30) {
-				config_modal_display.insert(static_cast<size_t>(config_modal_display_cursor), 1, key[0]);
-				config_modal_display_cursor++;
-				redraw = true;
-			}
+		} else if (key == "space" && config_modal_display.length() < 30) {
+			config_modal_display.insert(static_cast<size_t>(config_modal_display_cursor), 1, ' ');
+			config_modal_display_cursor++;
+			redraw = true;
+		} else if (key.length() == 1 && isprint(key[0]) && config_modal_display.length() < 30) {
+			config_modal_display.insert(static_cast<size_t>(config_modal_display_cursor), 1, key[0]);
+			config_modal_display_cursor++;
+			redraw = true;
+		}
 		}
 		else if (config_modal_field == 1) {
 			//? Log path text input with cursor support
@@ -5198,13 +5202,17 @@ namespace Logs {
 			} else if (key == "delete" && config_modal_path_cursor < static_cast<int>(config_modal_path.length())) {
 				config_modal_path.erase(static_cast<size_t>(config_modal_path_cursor), 1);
 				redraw = true;
-			} else if (key.length() == 1 && isprint(key[0]) && config_modal_path.length() < 100) {
-				config_modal_path.insert(static_cast<size_t>(config_modal_path_cursor), 1, key[0]);
-				config_modal_path_cursor++;
-				redraw = true;
-			}
+		} else if (key == "space" && config_modal_path.length() < 100) {
+			config_modal_path.insert(static_cast<size_t>(config_modal_path_cursor), 1, ' ');
+			config_modal_path_cursor++;
+			redraw = true;
+		} else if (key.length() == 1 && isprint(key[0]) && config_modal_path.length() < 100) {
+			config_modal_path.insert(static_cast<size_t>(config_modal_path_cursor), 1, key[0]);
+			config_modal_path_cursor++;
+			redraw = true;
 		}
-		else if (config_modal_field == 2) {
+	}
+	else if (config_modal_field == 2) {
 			//? Tagged checkbox
 			if (key == "space" || key == "enter") {
 				config_modal_tagged = !config_modal_tagged;

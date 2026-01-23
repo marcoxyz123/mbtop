@@ -35,6 +35,9 @@ namespace Config {
 	extern std::filesystem::path conf_dir;
 	extern std::filesystem::path conf_file;
 	extern std::filesystem::path toml_file;  // New TOML config file
+	
+	//? Flag to skip filter sync when config change is triggered by UI tagging
+	extern bool skip_filter_sync_on_reload;
 
 	//=== Process-specific log/tag configuration ===
 	// Can be used for logging, tagging, or both independently

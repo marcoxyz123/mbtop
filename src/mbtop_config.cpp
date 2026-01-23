@@ -619,6 +619,9 @@ namespace Config {
 	fs::path lock_file;
 
 	bool another_instance_running = false;
+	
+	//? Flag to skip filter sync when config change is from UI tagging
+	bool skip_filter_sync_on_reload = false;
 
 	// Typed logging config (coexists with flat maps)
 	LoggingConfig logging;
@@ -1799,6 +1802,7 @@ namespace Config {
 				} else {
 					cfg.compiled_pattern = std::nullopt;
 				}
+				skip_filter_sync_on_reload = true;  //? Don't sync filter when tagging via UI
 				write_toml(true);  //? Force write - process configs always persist
 				return;
 			}
@@ -1814,6 +1818,7 @@ namespace Config {
 			}
 		}
 		logging.processes.push_back(std::move(new_cfg));
+		skip_filter_sync_on_reload = true;  //? Don't sync filter when tagging via UI
 		write_toml(true);  //? Force write - process configs always persist
 	}
 
@@ -1825,6 +1830,7 @@ namespace Config {
 			});
 		if (it != logging.processes.end()) {
 			logging.processes.erase(it);
+			skip_filter_sync_on_reload = true;  //? Don't sync filter when untagging via UI
 			write_toml(true);  //? Force write - process configs always persist
 		}
 	}
