@@ -5534,6 +5534,14 @@ namespace Logs {
 			Logger::debug("Logs::draw: x={}, y={}, width={}, height={}, Proc::width={}", 
 				x, y, width, height, Proc::width);
 
+			//? When Logs is below Proc, clear the entire area from Logs::y to terminal bottom
+			//? This prevents stale content from previous positions/sizes persisting
+			if (Config::getB("logs_below_proc") && width > 0) {
+				for (int row = y; row <= Term::height; row++) {
+					out += Mv::to(row, x) + string(static_cast<size_t>(width), ' ');
+				}
+			}
+
 			out += box;
 
 			const int content_width = width - 2;
