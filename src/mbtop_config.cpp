@@ -115,6 +115,8 @@ namespace Config {
 
 		{"proc_tree",			"#* Show processes as a tree."},
 
+		{"proc_filter_tagged",	"#* Show only tagged processes in the process list."},
+
 		{"proc_colors", 		"#* Use the cpu graph colors in the process list."},
 
 		{"proc_gradient", 		"#* Use a darkening gradient in the process list."},
@@ -414,6 +416,7 @@ namespace Config {
 		{"rounded_corners", true},
 		{"proc_reversed", false},
 		{"proc_tree", false},
+		{"proc_filter_tagged", false},
 		{"proc_colors", true},
 		{"proc_gradient", true},
 		{"proc_per_core", false},
@@ -1826,5 +1829,101 @@ namespace Config {
 		}
 
 		write_toml();
+	}
+
+	//? Track config file modification time for dynamic reload
+	static std::filesystem::file_time_type last_config_mtime{};
+
+	bool check_config_changed() {
+		if (toml_file.empty()) return false;
+		
+		std::error_code ec;
+		if (!fs::exists(toml_file, ec)) return false;
+		
+		auto current_mtime = fs::last_write_time(toml_file, ec);
+		if (ec) return false;
+		
+		if (last_config_mtime == std::filesystem::file_time_type{}) {
+			//? First check - initialize mtime
+			last_config_mtime = current_mtime;
+			return false;
+		}
+		
+		if (current_mtime != last_config_mtime) {
+			last_config_mtime = current_mtime;
+			reload_process_configs();
+			return true;
+		}
+		
+		return false;
+	}
+
+	void reload_process_configs() {
+		if (toml_file.empty()) return;
+		
+		Logger::info("Reloading process configs from {}", toml_file.string());
+		
+		try {
+			auto root = toml::parse_file(toml_file.string());
+			
+			//? Clear existing process configs
+			logging.processes.clear();
+			
+			//? Reload logging section
+			if (auto log_section = root["logging"].as_table()) {
+				//? Reload default_source
+				if (auto val = (*log_section)["default_source"].value<string>()) {
+					logging.default_source = *val;
+					strings.at("log_default_source") = *val;
+				}
+				
+				//? Reload processes array
+				if (auto processes = (*log_section)["processes"].as_array()) {
+					for (auto& proc : *processes) {
+						if (auto tbl = proc.as_table()) {
+							ProcessLogConfig cfg;
+							if (auto val = (*tbl)["name"].value<string>())
+								cfg.name = *val;
+							if (auto val = (*tbl)["command"].value<string>())
+								cfg.command = *val;
+							if (auto val = (*tbl)["command_pattern"].value<string>()) {
+								cfg.command_pattern = *val;
+								try {
+									cfg.compiled_pattern = std::regex(*val, std::regex::ECMAScript);
+								} catch (const std::regex_error&) {
+									cfg.compiled_pattern = std::nullopt;
+								}
+							}
+							if (auto val = (*tbl)["log_path"].value<string>())
+								cfg.log_path = expand_path(*val);
+							if (auto val = (*tbl)["display_name"].value<string>())
+								cfg.display_name = *val;
+							if (auto val = (*tbl)["tagged"].value<bool>())
+								cfg.tagged = *val;
+							if (auto val = (*tbl)["tag_color"].value<string>())
+								cfg.tag_color = *val;
+
+							if (!cfg.name.empty()) {
+								logging.processes.push_back(std::move(cfg));
+							}
+						}
+					}
+				}
+			}
+			
+			//? Reload proc section settings
+			if (auto proc_section = root["proc"].as_table()) {
+				if (auto val = (*proc_section)["proc_filter_tagged"].value<bool>()) {
+					bools.at("proc_filter_tagged") = *val;
+				}
+			}
+			
+			Logger::info("Reloaded {} process configs", logging.processes.size());
+			
+		} catch (const toml::parse_error& err) {
+			Logger::warning("Failed to reload config: {}", err.description());
+		} catch (const std::exception& e) {
+			Logger::warning("Failed to reload config: {}", e.what());
+		}
 	}
 }

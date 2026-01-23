@@ -1457,6 +1457,16 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 				Runner::run("clock");
 			}
 
+			//? Check for config file changes and reload process configs dynamically
+			if (Config::check_config_changed()) {
+				//? Sync filter_tagged from config
+				Proc::filter_tagged = Config::getB("proc_filter_tagged");
+				Proc::redraw = true;
+				if (not Menu::active and not Runner::active) {
+					Runner::run("proc", false, true);
+				}
+			}
+
 			//? Start secondary collect & draw thread at the interval set by <update_ms> config value
 			if (time_ms() >= future_time and not Global::resized) {
 				Runner::run("all");

@@ -214,6 +214,10 @@ namespace Config {
 	// Remove a process log config by name
 	void remove_process_config(const string& name, const string& command = "");
 
+	// Dynamic config reload - check if file changed and reload process configs
+	bool check_config_changed();  // Returns true if config was reloaded
+	void reload_process_configs();  // Reload just the logging.processes section
+
 	// Valid tag mode values
 	const vector<string> valid_tag_modes = { "name", "line" };
 }
