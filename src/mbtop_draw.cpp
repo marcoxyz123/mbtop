@@ -4333,10 +4333,15 @@ namespace Proc {
 				}
 			}
 
-			//? Check for process tagging
+			//? Check for process tagging and custom display name
 			string tag_bg_start;
 			string tag_bg_end;
+			string display_name = p.name;  //? Default to actual process name
 			if (auto tag_cfg = Config::find_process_config(p.name, p.cmd)) {
+				//? Use custom display name if configured
+				if (!tag_cfg->display_name.empty()) {
+					display_name = tag_cfg->display_name;
+				}
 				if (tag_cfg->has_tagging()) {
 					string tag_color_str = Theme::c(tag_cfg->tag_color);
 					if (Config::getS("proc_tag_mode") == "line" and not is_selected and not is_followed) {
@@ -4360,14 +4365,14 @@ namespace Proc {
 					//? Bottom layout: Pid | Program | User | S | Ni | Thr | ...data... | Command
 					out += Mv::to(y+2+lc, x+1) + tag_bg_start
 						+ g_color + rjust(to_string(p.pid), 8) + "  "
-						+ c_color + ljust(p.name, prog_size, true, true) + "  " + end;  //? wide=true for proper Unicode display width
+						+ c_color + ljust(display_name, prog_size, true, true) + "  " + end;  //? wide=true for proper Unicode display width
 					//? Rest of bottom layout columns handled in common section below
 				}
 				else {
 					//? Side layout: original Pid | Program | Command order
 					out += Mv::to(y+2+lc, x+1) + tag_bg_start
 						+ g_color + rjust(to_string(p.pid), 8) + ' '
-						+ c_color + ljust(p.name, prog_size, true, true) + ' ' + end  //? wide=true for proper Unicode display width
+						+ c_color + ljust(display_name, prog_size, true, true) + ' ' + end  //? wide=true for proper Unicode display width
 						+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) + Mv::to(y+2+lc, x+11+prog_size+cmd_size) + ' ' : "");
 				}
 			}
@@ -4378,8 +4383,8 @@ namespace Proc {
 				out += Mv::to(y+2+lc, x+1) + tag_bg_start + g_color + uresize(prefix_pid, width_left) + ' ';
 				width_left -= ulen(prefix_pid);
 				if (width_left > 0) {
-					out += c_color + uresize(p.name, width_left - 1) + end + ' ';
-					width_left -= (ulen(p.name) + 1);
+					out += c_color + uresize(display_name, width_left - 1) + end + ' ';
+					width_left -= (ulen(display_name) + 1);
 				}
 				if (width_left > 7) {
 					const string_view cmd = width_left > 40 ? rtrim(san_cmd) : p.short_cmd;
