@@ -4998,6 +4998,65 @@ namespace Logs {
 			return true;
 		}
 
+		//? Mouse click on field - select it
+		if (key.starts_with("config_field_")) {
+			int field_idx = key.back() - '0';
+			if (field_idx >= 0 && field_idx <= 2) {
+				config_modal_field = field_idx;
+				//? For tagged checkbox, also toggle on click
+				if (field_idx == 2) {
+					config_modal_tagged = !config_modal_tagged;
+				}
+				redraw = true;
+				return false;
+			}
+		}
+
+		//? Mouse click on color
+		if (key.starts_with("config_color_") && config_modal_tagged) {
+			int color_idx = key.back() - '0';
+			if (color_idx >= 0 && color_idx <= 4) {
+				config_modal_field = 3;
+				config_modal_color_idx = color_idx;
+				redraw = true;
+				return false;
+			}
+		}
+
+		//? Mouse click on button - select and activate
+		if (key.starts_with("config_btn_")) {
+			int btn_idx = key.back() - '0';
+			if (btn_idx >= 0 && btn_idx <= 2) {
+				config_modal_field = 4;
+				config_modal_button = btn_idx;
+				//? Activate the button immediately
+				if (btn_idx == 0) {
+					//? Save
+					Config::ProcessLogConfig cfg;
+					cfg.name = config_modal_name;
+					cfg.display_name = config_modal_display;
+					cfg.log_path = config_modal_path;
+					cfg.tagged = config_modal_tagged;
+					cfg.tag_color = config_modal_tagged ? string(TagColors::themes[static_cast<size_t>(config_modal_color_idx)]) : "";
+					Config::save_process_config(cfg);
+					config_modal_active = false;
+					redraw = true;
+					return true;
+				} else if (btn_idx == 1) {
+					//? Remove
+					Config::remove_process_config(config_modal_name);
+					config_modal_active = false;
+					redraw = true;
+					return true;
+				} else {
+					//? Cancel
+					config_modal_active = false;
+					redraw = true;
+					return true;
+				}
+			}
+		}
+
 		//? Tab/Shift+Tab to cycle fields
 		if (key == "tab" || key == "down") {
 			config_modal_field = (config_modal_field + 1) % 5;
@@ -5112,6 +5171,7 @@ namespace Logs {
 		row_y += 2;
 
 		//? Display Name field
+		int display_row = row_y;
 		out += Mv::to(row_y, modal_x + 2);
 		bool field_sel = (config_modal_field == 0);
 		out += theme("main_fg") + "Display: ";
@@ -5120,9 +5180,11 @@ namespace Logs {
 			(config_modal_display + (field_sel ? "_" : "") + string(max(0, 25 - static_cast<int>(config_modal_display.length())), ' '));
 		out += "[" + disp_text.substr(0, 25) + "]";
 		out += Fx::reset;
+		Input::mouse_mappings["config_field_0"] = {display_row, modal_x + 11, 1, 27};
 		row_y++;
 
 		//? Log Path field
+		int logpath_row = row_y;
 		out += Mv::to(row_y, modal_x + 2);
 		field_sel = (config_modal_field == 1);
 		out += theme("main_fg") + "LogPath: ";
@@ -5131,28 +5193,38 @@ namespace Logs {
 			(config_modal_path + (field_sel ? "_" : "") + string(max(0, 35 - static_cast<int>(config_modal_path.length())), ' '));
 		out += "[" + path_text.substr(0, 35) + "]";
 		out += Fx::reset;
+		Input::mouse_mappings["config_field_1"] = {logpath_row, modal_x + 11, 1, 37};
 		row_y += 2;
 
 		//? Tagged checkbox
+		int tagged_row = row_y;
 		out += Mv::to(row_y, modal_x + 2);
 		field_sel = (config_modal_field == 2);
 		out += theme("main_fg") + "Tagged: ";
 		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
 		out += "[" + string(config_modal_tagged ? "x" : " ") + "]";
 		out += Fx::reset + theme("inactive_fg") + " (highlight in list)";
+		Input::mouse_mappings["config_field_2"] = {tagged_row, modal_x + 10, 1, 3};
 		row_y += 2;
 
 		//? Color selection (only if tagged)
+		int color_row = row_y;
 		out += Mv::to(row_y, modal_x + 2);
 		field_sel = (config_modal_field == 3);
 		out += theme("main_fg") + "Color:   ";
 		if (!config_modal_tagged) {
 			out += theme("inactive_fg") + "(enable Tagged first)";
+			//? Clear color mappings when disabled
+			for (int i = 0; i < 5; i++) {
+				Input::mouse_mappings.erase("config_color_" + to_string(i));
+			}
 		} else {
 			for (size_t i = 0; i < 5; i++) {
 				bool color_sel = field_sel && (static_cast<int>(i) == config_modal_color_idx);
 				if (color_sel) out += theme("selected_bg");
 				out += theme(TagColors::themes[i]) + "██" + Fx::reset + " ";
+				//? Mouse mapping for each color: 2 chars wide + 1 space, starting at modal_x + 11
+				Input::mouse_mappings["config_color_" + to_string(i)] = {color_row, modal_x + 11 + static_cast<int>(i) * 3, 1, 2};
 			}
 			out += theme("inactive_fg") + "(1-5)";
 		}
@@ -5171,8 +5243,10 @@ namespace Logs {
 		row_y += 2;
 
 		//? Buttons
-		out += Mv::to(modal_y + modal_h - 3, modal_x + 4);
+		int btn_row = modal_y + modal_h - 3;
+		out += Mv::to(btn_row, modal_x + 4);
 		const array<string, 3> buttons = {"Save", "Remove", "Cancel"};
+		int btn_x = modal_x + 4;
 		for (size_t i = 0; i < 3; i++) {
 			bool btn_sel = (config_modal_field == 4 && config_modal_button == static_cast<int>(i));
 			if (btn_sel) {
@@ -5181,11 +5255,15 @@ namespace Logs {
 				out += theme("main_fg");
 			}
 			out += "[" + buttons[i] + "]" + Fx::reset + "  ";
+			//? Mouse mapping for button: [text] + 2 spaces
+			int btn_width = static_cast<int>(buttons[i].length()) + 2;  // brackets
+			Input::mouse_mappings["config_btn_" + to_string(i)] = {btn_row, btn_x, 1, btn_width};
+			btn_x += btn_width + 2;  // button width + 2 spaces
 		}
 
 		//? Instructions
 		out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
-		out += theme("inactive_fg") + "Tab:Next  Enter:Select  Esc:Cancel";
+		out += theme("inactive_fg") + "Tab:Next  Enter:Select  Esc:Cancel  Click:Select";
 
 		return out;
 	}
@@ -5208,6 +5286,15 @@ namespace Logs {
 			if (not buffer_modal_active) {
 				for (int i = 0; i < 7; i++) {
 					Input::mouse_mappings.erase("buffer_" + to_string(i));
+				}
+			}
+			if (not config_modal_active) {
+				for (int i = 0; i < 5; i++) {
+					Input::mouse_mappings.erase("config_field_" + to_string(i));
+					Input::mouse_mappings.erase("config_color_" + to_string(i));
+				}
+				for (int i = 0; i < 3; i++) {
+					Input::mouse_mappings.erase("config_btn_" + to_string(i));
 				}
 			}
 
