@@ -5133,8 +5133,8 @@ namespace Logs {
 					Proc::redraw = true;  //? Refresh header Log dots
 					return true;
 				} else if (btn_idx == 1) {
-					//? Remove - use original command
-					Config::remove_process_config(config_modal_name, config_modal_original_cmd);
+					//? Remove - use the command pattern shown in modal (not original cmdline)
+					Config::remove_process_config(config_modal_name, config_modal_cmdline);
 					config_modal_active = false;
 					redraw = true;
 					Proc::redraw = true;  //? Refresh header Log dots
@@ -5305,8 +5305,8 @@ namespace Logs {
 					Proc::redraw = true;  //? Refresh header Log dots
 					return true;
 				} else if (config_modal_button == 1) {
-					//? Remove - use original command
-					Config::remove_process_config(config_modal_name, config_modal_original_cmd);
+					//? Remove - use the command pattern shown in modal (not original cmdline)
+					Config::remove_process_config(config_modal_name, config_modal_cmdline);
 					config_modal_active = false;
 					redraw = true;
 					Proc::redraw = true;  //? Refresh header Log dots
