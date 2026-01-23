@@ -1508,17 +1508,18 @@ namespace Config {
 			if (config.contains("logging")) {
 				auto& log_section = *config["logging"].as_table();
 
-				if (auto val = log_section["level"].value<string>())
+				//? Note: keys match the strings/bools/ints map keys (e.g., log_level, not level)
+				if (auto val = log_section["log_level"].value<string>())
 					logging.level = *val;
-				if (auto val = log_section["export_path"].value<string>())
+				if (auto val = log_section["log_export_path"].value<string>())
 					logging.export_path = expand_path(*val);
 				if (auto val = log_section["default_source"].value<string>())
 					logging.default_source = *val;
-				if (auto val = log_section["buffer_size"].value<int64_t>())
+				if (auto val = log_section["log_buffer_size"].value<int64_t>())
 					logging.buffer_size = static_cast<int>(*val);
-				if (auto val = log_section["color_full_line"].value<bool>())
+				if (auto val = log_section["log_color_full_line"].value<bool>())
 					logging.color_full_line = *val;
-				if (auto val = log_section["below_proc"].value<bool>())
+				if (auto val = log_section["logs_below_proc"].value<bool>())
 					logging.below_proc = *val;
 
 				// Load simple applications mapping
