@@ -4725,6 +4725,8 @@ namespace Logs {
 	string config_modal_cmdline;
 	string config_modal_display;
 	string config_modal_path;
+	int config_modal_display_cursor = 0;  //? Cursor position in display field
+	int config_modal_path_cursor = 0;     //? Cursor position in path field
 	bool config_modal_tagged = false;
 	int config_modal_color_idx = 3;   //? Default to green (index 3)
 	int config_modal_field = 0;       //? 0=display, 1=path, 2=tagged, 3=color, 4=buttons
@@ -4986,6 +4988,9 @@ namespace Logs {
 			config_modal_tagged = false;
 			config_modal_color_idx = 3;
 		}
+		//? Set cursors to end of text
+		config_modal_display_cursor = static_cast<int>(config_modal_display.length());
+		config_modal_path_cursor = static_cast<int>(config_modal_path.length());
 		redraw = true;
 	}
 
@@ -5069,22 +5074,56 @@ namespace Logs {
 
 		//? Handle field-specific input
 		if (config_modal_field == 0) {
-			//? Display name text input
-			if (key == "backspace" && !config_modal_display.empty()) {
-				config_modal_display.pop_back();
+			//? Display name text input with cursor support
+			if (key == "left" && config_modal_display_cursor > 0) {
+				config_modal_display_cursor--;
+				redraw = true;
+			} else if (key == "right" && config_modal_display_cursor < static_cast<int>(config_modal_display.length())) {
+				config_modal_display_cursor++;
+				redraw = true;
+			} else if (key == "home") {
+				config_modal_display_cursor = 0;
+				redraw = true;
+			} else if (key == "end") {
+				config_modal_display_cursor = static_cast<int>(config_modal_display.length());
+				redraw = true;
+			} else if (key == "backspace" && config_modal_display_cursor > 0) {
+				config_modal_display.erase(static_cast<size_t>(config_modal_display_cursor - 1), 1);
+				config_modal_display_cursor--;
+				redraw = true;
+			} else if (key == "delete" && config_modal_display_cursor < static_cast<int>(config_modal_display.length())) {
+				config_modal_display.erase(static_cast<size_t>(config_modal_display_cursor), 1);
 				redraw = true;
 			} else if (key.length() == 1 && isprint(key[0]) && config_modal_display.length() < 30) {
-				config_modal_display += key[0];
+				config_modal_display.insert(static_cast<size_t>(config_modal_display_cursor), 1, key[0]);
+				config_modal_display_cursor++;
 				redraw = true;
 			}
 		}
 		else if (config_modal_field == 1) {
-			//? Log path text input
-			if (key == "backspace" && !config_modal_path.empty()) {
-				config_modal_path.pop_back();
+			//? Log path text input with cursor support
+			if (key == "left" && config_modal_path_cursor > 0) {
+				config_modal_path_cursor--;
+				redraw = true;
+			} else if (key == "right" && config_modal_path_cursor < static_cast<int>(config_modal_path.length())) {
+				config_modal_path_cursor++;
+				redraw = true;
+			} else if (key == "home") {
+				config_modal_path_cursor = 0;
+				redraw = true;
+			} else if (key == "end") {
+				config_modal_path_cursor = static_cast<int>(config_modal_path.length());
+				redraw = true;
+			} else if (key == "backspace" && config_modal_path_cursor > 0) {
+				config_modal_path.erase(static_cast<size_t>(config_modal_path_cursor - 1), 1);
+				config_modal_path_cursor--;
+				redraw = true;
+			} else if (key == "delete" && config_modal_path_cursor < static_cast<int>(config_modal_path.length())) {
+				config_modal_path.erase(static_cast<size_t>(config_modal_path_cursor), 1);
 				redraw = true;
 			} else if (key.length() == 1 && isprint(key[0]) && config_modal_path.length() < 100) {
-				config_modal_path += key[0];
+				config_modal_path.insert(static_cast<size_t>(config_modal_path_cursor), 1, key[0]);
+				config_modal_path_cursor++;
 				redraw = true;
 			}
 		}
@@ -5175,9 +5214,21 @@ namespace Logs {
 		bool field_sel = (config_modal_field == 0);
 		out += theme("main_fg") + "Display: ";
 		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
-		string disp_text = config_modal_display.empty() ? string(25, '_') : 
-			(config_modal_display + (field_sel ? "_" : "") + string(max(0, 25 - static_cast<int>(config_modal_display.length())), ' '));
-		out += "[" + disp_text.substr(0, 25) + "]";
+		//? Build display text with cursor
+		string disp_text;
+		if (config_modal_display.empty()) {
+			disp_text = field_sel ? "_" + string(24, ' ') : string(25, '_');
+		} else {
+			if (field_sel) {
+				//? Insert cursor character at cursor position
+				disp_text = config_modal_display.substr(0, static_cast<size_t>(config_modal_display_cursor))
+					+ "_" + config_modal_display.substr(static_cast<size_t>(config_modal_display_cursor));
+				disp_text += string(max(0, 25 - static_cast<int>(disp_text.length())), ' ');
+			} else {
+				disp_text = config_modal_display + string(max(0, 25 - static_cast<int>(config_modal_display.length())), ' ');
+			}
+		}
+		out += "[" + disp_text.substr(0, 26) + "]";
 		out += Fx::reset;
 		Input::mouse_mappings["config_field_0"] = {display_row, pad_x + 9, 1, 27};
 		row_y++;
@@ -5188,9 +5239,21 @@ namespace Logs {
 		field_sel = (config_modal_field == 1);
 		out += theme("main_fg") + "LogPath: ";
 		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
-		string path_text = config_modal_path.empty() ? string(35, '_') :
-			(config_modal_path + (field_sel ? "_" : "") + string(max(0, 35 - static_cast<int>(config_modal_path.length())), ' '));
-		out += "[" + path_text.substr(0, 35) + "]";
+		//? Build path text with cursor
+		string path_text;
+		if (config_modal_path.empty()) {
+			path_text = field_sel ? "_" + string(34, ' ') : string(35, '_');
+		} else {
+			if (field_sel) {
+				//? Insert cursor character at cursor position
+				path_text = config_modal_path.substr(0, static_cast<size_t>(config_modal_path_cursor))
+					+ "_" + config_modal_path.substr(static_cast<size_t>(config_modal_path_cursor));
+				path_text += string(max(0, 35 - static_cast<int>(path_text.length())), ' ');
+			} else {
+				path_text = config_modal_path + string(max(0, 35 - static_cast<int>(config_modal_path.length())), ' ');
+			}
+		}
+		out += "[" + path_text.substr(0, 36) + "]";
 		out += Fx::reset;
 		Input::mouse_mappings["config_field_1"] = {logpath_row, pad_x + 9, 1, 37};
 		row_y += 2;
