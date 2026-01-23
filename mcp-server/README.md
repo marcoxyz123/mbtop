@@ -4,7 +4,7 @@ MCP (Model Context Protocol) server for controlling [mbtop](https://github.com/m
 
 ## Features
 
-- **Tag processes** with Nord Aurora colors (Red, Orange, Yellow, Green, Violet)
+- **Tag processes** with Nord Aurora colors (Red, Orange, Yellow, Green, Violet, Blue)
 - **Custom display names** - show meaningful names instead of process names
 - **Filter view** - show only tagged processes
 - **Auto-reload** - mbtop picks up changes within ~2 seconds

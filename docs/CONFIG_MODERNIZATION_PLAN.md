@@ -1070,7 +1070,7 @@ Key bindings:
 User preferences:
 - Clean break (no backward compatibility with INI)
 - TOML format for config
-- Nord Aurora colors for process tags (5 colors: Rd/Or/Yl/Gn/Vi)
+- Nord Aurora colors for process tags (6 colors: Rd/Or/Yl/Gn/Vi/Bl)
 - Keep .conf.bak backup during migration
 - Tagging works in both detailed and compact process list views
 - Quick tag saves immediately (no need to open full modal)

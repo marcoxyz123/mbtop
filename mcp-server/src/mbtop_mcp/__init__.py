@@ -296,12 +296,13 @@ def get_aurora_colors() -> str:
     Returns:
         List of available color names
     """
-    return """Available colors (Nord Aurora palette):
+    return """Available colors (Nord Aurora + Frost palette):
   - red     (nord11 - #BF616A) - Alerts, errors, critical
   - orange  (nord12 - #D08770) - Warnings, attention needed
   - yellow  (nord13 - #EBCB8B) - Active work, in progress
   - green   (nord14 - #A3BE8C) - Healthy, OK, success
-  - violet  (nord15 - #B48EAD) - Info, background, neutral"""
+  - violet  (nord15 - #B48EAD) - Info, background, neutral
+  - blue    (nord9  - #81A1C1) - Frost blue, calm, secondary"""
 
 
 @mcp.tool()
