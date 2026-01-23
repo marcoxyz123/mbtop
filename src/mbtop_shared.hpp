@@ -571,6 +571,9 @@ namespace Proc {
 	//? Contains all info for proc detailed box
 	extern detail_container detailed;
 
+	//? Current process list (populated by collect())
+	extern vector<proc_info> current_procs;
+
 	//* Collect and sort process information from /proc
 	auto collect(bool no_update = false) -> vector<proc_info>&;
 

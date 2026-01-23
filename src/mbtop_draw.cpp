@@ -5507,6 +5507,8 @@ namespace Logs {
 
 	string draw(bool force_redraw, bool data_same) {
 		if (Runner::stopping) return "";
+		//? Skip drawing if dimensions are invalid (panel not yet sized)
+		if (width < min_width || height < min_height) return "";
 		if (force_redraw) redraw = true;
 		if (not data_same) redraw = true;
 
@@ -5515,19 +5517,21 @@ namespace Logs {
 			const auto& theme = Theme::c;
 
 			//? Track previous position to clear old status line when layout changes
+			static int prev_x = 0;
 			static int prev_y = 0;
 			static int prev_height = 0;
 			static int prev_width = 0;
 
 			//? If position/size changed, clear the OLD status line position
-			if (prev_y > 0 && prev_height > 0 && prev_width > 0) {
+			if (prev_x > 0 && prev_y > 0 && prev_height > 0 && prev_width > 0) {
 				int old_status_y = prev_y + prev_height - 1;
 				int new_status_y = y + height - 1;
 				if (old_status_y != new_status_y && old_status_y > 0 && old_status_y <= Term::height) {
 					//? Clear the old status line row
-					out += Mv::to(old_status_y, prev_y) + string(static_cast<size_t>(prev_width), ' ');
+					out += Mv::to(old_status_y, prev_x + 1) + string(static_cast<size_t>(prev_width - 2), ' ');
 				}
 			}
+			prev_x = x;
 			prev_y = y;
 			prev_height = height;
 			prev_width = width;
@@ -5717,13 +5721,21 @@ namespace Logs {
 			//? Calculate positions for mouse mappings
 			int status_y = y + height - 1;
 			int cur_x = x + 1;
-			bool compact = (width < 65);  //? Use compact buttons when narrow
+			
+			//? Calculate required width for full mode dynamically
+			//? Full: [LIVE]=7 + filter=len+1 + S:Sys●●=9 + pos=len+1 + |=2 + SPC:Pause=10 + E:Export=9 + F:Filter=9 + R:New=6 + B:xxx=2+len
+			int full_mode_width = 7 + static_cast<int>(filter_name.length()) + 1 + 9 
+				+ static_cast<int>(pos_str.length()) + 1 + 2 + 10 + 9 + 9 + 6 + 2 
+				+ static_cast<int>(to_string(max_entries).length());
+			//? Use compact mode if full mode won't fit (with 2 char margin for safety)
+			bool compact = (content_width < full_mode_width + 2);
 			
 			//? Clear status line before drawing (prevents ghosting on resize)
 			out += Mv::to(status_y, x + 1) + string(static_cast<size_t>(content_width), ' ');
 			
 			//? Build status line with colors and mouse mappings
 			out += Mv::to(status_y, cur_x);
+			if (not compact) cur_x--;  //? Adjust: full mode needs -1 offset for mouse mappings
 			
 			//? [LIVE], [PAUSED], [REC], or [ERR] status
 			if (not export_error.empty()) {

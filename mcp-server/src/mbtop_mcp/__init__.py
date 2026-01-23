@@ -4,13 +4,17 @@ mbtop MCP Server - Control process tagging and filtering in mbtop
 This MCP server allows AI assistants to:
 - Tag processes with colors and custom display names
 - Filter mbtop to show only tagged processes
+- Control the Logs panel (show/hide, select process)
 - Dynamically update what's visible in mbtop
 
 mbtop will auto-reload the config within ~2 seconds of changes.
+Socket commands provide real-time control of mbtop UI.
 """
 
 from pathlib import Path
 from typing import Optional
+import json
+import socket
 import tomlkit
 from mcp.server.fastmcp import FastMCP
 
@@ -39,6 +43,7 @@ AURORA_COLORS = {
 
 # Default config path
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "mbtop" / "mbtop.toml"
+DEFAULT_SOCKET_PATH = Path.home() / ".config" / "mbtop" / "mbtop.sock"
 
 
 def get_config_path() -> Path:
@@ -327,6 +332,255 @@ def get_mbtop_status() -> str:
   Process configs: {len(processes)}
   Tagged processes: {tagged_count}
   Tagged filter: {"enabled" if filter_enabled else "disabled"}"""
+
+
+# =============================================================================
+# Socket-based real-time control tools
+# =============================================================================
+
+
+def send_socket_command(cmd: dict, timeout: float = 2.0, retries: int = 3) -> dict:
+    """
+    Send a command to mbtop via Unix socket.
+
+    Args:
+        cmd: Command dictionary to send as JSON
+        timeout: Socket timeout in seconds (used for recv only)
+        retries: Number of retry attempts on transient failures
+
+    Returns:
+        Response dictionary from mbtop
+    """
+    import time
+
+    sock_path = DEFAULT_SOCKET_PATH
+    if not sock_path.exists():
+        return {
+            "status": "error",
+            "message": f"mbtop socket not found at {sock_path}. Is mbtop running?",
+        }
+
+    last_error = None
+    for attempt in range(retries):
+        try:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.setblocking(True)
+            sock.connect(str(sock_path))
+
+            # Send command
+            data = json.dumps(cmd).encode("utf-8")
+            sock.send(data)
+
+            # Shutdown write side to signal EOF (required for server's read() to return)
+            sock.shutdown(socket.SHUT_WR)
+
+            # Set timeout for receiving response
+            sock.settimeout(timeout)
+
+            # Receive response
+            response = sock.recv(4096).decode("utf-8")
+            sock.close()
+
+            return json.loads(response)
+        except (BrokenPipeError, OSError) as e:
+            # Transient error - retry after small delay
+            last_error = e
+            try:
+                sock.close()
+            except:
+                pass
+            if attempt < retries - 1:
+                time.sleep(0.2)  # 200ms delay before retry
+            continue
+        except socket.timeout:
+            return {"status": "error", "message": "Timeout waiting for mbtop response"}
+        except ConnectionRefusedError:
+            return {
+                "status": "error",
+                "message": "Connection refused. Is mbtop running?",
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    # All retries failed
+    return {
+        "status": "error",
+        "message": f"Socket communication failed after {retries} attempts: {last_error}",
+    }
+
+
+@mcp.tool()
+def show_logs_panel(
+    name: Optional[str] = None,
+    command: Optional[str] = None,
+    pid: Optional[int] = None,
+    position: str = "beside",
+) -> str:
+    """
+    Show the Logs panel in mbtop for a specific process.
+
+    Requires mbtop to be running with PROC panel visible.
+
+    Args:
+        name: Process name to show logs for (optional - uses current selection if not specified)
+        command: Process command to match (optional)
+        pid: Process PID to select (optional)
+        position: Panel position - "beside" (right of proc) or "below" (under proc)
+
+    Returns:
+        Success or error message
+    """
+    cmd = {"cmd": "show_logs" if position == "beside" else "show_logs_below"}
+    if name:
+        cmd["name"] = name
+    if command:
+        cmd["command"] = command
+    if pid:
+        cmd["pid"] = pid
+
+    result = send_socket_command(cmd)
+
+    if result.get("status") == "ok":
+        return f"Logs panel shown ({position}). mbtop will display logs for the selected process."
+    else:
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+
+@mcp.tool()
+def hide_logs_panel() -> str:
+    """
+    Hide the Logs panel in mbtop.
+
+    Returns:
+        Success or error message
+    """
+    result = send_socket_command({"cmd": "hide_logs"})
+
+    if result.get("status") == "ok":
+        return "Logs panel hidden."
+    else:
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+
+@mcp.tool()
+def select_process(
+    name: Optional[str] = None, command: Optional[str] = None, pid: Optional[int] = None
+) -> str:
+    """
+    Select a process in mbtop's process list.
+
+    At least one of name, command, or pid must be specified.
+
+    Args:
+        name: Process name to select
+        command: Process command to match
+        pid: Process PID to select
+
+    Returns:
+        Success or error message
+    """
+    if not name and not command and not pid:
+        return "Error: At least one of name, command, or pid must be specified"
+
+    cmd = {"cmd": "select_process"}
+    if name:
+        cmd["name"] = name
+    if command:
+        cmd["command"] = command
+    if pid:
+        cmd["pid"] = pid
+
+    result = send_socket_command(cmd)
+
+    if result.get("status") == "ok":
+        return "Process selected in mbtop."
+    else:
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+
+@mcp.tool()
+def activate_process_log(
+    name: str, command: Optional[str] = None, pid: Optional[int] = None
+) -> str:
+    """
+    Select a process AND show its logs in one action.
+
+    This combines select_process and show_logs_panel for convenience.
+
+    Args:
+        name: Process name to select and show logs for
+        command: Process command to match (optional)
+        pid: Process PID (optional)
+
+    Returns:
+        Success or error message
+    """
+    cmd = {"cmd": "activate_process_log", "name": name}
+    if command:
+        cmd["command"] = command
+    if pid:
+        cmd["pid"] = pid
+
+    result = send_socket_command(cmd)
+
+    if result.get("status") == "ok":
+        return f"Process '{name}' selected and Logs panel shown."
+    else:
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+
+@mcp.tool()
+def set_log_level_filter(level: str = "all") -> str:
+    """
+    Set the log level filter in the Logs panel.
+
+    Args:
+        level: Filter level - one of: "all", "debug", "info", "error", "fault"
+
+    Returns:
+        Success or error message
+    """
+    valid_levels = ["all", "debug", "info", "error", "fault"]
+    if level.lower() not in valid_levels:
+        return (
+            f"Error: Invalid level '{level}'. Valid levels: {', '.join(valid_levels)}"
+        )
+
+    result = send_socket_command({"cmd": "set_log_filter", "filter": level.lower()})
+
+    if result.get("status") == "ok":
+        return f"Log filter set to '{level}'."
+    else:
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+
+@mcp.tool()
+def get_mbtop_live_state() -> str:
+    """
+    Get the current live state of mbtop via socket.
+
+    This queries mbtop directly for real-time state including:
+    - Logs panel visibility and position
+    - Currently selected/followed process
+    - Filter status
+
+    Returns:
+        JSON-formatted state or error message
+    """
+    result = send_socket_command({"cmd": "get_state"}, timeout=3.0)
+
+    if result.get("status") == "error":
+        return f"Error: {result.get('message', 'Unknown error')}"
+
+    # Format the state nicely
+    return f"""mbtop Live State:
+  Logs panel: {"shown" if result.get("logs_shown") else "hidden"}
+  Logs position: {"below" if result.get("logs_below") else "beside"}
+  Proc panel: {"shown" if result.get("proc_shown") else "hidden"}
+  Current process: {result.get("current_name", "none")} (PID: {result.get("current_pid", 0)})
+  Followed PID: {result.get("followed_pid", 0)}
+  Selected PID: {result.get("selected_pid", 0)}
+  Tagged filter: {"enabled" if result.get("filter_tagged") else "disabled"}"""
 
 
 def main():

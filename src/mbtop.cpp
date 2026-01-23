@@ -66,6 +66,7 @@ tab-size = 4
 #include "mbtop_log.hpp"
 #include "mbtop_menu.hpp"
 #include "mbtop_shared.hpp"
+#include "mbtop_socket.hpp"
 #include "mbtop_theme.hpp"
 #include "mbtop_tools.hpp"
 
@@ -268,6 +269,8 @@ void clean_quit(int sig) {
 	#endif
 #endif
 
+	//? Stop socket server
+	Socket::stop();
 
 	if (Config::getB("save_config_on_exit")) {
 		Config::write();
@@ -1400,6 +1403,8 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 	const bool term_sync = Config::getB("terminal_sync");
 	cout << (term_sync ? Term::sync_start : "") << Cpu::box << Mem::box << Net::box << Proc::box << Pwr::box << (term_sync ? Term::sync_end : "") << flush;
 
+	//? Start socket server for MCP control
+	Socket::start();
 
 	//? ------------------------------------------------ MAIN LOOP ----------------------------------------------------
 
@@ -1478,6 +1483,11 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 				}
 			}
 
+			//? Process any pending socket commands from MCP
+			if (Socket::command_pending.load()) {
+				Socket::process_pending_command();
+			}
+
 			//? Start secondary collect & draw thread at the interval set by <update_ms> config value
 			if (time_ms() >= future_time and not Global::resized) {
 				Runner::run("all");
@@ -1505,7 +1515,13 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 				}
 
 				//? Break the loop at 1000ms intervals or if input polling was interrupted
-				else break;
+				else {
+					//? Check for socket commands when poll is interrupted (enables real-time MCP control)
+					if (Socket::command_pending.load()) {
+						Socket::process_pending_command();
+					}
+					break;
+				}
 
 			}
 
