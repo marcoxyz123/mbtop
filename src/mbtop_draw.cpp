@@ -4865,6 +4865,12 @@ namespace Logs {
 			custom_display_name = cfg->display_name;
 			custom_tag_color = cfg->tag_color;
 
+			//? Expand ~ to home directory
+			if (!app_log_path.empty() && app_log_path[0] == '~') {
+				const char* home = getenv("HOME");
+				if (home) app_log_path = string(home) + app_log_path.substr(1);
+			}
+
 			//? Check if file exists and is readable
 			if (!app_log_path.empty()) {
 				std::error_code ec;
