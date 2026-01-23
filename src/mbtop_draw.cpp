@@ -3874,8 +3874,8 @@ namespace Proc {
 					mouse_x += 6;
 					Input::mouse_mappings["s"] = {d_y, mouse_x, 1, 7};
 				    mouse_x += 9;
-					Input::mouse_mappings["N"] = {d_y, mouse_x, 1, 5};
-				    mouse_x += 7;
+					Input::mouse_mappings["N"] = {d_y, mouse_x, 1, 4};
+				    mouse_x += 6;
 				}
 				if (width > 77) {
 				    fmt::format_to(std::back_inserter(out), "{}{}{}{}{}{}{}{}",
@@ -3896,9 +3896,9 @@ namespace Proc {
 				    	+ (has_app_log ? Theme::c("log_fault") : Theme::c("inactive_fg")) + "◉"  //? App (red if available)
 				    	+ Fx::ub + title_right;
 				    if (alive and selected == 0) {
-				        Input::mouse_mappings["L"] = {d_y, mouse_x, 1, 7};
+				        Input::mouse_mappings["L"] = {d_y, mouse_x, 1, 5};  //? "Log◉◉" = 5 chars
 				    }
-				    mouse_x += 9;
+				    mouse_x += 7;  //? "┐Log◉◉┌" = 7 chars total
 				}
 
 				//? Labels
