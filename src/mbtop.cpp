@@ -98,7 +98,7 @@ namespace Global {
 		{"#B48EAD", "#4C6A94", "██║ ╚═╝ ██║██████╔╝   ██║   ╚██████╔╝██║"},
 		{"#3B4252", "#3B4252", "╚═╝     ╚═╝╚═════╝    ╚═╝    ╚═════╝ ╚═╝"},
 	};
-	const string Version = "1.6.4";
+	const string Version = "1.7.0";
 
 	int coreCount;
 

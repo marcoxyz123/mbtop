@@ -42,6 +42,9 @@
 ### User Experience
 - **Redesigned Settings Menu** — Full mouse support with tabbed interface (v1.6+)
 - **Preset Builder** — 100+ layout configurations with live preview
+- **Process Tagging** — Tag processes with 5 Nord Aurora colors for visual tracking (v1.7+)
+- **MCP Server** — AI assistants can control mbtop via Model Context Protocol (v1.7+)
+- **Application Logs** — View app-specific log files alongside system logs (v1.7+)
 - **4-Direction NET Graph** — Choose graph direction: right-to-left, left-to-right, top-down, or bottom-up (v1.6.4+)
 - **Column Toggle Menu** — Show/hide process columns via interactive menu with Shift+T (v1.6.4+)
 - **Multi-Instance Support** — Run multiple instances without config conflicts (v1.6.1+)
@@ -193,6 +196,21 @@ mbtop includes several built-in themes:
 - **OneDark** — Atom One Dark inspired
 
 Custom themes can be placed in `~/.config/mbtop/themes/`
+
+---
+
+## What's New in v1.7
+
+### v1.7.0
+
+- **TOML Configuration** — Modern config format with automatic migration from INI
+- **Process Tagging** — Tag important processes with 5 Nord Aurora colors (red, orange, yellow, green, violet)
+- **MCP Server Integration** — AI assistants can control process tagging via Model Context Protocol
+- **Application Log Viewing** — View app-specific log files alongside system logs (`S` to toggle source)
+- **Log Config Modal** — Configure per-process log paths, display names, and tag colors
+- **Tagged Filter** — Show only tagged processes with `a` key
+- **Custom Display Names** — Override process names in the list (e.g., "Claude MCP" instead of "node")
+- **Dynamic Config Reload** — Config changes apply without restart
 
 ---
 

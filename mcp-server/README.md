@@ -124,7 +124,7 @@ mbtop will now show only these 3 processes with their custom names and colors.
 
 ## Requirements
 
-- mbtop v1.6.0+ with TOML config support
+- mbtop v1.7.0+ with TOML config and MCP support
 - Python 3.10+
 - mcp SDK
 - tomlkit
