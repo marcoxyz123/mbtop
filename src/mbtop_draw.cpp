@@ -4227,6 +4227,29 @@ namespace Proc {
 				+ Theme::c("inactive_fg") + Fx::ub + graph_bg * max(1, d_width / 3) + Mv::l(max(1, d_width / 3))
 				+ Theme::c("proc_misc") + detailed_mem_graph(detailed.mem_bytes, (redraw or data_same or not alive)) + ' '
 				+ Theme::c("title") + Fx::b + detailed.memory;
+
+			//? Tag control: "Tag [x] ██" after memory value
+			{
+				auto tag_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
+				bool is_tagged = tag_cfg.has_value() && tag_cfg->has_tagging();
+				string tag_color_name = is_tagged ? tag_cfg->tag_color : "log_debug_plus";  //? Default to green
+				
+				//? Calculate position - right side of memory line
+				int tag_x = d_x + (d_width * 2 / 3) + 10;  //? After memory value
+				int tag_y = d_y + 4;
+				
+				out += Mv::to(tag_y, tag_x);
+				out += Theme::c("main_fg") + "Tag ";
+				
+				//? Checkbox
+				out += Theme::c("hi_fg") + "[" + (is_tagged ? "x" : " ") + "]";
+				Input::mouse_mappings["proc_tag_toggle"] = {tag_y, tag_x + 4, 1, 3};
+				
+				//? Color swatch
+				out += " " + Theme::c(tag_color_name) + "██";
+				Input::mouse_mappings["proc_tag_color"] = {tag_y, tag_x + 8, 1, 2};
+				out += Fx::reset;
+			}
 		}
 		skip_detailed_draw:  //? Label for skipping detailed draw when dimensions are invalid
 
@@ -4939,8 +4962,9 @@ namespace Logs {
 		const auto& theme = Theme::c;
 		string out;
 
-		const int modal_w = 22;
-		const int modal_h = 7;
+		//? Tiny modal - just 5 color swatches
+		const int modal_w = 19;  //? 5 colors * 3 chars + 4 padding
+		const int modal_h = 3;
 
 		//? Use Proc panel coordinates for modal position
 		//? This allows the modal to work even when Logs panel is not shown
@@ -4948,34 +4972,16 @@ namespace Logs {
 		const int modal_y = Proc::y + (Proc::height - modal_h) / 2;
 
 		//? Draw modal box
-		out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Tag Color");
+		out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "");
 
-		//? Draw color swatches
-		int color_y = modal_y + 2;
+		//? Draw color swatches - click to select and close
+		int color_y = modal_y + 1;
 		out += Mv::to(color_y, modal_x + 2);
 		for (size_t i = 0; i < 5; i++) {
 			string color = theme(TagColors::themes[i]);
-			bool selected = (static_cast<int>(i) == color_modal_selected);
-			if (selected) {
-				out += theme("selected_bg");
-			}
 			out += color + "██" + Fx::reset + " ";
 			Input::mouse_mappings["color_" + to_string(i)] = {color_y, modal_x + 2 + static_cast<int>(i) * 3, 1, 2};
 		}
-
-		//? Draw labels
-		out += Mv::to(color_y + 1, modal_x + 2);
-		for (size_t i = 0; i < 5; i++) {
-			out += theme("main_fg") + string(TagColors::names[i]) + " ";
-		}
-
-		//? Selection indicator
-		out += Mv::to(color_y + 2, modal_x + 2 + color_modal_selected * 3);
-		out += theme("hi_fg") + "▲" + Fx::reset;
-
-		//? Instructions
-		out += Mv::to(modal_y + modal_h - 2, modal_x + 2);
-		out += theme("inactive_fg") + "1-5/←→/Enter/Esc";
 
 		return out;
 	}
