@@ -1791,34 +1791,61 @@ namespace Config {
 		}
 	}
 
+	//? Helper: Calculate pattern specificity (higher = more specific)
+	//? Exact match = INT_MAX, wildcard = length of non-wildcard chars
+	int pattern_specificity(const string& pattern, bool is_exact) {
+		if (is_exact) return INT_MAX;  //? Exact match is most specific
+		//? Count non-wildcard characters (more = more specific)
+		int count = 0;
+		for (char c : pattern) {
+			if (c != '*') count++;
+		}
+		return count;
+	}
+
 	std::optional<ProcessLogConfig> find_process_config(const string& name, const string& cmdline) {
-		// First check complex process configs
+		//? Collect all matching configs with their specificity
+		std::vector<std::pair<int, const ProcessLogConfig*>> matches;
+
 		for (const auto& cfg : logging.processes) {
-			// Match by name first
-			if (cfg.name == name) {
-				// Priority 1: If there's a command pattern (regex), use it
-				if (cfg.compiled_pattern.has_value()) {
-					if (std::regex_search(cmdline, *cfg.compiled_pattern)) {
-						return cfg;
-					}
-					continue;  // Pattern didn't match, try next config
+			if (cfg.name != name) continue;
+			if (cfg.command.empty()) continue;
+
+			//? Check if this config matches
+			bool matched = false;
+			bool is_exact = false;
+
+			// Priority 1: If there's a command pattern (regex), use it
+			if (cfg.compiled_pattern.has_value()) {
+				if (std::regex_search(cmdline, *cfg.compiled_pattern)) {
+					matched = true;
+					// Regex patterns use pattern length as specificity
 				}
-				// Priority 2: Command with wildcard matching
-				if (!cfg.command.empty()) {
-					if (has_wildcard(cfg.command)) {
-						// Wildcard match
-						if (wildcard_match(cfg.command, cmdline)) {
-							return cfg;
-						}
-					} else {
-						// Exact match
-						if (cfg.command == cmdline) {
-							return cfg;
-						}
-					}
-				}
-				// No match - command is required, skip entries without command
 			}
+			// Priority 2: Command with wildcard or exact matching
+			else if (has_wildcard(cfg.command)) {
+				if (wildcard_match(cfg.command, cmdline)) {
+					matched = true;
+				}
+			} else {
+				// Exact match
+				if (cfg.command == cmdline) {
+					matched = true;
+					is_exact = true;
+				}
+			}
+
+			if (matched) {
+				int specificity = pattern_specificity(cfg.command, is_exact);
+				matches.emplace_back(specificity, &cfg);
+			}
+		}
+
+		//? Return most specific match (highest specificity)
+		if (!matches.empty()) {
+			auto best = std::max_element(matches.begin(), matches.end(),
+				[](const auto& a, const auto& b) { return a.first < b.first; });
+			return *best->second;
 		}
 
 		// Check simple applications mapping (name -> path)
