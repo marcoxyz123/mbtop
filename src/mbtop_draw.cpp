@@ -4933,6 +4933,7 @@ namespace Logs {
 			//? Apply immediately and close
 			Config::ProcessLogConfig cfg;
 			cfg.name = color_modal_name;
+			cfg.command = color_modal_cmdline;  //? REQUIRED for unique key
 			cfg.command_pattern = "";
 			cfg.tagged = true;
 			cfg.tag_color = string(TagColors::themes[static_cast<size_t>(color_modal_selected)]);
@@ -4941,6 +4942,8 @@ namespace Logs {
 				cfg.log_path = existing->log_path;
 				cfg.display_name = existing->display_name;
 				cfg.command_pattern = existing->command_pattern;
+				if (!existing->command.empty())
+					cfg.command = existing->command;
 			}
 			Config::save_process_config(cfg);
 			color_modal_active = false;
@@ -4951,12 +4954,15 @@ namespace Logs {
 			//? Apply selected color
 			Config::ProcessLogConfig cfg;
 			cfg.name = color_modal_name;
+			cfg.command = color_modal_cmdline;  //? REQUIRED for unique key
 			cfg.tagged = true;
 			cfg.tag_color = string(TagColors::themes[static_cast<size_t>(color_modal_selected)]);
 			if (auto existing = Config::find_process_config(color_modal_name, color_modal_cmdline)) {
 				cfg.log_path = existing->log_path;
 				cfg.display_name = existing->display_name;
 				cfg.command_pattern = existing->command_pattern;
+				if (!existing->command.empty())
+					cfg.command = existing->command;
 			}
 			Config::save_process_config(cfg);
 			color_modal_active = false;
@@ -4969,12 +4975,15 @@ namespace Logs {
 				color_modal_selected = i;
 				Config::ProcessLogConfig cfg;
 				cfg.name = color_modal_name;
+				cfg.command = color_modal_cmdline;  //? REQUIRED for unique key
 				cfg.tagged = true;
 				cfg.tag_color = string(TagColors::themes[static_cast<size_t>(i)]);
 				if (auto existing = Config::find_process_config(color_modal_name, color_modal_cmdline)) {
 					cfg.log_path = existing->log_path;
 					cfg.display_name = existing->display_name;
 					cfg.command_pattern = existing->command_pattern;
+					if (!existing->command.empty())
+						cfg.command = existing->command;
 				}
 				Config::save_process_config(cfg);
 				color_modal_active = false;
