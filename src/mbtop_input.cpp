@@ -1052,10 +1052,11 @@ namespace Input {
 					Runner::run("all", true, true);
 					return;
 				}
-				//? Toggle tag on/off for selected/detailed process
+				//? Toggle tag on/off for detailed process (mouse click on Tag checkbox)
 				else if (key == "proc_tag_toggle") {
-					string proc_name = Config::getI("proc_selected") > 0 ? Proc::selected_name : Proc::detailed.entry.name;
-					string proc_cmd = Config::getI("proc_selected") > 0 ? "" : Proc::detailed.entry.cmd;
+					if (!Config::getB("show_detailed") || Proc::detailed.status == "Dead") return;
+					string proc_name = Proc::detailed.entry.name;
+					string proc_cmd = Proc::detailed.entry.cmd;
 					auto cfg = Config::find_process_config(proc_name, proc_cmd);
 					if (cfg.has_value() && cfg->has_tagging()) {
 						//? Remove tagging
@@ -1067,12 +1068,15 @@ namespace Input {
 						//? Enable tagging with default color (green)
 						Config::ProcessLogConfig new_cfg;
 						new_cfg.name = proc_name;
+						new_cfg.command = proc_cmd;  //? REQUIRED for unique key
 						new_cfg.tagged = true;
 						new_cfg.tag_color = "log_debug_plus";  //? Green
 						if (cfg.has_value()) {
 							new_cfg.log_path = cfg->log_path;
 							new_cfg.display_name = cfg->display_name;
 							new_cfg.command_pattern = cfg->command_pattern;
+							if (!cfg->command.empty())
+								new_cfg.command = cfg->command;
 						}
 						Config::save_process_config(new_cfg);
 					}
