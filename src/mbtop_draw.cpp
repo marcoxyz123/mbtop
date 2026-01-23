@@ -3964,8 +3964,11 @@ namespace Proc {
 			}
 
 			//? Tagged filter button (next to filter, 'a' hotkey)
-			out += Mv::to(y, filter_end_x) + title_left + (filter_tagged ? Fx::b : "") + Theme::c("title") + "t"
-				+ Theme::c("hi_fg") + 'a' + Theme::c("title") + "gged" + Fx::ub + title_right;
+			//? Show in red (log_fault) when filter is ON and list is empty - visual warning
+			const bool tagged_warning = filter_tagged and numpids == 0;
+			const string tagged_color = tagged_warning ? Theme::c("log_fault") : Theme::c("title");
+			out += Mv::to(y, filter_end_x) + title_left + (filter_tagged ? Fx::b : "") + tagged_color + "t"
+				+ Theme::c("hi_fg") + 'a' + tagged_color + "gged" + Fx::ub + title_right;
 			Input::mouse_mappings["a"] = {y, filter_end_x + 1, 1, 6};
 
 			//? pause, per-core, reverse, tree and sorting
