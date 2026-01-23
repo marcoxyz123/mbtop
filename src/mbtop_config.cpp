@@ -25,6 +25,7 @@ tab-size = 4
 #include <locale>
 #include <optional>
 #include <ranges>
+#include <regex>
 #include <string_view>
 #include <utility>
 
@@ -34,6 +35,7 @@ tab-size = 4
 #include <signal.h>
 #include <unistd.h>
 
+#include "../include/toml.hpp"
 #include "mbtop_config.hpp"
 #include "mbtop_log.hpp"
 #include "mbtop_shared.hpp"
@@ -61,7 +63,7 @@ namespace Config {
 	bool write_new;
 
 	const vector<array<string, 2>> descriptions = {
-		{"color_theme", 		"#* Name of a btop++/bpytop/bashtop formatted \".theme\" file, \"Default\" and \"TTY\" for builtin themes.\n"
+		{"color_theme", 		"#* Name of a mbtop/btop++/bpytop/bashtop formatted \".theme\" file, \"Default\" and \"TTY\" for builtin themes.\n"
 								"#* Themes should be placed in \"../share/mbtop/themes\" relative to binary or \"$HOME/.config/mbtop/themes\""},
 
 		{"theme_background", 	"#* If the theme set background should be shown, set to False if you want terminal background transparency."},
@@ -112,6 +114,8 @@ namespace Config {
 		{"proc_reversed",		"#* Reverse sorting order, True or False."},
 
 		{"proc_tree",			"#* Show processes as a tree."},
+
+		{"proc_filter_tagged",	"#* Show only tagged processes in the process list."},
 
 		{"proc_colors", 		"#* Use the cpu graph colors in the process list."},
 
@@ -168,6 +172,8 @@ namespace Config {
 		{"proc_follow_detailed",	"#* Should the process list follow the selected process when detailed view is open."},
 
 		{"proc_aggregate",		"#* In tree-view, always accumulate child process resources in the parent process."},
+
+		{"proc_tag_mode",		"#* How to display tagged processes: \"name\" colors only the program name, \"line\" colors the entire row."},
 
 		{"keep_dead_proc_usage", "#* Should cpu and memory usage display be preserved for dead processes when paused."},
 
@@ -255,6 +261,8 @@ namespace Config {
 
 		{"log_buffer_size",		"#* Maximum number of log entries to keep in buffer. Default: 500. Higher values use more memory."},
 
+		{"log_default_source",	"#* Default log source when viewing process logs: \"system\" for macOS unified logs, \"application\" for app log files."},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -322,7 +330,7 @@ namespace Config {
 
 		{"show_battery_watts",	"#* Show power stats of battery next to charge indicator."},
 
-		{"log_level", 			"#* Set loglevel for \"~/.local/state/mbtop.log\" levels are: \"ERROR\" \"WARNING\" \"INFO\" \"DEBUG\".\n"
+		{"log_level", 			"#* Set loglevel for \"~/.config/mbtop/mbtop.log\" levels are: \"ERROR\" \"WARNING\" \"INFO\" \"DEBUG\".\n"
 								"#* The level set includes all lower levels, i.e. \"DEBUG\" will show all logging info."},
 		{"save_config_on_exit",  "#* Automatically save current settings to config file on exit."},
 
@@ -360,6 +368,7 @@ namespace Config {
 		{"graph_symbol_net", "default"},
 		{"graph_symbol_proc", "default"},
 		{"proc_sorting", "cpu lazy"},
+		{"proc_tag_mode", "name"},
 		{"cpu_graph_upper", "Auto"},
 		{"cpu_graph_lower", "Auto"},
 		{"cpu_sensor", "Auto"},
@@ -380,6 +389,7 @@ namespace Config {
 		{"base_10_bitrate", "Auto"},
 		{"log_level", "WARNING"},
 		{"log_export_path", ""},
+		{"log_default_source", "system"},
 		{"proc_filter", ""},
 		{"proc_command", ""},
 		{"selected_name", ""},
@@ -406,6 +416,7 @@ namespace Config {
 		{"rounded_corners", true},
 		{"proc_reversed", false},
 		{"proc_tree", false},
+		{"proc_filter_tagged", false},
 		{"proc_colors", true},
 		{"proc_gradient", true},
 		{"proc_per_core", false},
@@ -604,9 +615,13 @@ namespace Config {
 
 	fs::path conf_dir;
 	fs::path conf_file;
+	fs::path toml_file;
 	fs::path lock_file;
 
 	bool another_instance_running = false;
+
+	// Typed logging config (coexists with flat maps)
+	LoggingConfig logging;
 
 	vector<string> available_batteries = {"Auto"};
 
@@ -950,6 +965,9 @@ namespace Config {
 
 		else if (name.starts_with("graph_symbol_") and (value != "default" and not v_contains(valid_graph_symbols, value)))
 			validError = fmt::format("Invalid graph symbol identifier for {}: {}", name, value);
+
+		else if (name == "proc_tag_mode" and not v_contains(valid_tag_modes, value))
+			validError = "Invalid proc_tag_mode: " + value;
 
 		else if (name == "shown_boxes" and not Global::init_conf) {
 			if (value.empty())
@@ -1301,6 +1319,14 @@ namespace Config {
 	}
 
 	void write() {
+		//? Prefer TOML format if toml_file is set
+		if (!toml_file.empty()) {
+			if (!write_new) return;
+			write_toml();
+			return;
+		}
+
+		//? Fall back to INI format
 		if (conf_file.empty() or not write_new) return;
 		//? Primary instance (has lock) always saves
 		//? Secondary instances check prevent_autosave setting
@@ -1321,34 +1347,12 @@ namespace Config {
 		}
 	}
 
-	static auto get_xdg_state_dir() -> std::optional<fs::path> {
-		std::optional<fs::path> xdg_state_home;
-
-		{
-			const auto* xdg_state_home_ptr = std::getenv("XDG_STATE_HOME");
-			if (xdg_state_home_ptr != nullptr) {
-				xdg_state_home = std::make_optional(fs::path(xdg_state_home_ptr));
-			} else {
-				const auto* home_ptr = std::getenv("HOME");
-				if (home_ptr != nullptr) {
-					xdg_state_home = std::make_optional(fs::path(home_ptr) / ".local" / "state");
-				}
-			}
-		}
-
-		if (xdg_state_home.has_value()) {
-			std::error_code err;
-			fs::create_directories(xdg_state_home.value(), err);
-			if (err) {
-				return std::nullopt;
-			}
-			return xdg_state_home;
-		}
-		return std::nullopt;
-	}
-
 	auto get_log_file() -> std::optional<fs::path> {
-		return get_xdg_state_dir().transform([](auto&& state_home) -> auto { return state_home / "mbtop.log"; });
+		//? Use config directory for log file (~/.config/mbtop/mbtop.log)
+		if (conf_dir.empty()) {
+			return std::nullopt;
+		}
+		return conf_dir / "mbtop.log";
 	}
 
 	auto current_config() -> std::string {
@@ -1374,5 +1378,548 @@ namespace Config {
 			fmt::format_to(std::back_inserter(buffer), "\n");
 		}
 		return buffer;
+	}
+
+	//=============================================================================
+	// TOML Config Functions
+	//=============================================================================
+
+	// Helper to expand ~ in paths
+	static string expand_path(const string& path) {
+		if (path.empty() || path[0] != '~') return path;
+		const char* home = std::getenv("HOME");
+		if (home == nullptr) return path;
+		return string(home) + path.substr(1);
+	}
+
+	// Helper to collapse paths with ~ for storage
+	static string collapse_path(const string& path) {
+		const char* home = std::getenv("HOME");
+		if (home == nullptr) return path;
+		string home_str(home);
+		if (path.starts_with(home_str)) {
+			return "~" + path.substr(home_str.length());
+		}
+		return path;
+	}
+
+	// Map config keys to TOML sections
+	static string get_section_for_key(const string& key) {
+		if (key.starts_with("cpu_") || key == "show_uptime" || key == "show_cpu_watts" ||
+		    key == "check_temp" || key == "show_coretemp" || key == "show_cpu_freq" ||
+		    key == "clock_format" || key == "clock_12h" || key == "show_hostname" ||
+		    key == "show_uptime_header" || key == "show_username_header" ||
+		    key == "custom_cpu_name" || key == "temp_scale")
+			return "cpu";
+		if (key.starts_with("gpu_") || key.starts_with("nvml_") || key.starts_with("rsmi_") ||
+		    key == "shown_gpus" || key.starts_with("custom_gpu_") || key == "show_gpu_info")
+			return "gpu";
+		if (key.starts_with("pwr_"))
+			return "power";
+		if (key.starts_with("mem_") || key == "show_disks" || key == "show_swap" ||
+		    key == "swap_disk" || key.starts_with("swap_") || key.starts_with("vram_") ||
+		    key == "zfs_arc_cached" || key == "zfs_hide_datasets" || key == "only_physical" ||
+		    key == "show_network_drives" || key == "use_fstab" || key == "disk_free_priv" ||
+		    key == "disks_filter" || key == "show_io_stat" || key == "io_mode" ||
+		    key == "io_graph_combined" || key == "io_graph_speeds")
+			return "memory";
+		if (key.starts_with("net_") || key == "base_10_bitrate" || key == "swap_upload_download")
+			return "network";
+		if (key.starts_with("proc_") || key == "keep_dead_proc_usage" || key == "follow_process")
+			return "process";
+		if (key.starts_with("log_") || key == "logs_below_proc")
+			return "logging";
+		if (key == "color_theme" || key == "theme_background" || key == "truecolor" ||
+		    key == "graph_symbol" || key.starts_with("graph_symbol_") || key == "rounded_corners" ||
+		    key == "base_10_sizes" || key == "lowcolor" || key == "force_tty" || key == "tty_mode")
+			return "appearance";
+		return "general";
+	}
+
+	void load_toml(const fs::path& toml_path, vector<string>& load_warnings) {
+		std::error_code error;
+		if (toml_path.empty() || !fs::exists(toml_path, error)) {
+			return;
+		}
+
+		try {
+			auto config = toml::parse_file(toml_path.string());
+
+			// Helper lambdas for reading values
+			auto read_string = [&](const string& section, const string& key) -> std::optional<string> {
+				if (auto val = config[section][key].value<string>()) {
+					return *val;
+				}
+				// Also check root level for backward compatibility
+				if (auto val = config[key].value<string>()) {
+					return *val;
+				}
+				return std::nullopt;
+			};
+
+			auto read_bool = [&](const string& section, const string& key) -> std::optional<bool> {
+				if (auto val = config[section][key].value<bool>()) {
+					return *val;
+				}
+				if (auto val = config[key].value<bool>()) {
+					return *val;
+				}
+				return std::nullopt;
+			};
+
+			auto read_int = [&](const string& section, const string& key) -> std::optional<int64_t> {
+				if (auto val = config[section][key].value<int64_t>()) {
+					return *val;
+				}
+				if (auto val = config[key].value<int64_t>()) {
+					return *val;
+				}
+				return std::nullopt;
+			};
+
+			// Load all string values
+			for (auto& [key, value] : strings) {
+				string section = get_section_for_key(string(key));
+				if (auto val = read_string(section, string(key))) {
+					if (stringValid(key, *val)) {
+						value = *val;
+					} else {
+						load_warnings.push_back(validError);
+					}
+				}
+			}
+
+			// Load all bool values
+			for (auto& [key, value] : bools) {
+				string section = get_section_for_key(string(key));
+				if (auto val = read_bool(section, string(key))) {
+					value = *val;
+				}
+			}
+
+			// Load all int values
+			for (auto& [key, value] : ints) {
+				string section = get_section_for_key(string(key));
+				if (auto val = read_int(section, string(key))) {
+					string val_str = std::to_string(*val);
+					if (intValid(key, val_str)) {
+						value = static_cast<int>(*val);
+					} else {
+						load_warnings.push_back(validError);
+					}
+				}
+			}
+
+			// Load logging section into typed struct
+			if (config.contains("logging")) {
+				auto& log_section = *config["logging"].as_table();
+
+				//? Note: keys match the strings/bools/ints map keys (e.g., log_level, not level)
+				if (auto val = log_section["log_level"].value<string>())
+					logging.level = *val;
+				if (auto val = log_section["log_export_path"].value<string>())
+					logging.export_path = expand_path(*val);
+				if (auto val = log_section["log_default_source"].value<string>())
+					logging.default_source = *val;
+				if (auto val = log_section["log_buffer_size"].value<int64_t>())
+					logging.buffer_size = static_cast<int>(*val);
+				if (auto val = log_section["log_color_full_line"].value<bool>())
+					logging.color_full_line = *val;
+				if (auto val = log_section["logs_below_proc"].value<bool>())
+					logging.below_proc = *val;
+
+				// Load simple applications mapping
+				if (log_section.contains("applications")) {
+					if (auto apps = log_section["applications"].as_table()) {
+						for (auto& [app_name, app_path] : *apps) {
+							if (auto path = app_path.value<string>()) {
+								logging.applications[string(app_name)] = expand_path(*path);
+							}
+						}
+					}
+				}
+
+				// Load complex process configs
+				if (log_section.contains("processes")) {
+					if (auto processes = log_section["processes"].as_array()) {
+						for (auto& proc : *processes) {
+							if (auto tbl = proc.as_table()) {
+								ProcessLogConfig cfg;
+								if (auto val = (*tbl)["name"].value<string>())
+									cfg.name = *val;
+								if (auto val = (*tbl)["command"].value<string>())
+									cfg.command = *val;
+								if (auto val = (*tbl)["command_pattern"].value<string>()) {
+									cfg.command_pattern = *val;
+									// Compile the regex
+									try {
+										cfg.compiled_pattern = std::regex(*val, std::regex::ECMAScript);
+									} catch (const std::regex_error& e) {
+										load_warnings.push_back(fmt::format(
+											"Invalid regex for process '{}': {}", cfg.name, e.what()));
+									}
+								}
+								if (auto val = (*tbl)["log_path"].value<string>())
+									cfg.log_path = expand_path(*val);
+								if (auto val = (*tbl)["display_name"].value<string>())
+									cfg.display_name = *val;
+								if (auto val = (*tbl)["tagged"].value<bool>())
+									cfg.tagged = *val;
+								if (auto val = (*tbl)["tag_color"].value<string>())
+									cfg.tag_color = *val;
+
+								if (!cfg.name.empty()) {
+									logging.processes.push_back(std::move(cfg));
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Sync logging struct back to flat maps
+			strings.at("log_level") = logging.level;
+			strings.at("log_export_path") = logging.export_path;
+			strings.at("log_default_source") = logging.default_source;
+			bools.at("log_color_full_line") = logging.color_full_line;
+			bools.at("logs_below_proc") = logging.below_proc;
+			ints.at("log_buffer_size") = logging.buffer_size;
+
+		} catch (const toml::parse_error& err) {
+			load_warnings.push_back(fmt::format("TOML parse error: {}", err.description()));
+		} catch (const std::exception& e) {
+			load_warnings.push_back(fmt::format("Error loading TOML config: {}", e.what()));
+		}
+	}
+
+	void write_toml() {
+		if (toml_file.empty()) return;
+
+		// Check permissions for secondary instances
+		if (another_instance_running && getB("prevent_autosave")) {
+			Logger::debug("Skipping TOML write - secondary instance with prevent_autosave enabled");
+			return;
+		}
+
+		Logger::debug("Writing TOML config file");
+		if (geteuid() != Global::real_uid && seteuid(Global::real_uid) != 0) return;
+
+		try {
+			toml::table root;
+
+			// Helper to add to correct section
+			auto add_to_section = [&root](const string& section, const string& key, auto value) {
+				if (!root.contains(section)) {
+					root.insert(section, toml::table{});
+				}
+				root[section].as_table()->insert(key, value);
+			};
+
+			//? Session-only settings that should NOT be persisted
+			auto is_session_only = [](const std::string_view key) {
+				return key == "show_detailed" || key == "detailed_pid" || 
+				       key == "proc_selected" || key == "selected_pid" ||
+				       key == "followed_pid" || key == "proc_followed";
+			};
+
+			// Write all config values to sections
+			for (const auto& [key, value] : strings) {
+				if (is_session_only(key)) continue;
+				string section = get_section_for_key(string(key));
+				add_to_section(section, string(key), value);
+			}
+
+			for (const auto& [key, value] : bools) {
+				if (is_session_only(key)) continue;
+				string section = get_section_for_key(string(key));
+				add_to_section(section, string(key), value);
+			}
+
+			for (const auto& [key, value] : ints) {
+				if (is_session_only(key)) continue;
+				string section = get_section_for_key(string(key));
+				add_to_section(section, string(key), static_cast<int64_t>(value));
+			}
+
+			// Write logging.applications
+			if (!logging.applications.empty()) {
+				toml::table apps;
+				for (const auto& [name, path] : logging.applications) {
+					apps.insert(name, collapse_path(path));
+				}
+				root["logging"].as_table()->insert("applications", std::move(apps));
+			}
+
+			// Write logging.processes as array of tables
+			if (!logging.processes.empty()) {
+				toml::array processes;
+				for (const auto& cfg : logging.processes) {
+					toml::table proc;
+					proc.insert("name", cfg.name);
+					if (!cfg.command.empty())
+						proc.insert("command", cfg.command);
+					if (!cfg.command_pattern.empty())
+						proc.insert("command_pattern", cfg.command_pattern);
+					if (!cfg.log_path.empty())
+						proc.insert("log_path", collapse_path(cfg.log_path));
+					if (!cfg.display_name.empty())
+						proc.insert("display_name", cfg.display_name);
+					if (cfg.tagged)
+						proc.insert("tagged", cfg.tagged);
+					if (!cfg.tag_color.empty())
+						proc.insert("tag_color", cfg.tag_color);
+					processes.push_back(std::move(proc));
+				}
+				root["logging"].as_table()->insert("processes", std::move(processes));
+			}
+
+			// Write to file with header comment
+			std::ofstream file(toml_file, std::ios::trunc);
+			if (!file.good()) {
+				Logger::error("Failed to open TOML config file for writing: {}", toml_file);
+				return;
+			}
+
+			file << "#? Config file for mbtop v." << Global::Version << " (TOML format)\n";
+			file << "#? https://github.com/marcoxyz123/mbtop\n\n";
+			file << root;
+
+			if (!file.good()) {
+				Logger::error("Failed to write TOML config file: {}", toml_file);
+			}
+
+		} catch (const std::exception& e) {
+			Logger::error("Error writing TOML config: {}", e.what());
+		}
+	}
+
+	void ensure_default_mbtop_config() {
+		//? Add default mbtop process config if not already configured
+		bool has_mbtop_config = rng::any_of(logging.processes, [](const ProcessLogConfig& cfg) {
+			return cfg.name == "mbtop";
+		});
+		if (!has_mbtop_config) {
+			ProcessLogConfig mbtop_cfg;
+			mbtop_cfg.name = "mbtop";
+			mbtop_cfg.display_name = "MBTOP";
+			mbtop_cfg.log_path = "~/.config/mbtop/mbtop.log";
+			mbtop_cfg.tagged = true;
+			mbtop_cfg.tag_color = "log_debug_plus";  //? Green
+			logging.processes.push_back(std::move(mbtop_cfg));
+		}
+	}
+
+	bool migrate_from_ini(const fs::path& ini_path, const fs::path& toml_path) {
+		std::error_code error;
+		if (!fs::exists(ini_path, error)) {
+			return false;
+		}
+
+		Logger::info("Migrating config from INI to TOML format");
+
+		// First load the INI config using the existing load function
+		vector<string> warnings;
+		load(ini_path, warnings);
+
+		// Set up the TOML path
+		toml_file = toml_path;
+
+		// Write the TOML config
+		write_toml();
+
+		// Backup the old INI file
+		fs::path backup_path = ini_path;
+		backup_path += ".bak";
+		try {
+			fs::rename(ini_path, backup_path, error);
+			if (error) {
+				Logger::warning("Could not backup INI config: {}", error.message());
+			} else {
+				Logger::info("INI config backed up to {}", backup_path);
+			}
+		} catch (const std::exception& e) {
+			Logger::warning("Could not backup INI config: {}", e.what());
+		}
+
+		return fs::exists(toml_path, error);
+	}
+
+	std::optional<ProcessLogConfig> find_process_config(const string& name, const string& cmdline) {
+		// First check complex process configs
+		for (const auto& cfg : logging.processes) {
+			// Match by name first
+			if (cfg.name == name) {
+				// Priority 1: If there's a command pattern (regex), use it
+				if (cfg.compiled_pattern.has_value()) {
+					if (std::regex_search(cmdline, *cfg.compiled_pattern)) {
+						return cfg;
+					}
+					continue;  // Pattern didn't match, try next config
+				}
+				// Priority 2: Exact command match required (no name-only entries allowed)
+				if (!cfg.command.empty() && cfg.command == cmdline) {
+					return cfg;
+				}
+				// No match - command is required, skip entries without command
+			}
+		}
+
+		// Check simple applications mapping (name -> path)
+		if (auto it = logging.applications.find(name); it != logging.applications.end()) {
+			ProcessLogConfig cfg;
+			cfg.name = name;
+			cfg.log_path = it->second;
+			return cfg;
+		}
+
+		return std::nullopt;
+	}
+
+	void save_process_config(const ProcessLogConfig& config) {
+		// Command is required - no name-only entries allowed
+		if (config.command.empty()) {
+			Logger::warning("save_process_config: command is required for process '{}'", config.name);
+			return;
+		}
+
+		// Look for existing config with same name AND command (unique key)
+		for (auto& cfg : logging.processes) {
+			if (cfg.name == config.name && cfg.command == config.command) {
+				// Update existing
+				cfg = config;
+				// Recompile regex if pattern changed
+				if (!cfg.command_pattern.empty()) {
+					try {
+						cfg.compiled_pattern = std::regex(cfg.command_pattern, std::regex::ECMAScript);
+					} catch (const std::regex_error&) {
+						cfg.compiled_pattern = std::nullopt;
+					}
+				} else {
+					cfg.compiled_pattern = std::nullopt;
+				}
+				write_toml();
+				return;
+			}
+		}
+
+		// Add new config
+		ProcessLogConfig new_cfg = config;
+		if (!new_cfg.command_pattern.empty()) {
+			try {
+				new_cfg.compiled_pattern = std::regex(new_cfg.command_pattern, std::regex::ECMAScript);
+			} catch (const std::regex_error&) {
+				new_cfg.compiled_pattern = std::nullopt;
+			}
+		}
+		logging.processes.push_back(std::move(new_cfg));
+		write_toml();
+	}
+
+	void remove_process_config(const string& name, const string& command) {
+		// Remove from processes vector (match by name + command)
+		auto it = rng::find_if(logging.processes,
+			[&name, &command](const ProcessLogConfig& cfg) {
+				return cfg.name == name && cfg.command == command;
+			});
+		if (it != logging.processes.end()) {
+			logging.processes.erase(it);
+			write_toml();
+		}
+	}
+
+	//? Track config file modification time for dynamic reload
+	static std::filesystem::file_time_type last_config_mtime{};
+
+	bool check_config_changed() {
+		if (toml_file.empty()) return false;
+		
+		std::error_code ec;
+		if (!fs::exists(toml_file, ec)) return false;
+		
+		auto current_mtime = fs::last_write_time(toml_file, ec);
+		if (ec) return false;
+		
+		if (last_config_mtime == std::filesystem::file_time_type{}) {
+			//? First check - initialize mtime
+			last_config_mtime = current_mtime;
+			return false;
+		}
+		
+		if (current_mtime != last_config_mtime) {
+			last_config_mtime = current_mtime;
+			reload_process_configs();
+			return true;
+		}
+		
+		return false;
+	}
+
+	void reload_process_configs() {
+		if (toml_file.empty()) return;
+		
+		Logger::info("Reloading process configs from {}", toml_file.string());
+		
+		try {
+			auto root = toml::parse_file(toml_file.string());
+			
+			//? Clear existing process configs
+			logging.processes.clear();
+			
+			//? Reload logging section
+			if (auto log_section = root["logging"].as_table()) {
+				//? Reload default_source
+				if (auto val = (*log_section)["default_source"].value<string>()) {
+					logging.default_source = *val;
+					strings.at("log_default_source") = *val;
+				}
+				
+				//? Reload processes array
+				if (auto processes = (*log_section)["processes"].as_array()) {
+					for (auto& proc : *processes) {
+						if (auto tbl = proc.as_table()) {
+							ProcessLogConfig cfg;
+							if (auto val = (*tbl)["name"].value<string>())
+								cfg.name = *val;
+							if (auto val = (*tbl)["command"].value<string>())
+								cfg.command = *val;
+							if (auto val = (*tbl)["command_pattern"].value<string>()) {
+								cfg.command_pattern = *val;
+								try {
+									cfg.compiled_pattern = std::regex(*val, std::regex::ECMAScript);
+								} catch (const std::regex_error&) {
+									cfg.compiled_pattern = std::nullopt;
+								}
+							}
+							if (auto val = (*tbl)["log_path"].value<string>())
+								cfg.log_path = expand_path(*val);
+							if (auto val = (*tbl)["display_name"].value<string>())
+								cfg.display_name = *val;
+							if (auto val = (*tbl)["tagged"].value<bool>())
+								cfg.tagged = *val;
+							if (auto val = (*tbl)["tag_color"].value<string>())
+								cfg.tag_color = *val;
+
+							if (!cfg.name.empty()) {
+								logging.processes.push_back(std::move(cfg));
+							}
+						}
+					}
+				}
+			}
+			
+			//? Reload proc section settings
+			if (auto proc_section = root["proc"].as_table()) {
+				if (auto val = (*proc_section)["proc_filter_tagged"].value<bool>()) {
+					bools.at("proc_filter_tagged") = *val;
+				}
+			}
+			
+			Logger::info("Reloaded {} process configs", logging.processes.size());
+			
+		} catch (const toml::parse_error& err) {
+			Logger::warning("Failed to reload config: {}", err.description());
+		} catch (const std::exception& e) {
+			Logger::warning("Failed to reload config: {}", e.what());
+		}
 	}
 }

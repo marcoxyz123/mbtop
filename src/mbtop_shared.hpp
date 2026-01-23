@@ -472,6 +472,7 @@ namespace Proc {
 	extern int selected_pid, start, selected, collapse, expand, filter_found, selected_depth, toggle_children;
 	extern int scroll_pos;
 	extern string selected_name;
+	extern bool filter_tagged;  //? When true, show only tagged processes
 
 	//? Contains the valid sorting options for processes
 	const vector<string> sort_vector = {
@@ -621,6 +622,20 @@ namespace Logs {
 	extern pid_t current_pid;     //? PID being monitored
 	extern string current_name;   //? Name of process being monitored
 
+	//=== Log Source Management ===
+	enum class Source {
+		System,      //? macOS unified logging (log stream)
+		Application  //? Application log file (text-based)
+	};
+
+	extern Source source;              //? Current log source (default: System)
+	extern bool source_changed;        //? Flag to trigger stream restart on source toggle
+	extern string app_log_path;        //? Path to application log file
+	extern bool app_log_available;     //? Whether app log exists/readable
+	extern string custom_display_name; //? Display name from config (optional)
+	extern string custom_tag_color;    //? Tag color from config (optional)
+	extern string current_cmdline;     //? Command line of current process
+
 	//? Log level filter bitmask: bit 0=Default, 1=Info, 2=Debug, 3=Error, 4=Fault
 	extern uint8_t level_filter;
 
@@ -698,6 +713,82 @@ namespace Logs {
 
 	//* Handle error modal input (any key closes it)
 	bool error_modal_input(const std::string_view key);
+
+	//=== Log Config Modal State ===
+	extern bool config_modal_active;
+	extern string config_modal_name;        //? Process name being configured
+	extern string config_modal_cmdline;     //? Process cmdline for matching
+	extern string config_modal_display;     //? Editable display name
+	extern string config_modal_path;        //? Editable log path
+	extern bool config_modal_tagged;        //? Enable tagging checkbox
+	extern int config_modal_color_idx;      //? Selected color (0-4)
+	extern int config_modal_field;          //? 0=display, 1=path, 2=tagged, 3=color, 4=buttons
+	extern int config_modal_button;         //? 0=Save, 1=Remove, 2=Cancel
+
+	//* Show log config modal for a process
+	void show_config_modal(const string& name, const string& cmdline);
+
+	//* Handle log config modal input, returns true if modal closed
+	bool config_modal_input(const std::string_view key);
+
+	//* Draw log config modal
+	string draw_config_modal();
+
+	//=== Color Picker Modal State ===
+	extern bool color_modal_active;
+	extern string color_modal_name;         //? Process name being tagged
+	extern string color_modal_cmdline;      //? Process cmdline
+	extern int color_modal_selected;        //? Selected color (0-4)
+
+	//* Show quick color picker modal
+	void show_color_modal(const string& name, const string& cmdline);
+
+	//* Handle color modal input, returns true if modal closed
+	bool color_modal_input(const std::string_view key);
+
+	//* Draw color picker modal
+	string draw_color_modal();
+
+	//? Tag color definitions (Nord Aurora)
+	namespace TagColors {
+		const array<string, 5> names = {"Rd", "Or", "Yl", "Gn", "Vi"};
+		const array<string, 5> themes = {
+			"log_fault",      //? Red
+			"log_error",      //? Orange
+			"log_info",       //? Yellow
+			"log_debug_plus", //? Green
+			"log_debug"       //? Violet
+		};
+	}
+
+	//=== Source Management Functions ===
+
+	//* Toggle between System and Application log sources
+	//* Called by 'S' key handler
+	void toggle_source();
+
+	//* Resolve log config for a process (called when process is selected for logging)
+	//* Sets app_log_path, app_log_available, custom_display_name, custom_tag_color
+	void resolve_config(pid_t pid, const string& name, const string& cmdline);
+
+	//* Collect logs from application log file (text-based parsing)
+	//* Called by collect() when source == Application
+	void collect_app_logs();
+
+	//* Check if application log is available for current process
+	bool has_app_log();
+
+	//* Refresh config for current process (called when config file changes)
+	//* Re-checks app_log_path and app_log_available for current detailed process
+	void refresh_config();
+
+	//* Get source indicator string for status bar
+	//* Returns "[S:Sys]" or "[S:App]"
+	string get_source_indicator();
+
+	//* Get availability dots for UI
+	//* Returns availability status string
+	string get_availability_dots();
 }
 
 /// Detect container engine.

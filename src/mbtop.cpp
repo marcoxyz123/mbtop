@@ -98,7 +98,7 @@ namespace Global {
 		{"#B48EAD", "#4C6A94", "██║ ╚═╝ ██║██████╔╝   ██║   ╚██████╔╝██║"},
 		{"#3B4252", "#3B4252", "╚═╝     ╚═╝╚═════╝    ╚═╝    ╚═════╝ ╚═╝"},
 	};
-	const string Version = "1.6.4";
+	const string Version = "1.7.0";
 
 	int coreCount;
 
@@ -385,7 +385,31 @@ static void _signal_handler(const int sig) {
 void init_config(bool low_color, std::optional<std::string>& filter) {
 	atomic_lock lck(Global::init_conf);
 	vector<string> load_warnings;
-	Config::load(Config::conf_file, load_warnings);
+
+	//? TOML/INI config loading with migration support
+	std::error_code ec;
+	bool toml_exists = !Config::toml_file.empty() && fs::exists(Config::toml_file, ec);
+	bool ini_exists = !Config::conf_file.empty() && fs::exists(Config::conf_file, ec);
+
+	if (toml_exists) {
+		//? Load from TOML (preferred)
+		Config::load_toml(Config::toml_file, load_warnings);
+	} else if (ini_exists) {
+		//? Migrate from INI to TOML
+		Logger::info("Migrating config from INI to TOML format...");
+		if (Config::migrate_from_ini(Config::conf_file, Config::toml_file)) {
+			load_warnings.push_back("Config migrated from INI to TOML format. Old config saved as mbtop.conf.bak");
+		} else {
+			//? Migration failed, fall back to INI
+			Config::load(Config::conf_file, load_warnings);
+		}
+	} else {
+		//? No config exists, will write new TOML
+		Config::write_new = true;
+	}
+
+	//? Ensure default mbtop process config exists (for new installs or migrated configs)
+	Config::ensure_default_mbtop_config();
 
 	//? Try to acquire instance lock
 	static bool lock_checked = false;
@@ -1136,8 +1160,14 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 			Config::conf_dir = config_dir.value();
 			if (cli.config_file.has_value()) {
 				Config::conf_file = cli.config_file.value();
+				// If custom file ends with .toml, use it as TOML
+				if (cli.config_file.value().string().ends_with(".toml")) {
+					Config::toml_file = cli.config_file.value();
+					Config::conf_file.clear();
+				}
 			} else {
 				Config::conf_file = Config::conf_dir / "mbtop.conf";
+				Config::toml_file = Config::conf_dir / "mbtop.toml";
 			}
 
 			auto log_file = Config::get_log_file();
@@ -1425,6 +1455,19 @@ static auto configure_tty_mode(std::optional<bool> force_tty) {
 			bool indicator_updated = Draw::update_instance_indicator();
 			if ((clock_updated or hostname_updated or indicator_updated) and not Menu::active) {
 				Runner::run("clock");
+			}
+
+			//? Check for config file changes and reload process configs dynamically
+			if (Config::check_config_changed()) {
+				//? Sync filter_tagged from config
+				Proc::filter_tagged = Config::getB("proc_filter_tagged");
+				Proc::redraw = true;
+				//? Refresh Logs config for current process (updates app_log_available)
+				Logs::refresh_config();
+				Logs::redraw = true;
+				if (not Menu::active and not Runner::active) {
+					Runner::run("proc", false, true);
+				}
 			}
 
 			//? Start secondary collect & draw thread at the interval set by <update_ms> config value

@@ -20,6 +20,7 @@ tab-size = 4
 
 #include <filesystem>
 #include <optional>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,43 @@ namespace Config {
 
 	extern std::filesystem::path conf_dir;
 	extern std::filesystem::path conf_file;
+	extern std::filesystem::path toml_file;  // New TOML config file
+
+	//=== Process-specific log/tag configuration ===
+	// Can be used for logging, tagging, or both independently
+	struct ProcessLogConfig {
+		string name;              // Process name to match
+		string command;           // Exact command line (default matching)
+		string command_pattern;   // Optional regex for cmdline (power users, overrides exact match)
+		string log_path;          // Path to log file (optional - for app logs)
+		string display_name;      // Custom display name (optional)
+		bool tagged = false;      // Visual highlighting in process list
+		string tag_color;         // Theme color name (optional, requires tagged=true)
+
+		// Runtime: compiled regex (not serialized)
+		std::optional<std::regex> compiled_pattern;
+
+		// Helper: check if this config has logging enabled
+		bool has_logging() const { return !log_path.empty(); }
+
+		// Helper: check if this config has tagging enabled
+		bool has_tagging() const { return tagged && !tag_color.empty(); }
+	};
+
+	//=== Logging configuration section ===
+	struct LoggingConfig {
+		string level = "WARNING";
+		string export_path;
+		string default_source = "system";  // "system" or "application"
+		int buffer_size = 500;
+		bool color_full_line = false;
+		bool below_proc = false;
+		std::unordered_map<string, string> applications;  // simple name → path
+		vector<ProcessLogConfig> processes;  // complex matching rules
+	};
+
+	// Main typed config (coexists with flat maps during transition)
+	extern LoggingConfig logging;
 
 	extern std::unordered_map<std::string_view, string> strings;
 	extern std::unordered_map<std::string_view, string> stringsTmp;
@@ -147,4 +185,39 @@ namespace Config {
 
 	// Write default config to an in-memory buffer
 	[[nodiscard]] auto current_config() -> std::string;
+
+	//=== TOML Config Functions ===
+
+	// Load config from TOML file
+	void load_toml(const std::filesystem::path& toml_file, vector<string>& load_warnings);
+
+	// Write config to TOML file
+	void write_toml();
+
+	// Ensure default mbtop process config exists
+	void ensure_default_mbtop_config();
+
+	// Migrate from INI to TOML format
+	// Returns true if migration successful, false if no INI or error
+	bool migrate_from_ini(const std::filesystem::path& ini_file, const std::filesystem::path& toml_file);
+
+	// Find process log config by name and cmdline
+	// Returns matching config or nullopt if no match
+	std::optional<ProcessLogConfig> find_process_config(
+		const string& name,
+		const string& cmdline
+	);
+
+	// Save a process log config (add or update)
+	void save_process_config(const ProcessLogConfig& config);
+
+	// Remove a process log config by name
+	void remove_process_config(const string& name, const string& command = "");
+
+	// Dynamic config reload - check if file changed and reload process configs
+	bool check_config_changed();  // Returns true if config was reloaded
+	void reload_process_configs();  // Reload just the logging.processes section
+
+	// Valid tag mode values
+	const vector<string> valid_tag_modes = { "name", "line" };
 }

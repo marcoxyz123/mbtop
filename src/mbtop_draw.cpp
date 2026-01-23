@@ -19,6 +19,7 @@ tab-size = 4
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <iterator>
 #include <ranges>
 #include <stdexcept>
@@ -58,6 +59,7 @@ using std::views::iota;
 using namespace Tools;
 using namespace std::literals; // for operator""s
 namespace rng = std::ranges;
+namespace fs = std::filesystem;
 
 namespace Symbols {
 	const string meter = "■";
@@ -3305,6 +3307,7 @@ namespace Proc {
 	int selected_pid = 0, selected_depth = 0;
 	int scroll_pos;
 	string selected_name;
+	bool filter_tagged = false;  //? When true, show only tagged processes
 	std::unordered_map<size_t, Draw::Graph> p_graphs;
 	std::unordered_map<size_t, Draw::Graph> p_gpu_graphs;
 	std::unordered_map<size_t, bool> p_wide_cmd;
@@ -3871,15 +3874,31 @@ namespace Proc {
 					mouse_x += 6;
 					Input::mouse_mappings["s"] = {d_y, mouse_x, 1, 7};
 				    mouse_x += 9;
-					Input::mouse_mappings["N"] = {d_y, mouse_x, 1, 5};
-				    mouse_x += 7;
+					Input::mouse_mappings["N"] = {d_y, mouse_x, 1, 4};
+				    mouse_x += 6;
 				}
 				if (width > 77) {
 				    fmt::format_to(std::back_inserter(out), "{}{}{}{}{}{}{}{}",
 				    	title_left, follow_process ? Fx::b : "",
 				    	hi_color, 'F', t_color, "ollow",
 				    	Fx::ub, title_right);
-				    if (selected == 0) Input::mouse_mappings["F"] = {d_y, mouse_x, 1, 6};
+				    if (alive and selected == 0) Input::mouse_mappings["F"] = {d_y, mouse_x, 1, 6};
+				    mouse_x += 8;
+				}
+
+				//? Log config button: [Log◉◉] with availability dots (green=Sys, red=App)
+				if (width > 93) {
+				    auto log_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
+				    bool has_app_log = log_cfg.has_value() && log_cfg->has_logging();
+				    
+				    out += title_left + Fx::b + hi_color + 'L' + t_color + "og"
+				    	+ Theme::c("log_debug_plus") + "◉"  //? System always available (green)
+				    	+ (has_app_log ? Theme::c("log_fault") : Theme::c("inactive_fg")) + "◉"  //? App (red if available)
+				    	+ Fx::ub + title_right;
+				    if (alive and selected == 0) {
+				        Input::mouse_mappings["L"] = {d_y, mouse_x, 1, 5};  //? "Log◉◉" = 5 chars
+				    }
+				    mouse_x += 7;  //? "┐Log◉◉┌" = 7 chars total
 				}
 
 				//? Labels
@@ -3924,6 +3943,17 @@ namespace Proc {
 				+ Theme::c("title") + (not filter_text.empty() ? ' ' + filter_text : "ilter")
 				+ (not filtering and not filter_text.empty() ? Theme::c("hi_fg") + " del" : "")
 				+ (filtering ? Theme::c("hi_fg") + ' ' + Symbols::enter : "") + Fx::ub + title_right;
+			
+			//? Calculate filter end position for tagged button
+			int filter_end_x = x + 10 + ind_offset;  //? Start after "┐f"
+			if (filter_text.empty()) {
+				filter_end_x += 6;  //? "ilter" + "┌"
+			} else {
+				filter_end_x += 1 + static_cast<int>(ulen(filter_text));  //? " " + text
+				if (not filtering) filter_end_x += 4;  //? " del"
+			}
+			filter_end_x += 1;  //? closing bracket
+			
 			if (not filtering) {
 				int f_len = (filter_text.empty() ? 6 : ulen(filter_text) + 2);
 				Input::mouse_mappings["f"] = {y, x + 10 + ind_offset, 1, f_len};
@@ -3932,6 +3962,11 @@ namespace Proc {
 				else if (not filter_text.empty())
 					Input::mouse_mappings["delete"] = {y, x + 11 + ind_offset + f_len, 1, 3};
 			}
+
+			//? Tagged filter button (next to filter, 'a' hotkey)
+			out += Mv::to(y, filter_end_x) + title_left + (filter_tagged ? Fx::b : "") + Theme::c("title") + "t"
+				+ Theme::c("hi_fg") + 'a' + Theme::c("title") + "gged" + Fx::ub + title_right;
+			Input::mouse_mappings["a"] = {y, filter_end_x + 1, 1, 6};
 
 			//? pause, per-core, reverse, tree and sorting
 			const auto& sorting = Config::getS("proc_sorting");
@@ -3950,10 +3985,10 @@ namespace Proc {
 					+ "per-" + Theme::c("hi_fg") + 'c' + Theme::c("title") + "ore" + Fx::ub + title_right;
 				Input::mouse_mappings["c"] = {y, sort_pos - 24, 1, 8};
 			}
-			if (width > 45 + sort_len) {
-				out += Mv::to(y, sort_pos - 15) + title_left + (Config::getB("proc_reversed") ? Fx::b : "") + Theme::c("hi_fg")
+			if (width > 52 + sort_len) {
+				out += Mv::to(y, sort_pos - 22) + title_left + (Config::getB("proc_reversed") ? Fx::b : "") + Theme::c("hi_fg")
 					+ 'r' + Theme::c("title") + "everse" + Fx::ub + title_right;
-				Input::mouse_mappings["r"] = {y, sort_pos - 14, 1, 7};
+				Input::mouse_mappings["r"] = {y, sort_pos - 21, 1, 7};
 			}
 			if (width > 35 + sort_len) {
 				out += Mv::to(y, sort_pos - 6) + title_left + (Config::getB("proc_tree") ? Fx::b : "") + Theme::c("title") + "tre"
@@ -4188,6 +4223,29 @@ namespace Proc {
 				+ Theme::c("inactive_fg") + Fx::ub + graph_bg * max(1, d_width / 3) + Mv::l(max(1, d_width / 3))
 				+ Theme::c("proc_misc") + detailed_mem_graph(detailed.mem_bytes, (redraw or data_same or not alive)) + ' '
 				+ Theme::c("title") + Fx::b + detailed.memory;
+
+			//? Tag control: "Tag [●] ██" after memory value
+			{
+				auto tag_cfg = Config::find_process_config(detailed.entry.name, detailed.entry.cmd);
+				bool is_tagged = tag_cfg.has_value() && tag_cfg->has_tagging();
+				string tag_color_name = is_tagged ? tag_cfg->tag_color : "log_debug_plus";  //? Default to green
+				
+				//? Calculate position - right side of memory line
+				int tag_x = d_x + (d_width * 2 / 3) + 10;  //? After memory value
+				int tag_y = d_y + 4;
+				
+				out += Mv::to(tag_y, tag_x);
+				out += Theme::c("main_fg") + "Tag ";
+				
+				//? Checkbox with dot indicator
+				out += Theme::c("hi_fg") + "[" + (is_tagged ? "●" : " ") + "]";
+				Input::mouse_mappings["proc_tag_toggle"] = {tag_y, tag_x + 4, 1, 3};
+				
+				//? Color swatch
+				out += " " + Theme::c_safe(tag_color_name) + "██";
+				Input::mouse_mappings["proc_tag_color"] = {tag_y, tag_x + 8, 1, 2};
+				out += Fx::reset;
+			}
 		}
 		skip_detailed_draw:  //? Label for skipping detailed draw when dimensions are invalid
 
@@ -4294,6 +4352,28 @@ namespace Proc {
 				}
 			}
 
+			//? Check for process tagging and custom display name
+			string tag_bg_start;
+			string tag_bg_end;
+			string display_name = p.name;  //? Default to actual process name
+			if (auto tag_cfg = Config::find_process_config(p.name, p.cmd)) {
+				//? Use custom display name if configured
+				if (!tag_cfg->display_name.empty()) {
+					display_name = tag_cfg->display_name;
+				}
+				if (tag_cfg->has_tagging()) {
+					string tag_color_str = Theme::c_safe(tag_cfg->tag_color);
+					if (Config::getS("proc_tag_mode") == "line" and not is_selected and not is_followed) {
+						//? Line mode: override ALL line colors with tag color (skip for selected/followed rows)
+						g_color = c_color = m_color = t_color = gp_color = tag_color_str;
+						end = Theme::c("main_fg") + Fx::ub;
+					} else {
+						//? Name mode: always override program name color (even when selected/followed)
+						c_color = tag_color_str + Fx::b;
+					}
+				}
+			}
+
 			const auto san_cmd = replace_ascii_control(p.cmd);
 
 			if (not p_wide_cmd.contains(p.pid)) p_wide_cmd[p.pid] = ulen(san_cmd) != ulen(san_cmd, true);
@@ -4302,16 +4382,16 @@ namespace Proc {
 			if (not proc_tree) {
 				if (bottom_layout) {
 					//? Bottom layout: Pid | Program | User | S | Ni | Thr | ...data... | Command
-					out += Mv::to(y+2+lc, x+1)
+					out += Mv::to(y+2+lc, x+1) + tag_bg_start
 						+ g_color + rjust(to_string(p.pid), 8) + "  "
-						+ c_color + ljust(p.name, prog_size, true, true) + "  " + end;  //? wide=true for proper Unicode display width
+						+ c_color + ljust(display_name, prog_size, true, true) + "  " + end;  //? wide=true for proper Unicode display width
 					//? Rest of bottom layout columns handled in common section below
 				}
 				else {
 					//? Side layout: original Pid | Program | Command order
-					out += Mv::to(y+2+lc, x+1)
+					out += Mv::to(y+2+lc, x+1) + tag_bg_start
 						+ g_color + rjust(to_string(p.pid), 8) + ' '
-						+ c_color + ljust(p.name, prog_size, true, true) + ' ' + end  //? wide=true for proper Unicode display width
+						+ c_color + ljust(display_name, prog_size, true, true) + ' ' + end  //? wide=true for proper Unicode display width
 						+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) + Mv::to(y+2+lc, x+11+prog_size+cmd_size) + ' ' : "");
 				}
 			}
@@ -4319,11 +4399,11 @@ namespace Proc {
 			else {
 				const string prefix_pid = p.prefix + to_string(p.pid);
 				int width_left = tree_size;
-				out += Mv::to(y+2+lc, x+1) + g_color + uresize(prefix_pid, width_left) + ' ';
+				out += Mv::to(y+2+lc, x+1) + tag_bg_start + g_color + uresize(prefix_pid, width_left) + ' ';
 				width_left -= ulen(prefix_pid);
 				if (width_left > 0) {
-					out += c_color + uresize(p.name, width_left - 1) + end + ' ';
-					width_left -= (ulen(p.name) + 1);
+					out += c_color + uresize(display_name, width_left - 1) + end + ' ';
+					width_left -= (ulen(display_name) + 1);
 				}
 				if (width_left > 7) {
 					const string_view cmd = width_left > 40 ? rtrim(san_cmd) : p.short_cmd;
@@ -4527,7 +4607,7 @@ namespace Proc {
 					+ (render_show_cpu ? cpu_heat + rjust(cpu_str, 5) + "  " + end : "")
 					+ (show_gpu ? gpu_heat + rjust(gpu_str, 5) + "  " + end : "")
 					+ (cmd_size > 0 ? g_color + ljust(san_cmd, cmd_size, true, p_wide_cmd[p.pid]) : "")
-					+ end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
+					+ tag_bg_end + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			else {
 				//? Side layout or tree view: original column order
@@ -4542,7 +4622,7 @@ namespace Proc {
 					+ (show_gpu ? " " + (is_selected or is_followed ? "" : Theme::c("inactive_fg")) + (show_gpu_graphs ? graph_bg * 5 : "")
 						+ (show_gpu_graphs and p_gpu_graphs.contains(p.pid) ? Mv::l(5) + gp_color + p_gpu_graphs.at(p.pid)({scale_to_graph(p.gpu_p)}, data_same) : "") + end + ' '
 						+ gp_color + rjust(gpu_str, 4) : "")
-					+ "  " + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
+					+ "  " + tag_bg_end + end;  //? Don't use clear_eol - it wipes Logs panel when shown beside Proc
 			}
 			if (lc++ > height - 5) break;
 			else if (lc > height - 5 and proc_banner_shown) break;
@@ -4630,6 +4710,16 @@ namespace Proc {
 			selected_pid = 0;
 			selected_name.clear();
 		}
+
+		//? Draw Logs modals (color picker and config) - they use Proc panel coordinates
+		//? This allows them to work even when Logs panel is not shown
+		if (Logs::color_modal_active) {
+			out += Logs::draw_color_modal();
+		}
+		if (Logs::config_modal_active) {
+			out += Logs::draw_config_modal();
+		}
+
 		redraw = false;
 		return out + Fx::reset;
 	}
@@ -4654,6 +4744,34 @@ namespace Logs {
 
 	deque<LogEntry> entries;
 	size_t max_entries = 500;
+
+	//=== Log Source State ===
+	Source source = Source::System;      //? Current source (default: System)
+	bool source_changed = false;         //? Flag to trigger stream restart on toggle
+	string app_log_path;                 //? Path to application log file
+	bool app_log_available = false;      //? Whether app log exists/readable
+	string custom_display_name;          //? Display name from config
+	string custom_tag_color;             //? Tag color from config
+	string current_cmdline;              //? Command line of current process
+
+	//=== Log Config Modal State ===
+	bool config_modal_active = false;
+	string config_modal_name;
+	string config_modal_cmdline;
+	string config_modal_display;
+	string config_modal_path;
+	int config_modal_display_cursor = 0;  //? Cursor position in display field
+	int config_modal_path_cursor = 0;     //? Cursor position in path field
+	bool config_modal_tagged = false;
+	int config_modal_color_idx = 3;   //? Default to green (index 3)
+	int config_modal_field = 0;       //? 0=display, 1=path, 2=tagged, 3=color, 4=buttons
+	int config_modal_button = 0;      //? 0=Save, 1=Remove, 2=Cancel
+
+	//=== Color Picker Modal State ===
+	bool color_modal_active = false;
+	string color_modal_name;
+	string color_modal_cmdline;
+	int color_modal_selected = 3;     //? Default to green (index 3)
 
 	//? Get filter name based on current filter
 	//? Bitmask: Default=0x01, Info=0x02, Debug=0x04, Error=0x08, Fault=0x10
@@ -4682,6 +4800,607 @@ namespace Logs {
 		redraw = true;
 	}
 
+	//=== Source Management Functions ===
+
+	void toggle_source() {
+		//? If app log state not resolved yet, try to resolve from detailed view info
+		if (app_log_path.empty() && Proc::detailed.entry.pid > 0) {
+			auto cfg = Config::find_process_config(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+			if (cfg.has_value() && cfg->has_logging()) {
+				string expanded = cfg->log_path;
+				//? Expand ~ to home directory
+				if (!expanded.empty() && expanded[0] == '~') {
+					const char* home = getenv("HOME");
+					if (home) expanded = string(home) + expanded.substr(1);
+				}
+				std::error_code ec;
+				if (fs::exists(expanded, ec) && !ec) {
+					app_log_path = expanded;
+					app_log_available = true;
+				}
+			}
+		}
+		//? Re-check if app log file exists (it might have been created since resolve_config)
+		else if (!app_log_path.empty() && !app_log_available) {
+			std::error_code ec;
+			if (fs::exists(app_log_path, ec) && !ec) {
+				app_log_available = true;
+			}
+		}
+		if (!app_log_available) return;  //? Can't switch if no app log
+		source = (source == Source::System) ? Source::Application : Source::System;
+		source_changed = true;  //? Signal collect() to restart the stream
+		entries.clear();  //? Clear buffer on source change
+		scroll_offset = 0;
+		redraw = true;
+	}
+
+	void resolve_config(pid_t pid, const string& name, const string& cmdline) {
+		current_pid = pid;
+		current_name = name;
+		current_cmdline = cmdline;
+
+		//? Reset app log state
+		app_log_path.clear();
+		app_log_available = false;
+		custom_display_name.clear();
+		custom_tag_color.clear();
+
+		//? Look up config
+		if (auto cfg = Config::find_process_config(name, cmdline)) {
+			app_log_path = cfg->log_path;
+			custom_display_name = cfg->display_name;
+			custom_tag_color = cfg->tag_color;
+
+			//? Check if file exists and is readable
+			if (!app_log_path.empty()) {
+				std::error_code ec;
+				if (fs::exists(app_log_path, ec) && !ec) {
+					app_log_available = true;
+				}
+			}
+		}
+
+		//? Set source based on config default and availability
+		if (Config::logging.default_source == "application" && app_log_available) {
+			source = Source::Application;
+		} else {
+			source = Source::System;
+		}
+	}
+
+	bool has_app_log() {
+		return app_log_available;
+	}
+
+	void refresh_config() {
+		//? Re-resolve config for current process (if any)
+		if (current_pid > 0 && !current_name.empty()) {
+			resolve_config(current_pid, current_name, current_cmdline);
+		}
+	}
+
+	string get_source_indicator() {
+		return (source == Source::System) ? "[S:Sys]" : "[S:App]";
+	}
+
+	string get_availability_dots() {
+		//? Returns availability indicator: ◉◉ (both), ◉○ (system only), etc.
+		string sys_dot = "◉";  //? System always available
+		string app_dot = app_log_available ? "◉" : "○";
+		return sys_dot + app_dot;
+	}
+
+	//=== Color Picker Modal Functions ===
+
+	void show_color_modal(const string& name, const string& cmdline) {
+		color_modal_active = true;
+		color_modal_name = name;
+		color_modal_cmdline = cmdline;
+		//? Load current color from config if exists
+		if (auto cfg = Config::find_process_config(name, cmdline)) {
+			if (cfg->has_tagging()) {
+				for (size_t i = 0; i < TagColors::themes.size(); i++) {
+					if (TagColors::themes[i] == cfg->tag_color) {
+						color_modal_selected = static_cast<int>(i);
+						break;
+					}
+				}
+			}
+		}
+		redraw = true;
+	}
+
+	bool color_modal_input(const std::string_view key) {
+		if (key == "escape" || key == "q") {
+			color_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		if (key == "left" || key == "h") {
+			color_modal_selected = (color_modal_selected - 1 + 5) % 5;
+			redraw = true;
+			return false;
+		}
+		if (key == "right" || key == "l") {
+			color_modal_selected = (color_modal_selected + 1) % 5;
+			redraw = true;
+			return false;
+		}
+		//? Number keys 1-5 to select color directly
+		if (key.length() == 1 && key[0] >= '1' && key[0] <= '5') {
+			color_modal_selected = key[0] - '1';
+			//? Apply immediately and close
+			Config::ProcessLogConfig cfg;
+			cfg.name = color_modal_name;
+			cfg.command_pattern = "";
+			cfg.tagged = true;
+			cfg.tag_color = string(TagColors::themes[static_cast<size_t>(color_modal_selected)]);
+			//? Preserve existing config if any
+			if (auto existing = Config::find_process_config(color_modal_name, color_modal_cmdline)) {
+				cfg.log_path = existing->log_path;
+				cfg.display_name = existing->display_name;
+				cfg.command_pattern = existing->command_pattern;
+			}
+			Config::save_process_config(cfg);
+			color_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		if (key == "enter") {
+			//? Apply selected color
+			Config::ProcessLogConfig cfg;
+			cfg.name = color_modal_name;
+			cfg.tagged = true;
+			cfg.tag_color = string(TagColors::themes[static_cast<size_t>(color_modal_selected)]);
+			if (auto existing = Config::find_process_config(color_modal_name, color_modal_cmdline)) {
+				cfg.log_path = existing->log_path;
+				cfg.display_name = existing->display_name;
+				cfg.command_pattern = existing->command_pattern;
+			}
+			Config::save_process_config(cfg);
+			color_modal_active = false;
+			redraw = true;
+			return true;
+		}
+		//? Mouse clicks on colors
+		for (int i = 0; i < 5; i++) {
+			if (key == "color_" + to_string(i)) {
+				color_modal_selected = i;
+				Config::ProcessLogConfig cfg;
+				cfg.name = color_modal_name;
+				cfg.tagged = true;
+				cfg.tag_color = string(TagColors::themes[static_cast<size_t>(i)]);
+				if (auto existing = Config::find_process_config(color_modal_name, color_modal_cmdline)) {
+					cfg.log_path = existing->log_path;
+					cfg.display_name = existing->display_name;
+					cfg.command_pattern = existing->command_pattern;
+				}
+				Config::save_process_config(cfg);
+				color_modal_active = false;
+				redraw = true;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	string draw_color_modal() {
+		const auto& theme = Theme::c;
+		string out;
+
+		//? Tiny modal - just 5 color swatches
+		const int modal_w = 19;  //? 5 colors * 3 chars + 4 padding
+		const int modal_h = 3;
+
+		//? Use Proc panel coordinates for modal position
+		//? This allows the modal to work even when Logs panel is not shown
+		const int modal_x = Proc::x + (Proc::width - modal_w) / 2;
+		const int modal_y = Proc::y + (Proc::height - modal_h) / 2;
+
+		//? Draw modal box
+		out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "");
+
+		//? Draw color swatches - click to select and close
+		int color_y = modal_y + 1;
+		out += Mv::to(color_y, modal_x + 2);
+		for (size_t i = 0; i < 5; i++) {
+			string color = theme(TagColors::themes[i]);
+			out += color + "██" + Fx::reset + " ";
+			Input::mouse_mappings["color_" + to_string(i)] = {color_y, modal_x + 2 + static_cast<int>(i) * 3, 1, 2};
+		}
+
+		return out;
+	}
+
+	//=== Log Config Modal Functions ===
+
+	void show_config_modal(const string& name, const string& cmdline) {
+		config_modal_active = true;
+		config_modal_name = name;
+		config_modal_cmdline = cmdline;
+		config_modal_field = 0;
+		config_modal_button = 0;
+
+		//? Load existing config if any
+		if (auto cfg = Config::find_process_config(name, cmdline)) {
+			config_modal_display = cfg->display_name;
+			config_modal_path = cfg->log_path;
+			config_modal_tagged = cfg->tagged;
+			//? Find color index
+			config_modal_color_idx = 3;  //? Default green
+			for (size_t i = 0; i < TagColors::themes.size(); i++) {
+				if (TagColors::themes[i] == cfg->tag_color) {
+					config_modal_color_idx = static_cast<int>(i);
+					break;
+				}
+			}
+		} else {
+			config_modal_display.clear();
+			config_modal_path.clear();
+			config_modal_tagged = false;
+			config_modal_color_idx = 3;
+		}
+		//? Set cursors to end of text
+		config_modal_display_cursor = static_cast<int>(config_modal_display.length());
+		config_modal_path_cursor = static_cast<int>(config_modal_path.length());
+		redraw = true;
+	}
+
+	bool config_modal_input(const std::string_view key) {
+		if (key == "escape") {
+			config_modal_active = false;
+			redraw = true;
+			return true;
+		}
+
+		//? Mouse click on field - select it
+		if (key.starts_with("config_field_")) {
+			int field_idx = key.back() - '0';
+			if (field_idx >= 0 && field_idx <= 2) {
+				config_modal_field = field_idx;
+				//? For tagged checkbox, also toggle on click
+				if (field_idx == 2) {
+					config_modal_tagged = !config_modal_tagged;
+				}
+				redraw = true;
+				return false;
+			}
+		}
+
+		//? Mouse click on color
+		if (key.starts_with("config_color_") && config_modal_tagged) {
+			int color_idx = key.back() - '0';
+			if (color_idx >= 0 && color_idx <= 4) {
+				config_modal_field = 3;
+				config_modal_color_idx = color_idx;
+				redraw = true;
+				return false;
+			}
+		}
+
+		//? Mouse click on button - select and activate
+		if (key.starts_with("config_btn_")) {
+			int btn_idx = key.back() - '0';
+			if (btn_idx >= 0 && btn_idx <= 2) {
+				config_modal_field = 4;
+				config_modal_button = btn_idx;
+				//? Activate the button immediately
+				if (btn_idx == 0) {
+					//? Save
+					Config::ProcessLogConfig cfg;
+					cfg.name = config_modal_name;
+					cfg.command = config_modal_cmdline;  //? Store exact command for unique matching
+					cfg.display_name = config_modal_display;
+					cfg.log_path = config_modal_path;
+					cfg.tagged = config_modal_tagged;
+					cfg.tag_color = config_modal_tagged ? string(TagColors::themes[static_cast<size_t>(config_modal_color_idx)]) : "";
+					Config::save_process_config(cfg);
+					config_modal_active = false;
+					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
+					return true;
+				} else if (btn_idx == 1) {
+					//? Remove
+					Config::remove_process_config(config_modal_name, config_modal_cmdline);
+					config_modal_active = false;
+					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
+					return true;
+				} else {
+					//? Cancel
+					config_modal_active = false;
+					redraw = true;
+					Proc::redraw = true;  //? Refresh display
+					return true;
+				}
+			}
+		}
+
+		//? Tab/Shift+Tab to cycle fields
+		if (key == "tab" || key == "down") {
+			config_modal_field = (config_modal_field + 1) % 5;
+			redraw = true;
+			return false;
+		}
+		if (key == "shift_tab" || key == "up") {
+			config_modal_field = (config_modal_field - 1 + 5) % 5;
+			redraw = true;
+			return false;
+		}
+
+		//? Handle field-specific input
+		if (config_modal_field == 0) {
+			//? Display name text input with cursor support
+			if (key == "left" && config_modal_display_cursor > 0) {
+				config_modal_display_cursor--;
+				redraw = true;
+			} else if (key == "right" && config_modal_display_cursor < static_cast<int>(config_modal_display.length())) {
+				config_modal_display_cursor++;
+				redraw = true;
+			} else if (key == "home") {
+				config_modal_display_cursor = 0;
+				redraw = true;
+			} else if (key == "end") {
+				config_modal_display_cursor = static_cast<int>(config_modal_display.length());
+				redraw = true;
+			} else if (key == "backspace" && config_modal_display_cursor > 0) {
+				config_modal_display.erase(static_cast<size_t>(config_modal_display_cursor - 1), 1);
+				config_modal_display_cursor--;
+				redraw = true;
+			} else if (key == "delete" && config_modal_display_cursor < static_cast<int>(config_modal_display.length())) {
+				config_modal_display.erase(static_cast<size_t>(config_modal_display_cursor), 1);
+				redraw = true;
+			} else if (key.length() == 1 && isprint(key[0]) && config_modal_display.length() < 30) {
+				config_modal_display.insert(static_cast<size_t>(config_modal_display_cursor), 1, key[0]);
+				config_modal_display_cursor++;
+				redraw = true;
+			}
+		}
+		else if (config_modal_field == 1) {
+			//? Log path text input with cursor support
+			if (key == "left" && config_modal_path_cursor > 0) {
+				config_modal_path_cursor--;
+				redraw = true;
+			} else if (key == "right" && config_modal_path_cursor < static_cast<int>(config_modal_path.length())) {
+				config_modal_path_cursor++;
+				redraw = true;
+			} else if (key == "home") {
+				config_modal_path_cursor = 0;
+				redraw = true;
+			} else if (key == "end") {
+				config_modal_path_cursor = static_cast<int>(config_modal_path.length());
+				redraw = true;
+			} else if (key == "backspace" && config_modal_path_cursor > 0) {
+				config_modal_path.erase(static_cast<size_t>(config_modal_path_cursor - 1), 1);
+				config_modal_path_cursor--;
+				redraw = true;
+			} else if (key == "delete" && config_modal_path_cursor < static_cast<int>(config_modal_path.length())) {
+				config_modal_path.erase(static_cast<size_t>(config_modal_path_cursor), 1);
+				redraw = true;
+			} else if (key.length() == 1 && isprint(key[0]) && config_modal_path.length() < 100) {
+				config_modal_path.insert(static_cast<size_t>(config_modal_path_cursor), 1, key[0]);
+				config_modal_path_cursor++;
+				redraw = true;
+			}
+		}
+		else if (config_modal_field == 2) {
+			//? Tagged checkbox
+			if (key == "space" || key == "enter") {
+				config_modal_tagged = !config_modal_tagged;
+				redraw = true;
+			}
+		}
+		else if (config_modal_field == 3) {
+			//? Color selection (only if tagged)
+			if (config_modal_tagged) {
+				if (key == "left" || key == "h") {
+					config_modal_color_idx = (config_modal_color_idx - 1 + 5) % 5;
+					redraw = true;
+				} else if (key == "right" || key == "l") {
+					config_modal_color_idx = (config_modal_color_idx + 1) % 5;
+					redraw = true;
+				} else if (key.length() == 1 && key[0] >= '1' && key[0] <= '5') {
+					config_modal_color_idx = key[0] - '1';
+					redraw = true;
+				}
+			}
+		}
+		else if (config_modal_field == 4) {
+			//? Buttons
+			if (key == "left") {
+				config_modal_button = (config_modal_button - 1 + 3) % 3;
+				redraw = true;
+			} else if (key == "right") {
+				config_modal_button = (config_modal_button + 1) % 3;
+				redraw = true;
+			} else if (key == "enter") {
+				if (config_modal_button == 0) {
+					//? Save
+					Config::ProcessLogConfig cfg;
+					cfg.name = config_modal_name;
+					cfg.command = config_modal_cmdline;  //? Store exact command for unique matching
+					cfg.display_name = config_modal_display;
+					cfg.log_path = config_modal_path;
+					cfg.tagged = config_modal_tagged;
+					cfg.tag_color = config_modal_tagged ? string(TagColors::themes[static_cast<size_t>(config_modal_color_idx)]) : "";
+					Config::save_process_config(cfg);
+					config_modal_active = false;
+					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
+					return true;
+				} else if (config_modal_button == 1) {
+					//? Remove
+					Config::remove_process_config(config_modal_name, config_modal_cmdline);
+					config_modal_active = false;
+					redraw = true;
+					Proc::redraw = true;  //? Refresh header Log dots
+					return true;
+				} else {
+					//? Cancel
+					config_modal_active = false;
+					redraw = true;
+					Proc::redraw = true;  //? Refresh display
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	string draw_config_modal() {
+		const auto& theme = Theme::c;
+		string out;
+
+		const int modal_w = 54;
+		const int modal_h = 19;  //? +1 for command line
+
+		//? Use Proc panel coordinates for modal position
+		//? This allows the modal to work even when Logs panel is not shown
+		int panel_x = Proc::x;
+		int panel_y = Proc::y;
+		int panel_w = Proc::width;
+		int panel_h = Proc::height;
+
+		const int modal_x = panel_x + (panel_w - modal_w) / 2;
+		const int modal_y = panel_y + (panel_h - modal_h) / 2;
+		const int pad_x = modal_x + 3;  //? Horizontal padding
+
+		//? Draw modal box
+		out += Draw::createBox(modal_x, modal_y, modal_w, modal_h, theme("hi_fg"), true, "Process Log Config");
+
+		int row_y = modal_y + 3;  //? Start with 1 row padding after title
+
+		//? Process info (read-only)
+		out += Mv::to(row_y, pad_x);
+		out += theme("inactive_fg") + "Process: " + theme("main_fg") + config_modal_name;
+		row_y++;
+		//? Command line (truncated to fit modal width)
+		out += Mv::to(row_y, pad_x);
+		string cmd_display = config_modal_cmdline.empty() ? "(no command)" : config_modal_cmdline;
+		if (cmd_display.length() > 45) cmd_display = cmd_display.substr(0, 42) + "...";
+		out += theme("inactive_fg") + "Command: " + theme("main_fg") + cmd_display;
+		row_y += 2;
+
+		//? Display Name field
+		int display_row = row_y;
+		out += Mv::to(row_y, pad_x);
+		bool field_sel = (config_modal_field == 0);
+		out += theme("main_fg") + "Display: ";
+		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
+		//? Build display text with cursor
+		string disp_text;
+		if (config_modal_display.empty()) {
+			disp_text = field_sel ? "_" + string(24, ' ') : string(25, '_');
+		} else {
+			if (field_sel) {
+				//? Insert cursor character at cursor position
+				disp_text = config_modal_display.substr(0, static_cast<size_t>(config_modal_display_cursor))
+					+ "_" + config_modal_display.substr(static_cast<size_t>(config_modal_display_cursor));
+				disp_text += string(max(0, 25 - static_cast<int>(disp_text.length())), ' ');
+			} else {
+				disp_text = config_modal_display + string(max(0, 25 - static_cast<int>(config_modal_display.length())), ' ');
+			}
+		}
+		out += "[" + disp_text.substr(0, 26) + "]";
+		out += Fx::reset;
+		Input::mouse_mappings["config_field_0"] = {display_row, pad_x + 9, 1, 27};
+		row_y++;
+
+		//? Log Path field
+		int logpath_row = row_y;
+		out += Mv::to(row_y, pad_x);
+		field_sel = (config_modal_field == 1);
+		out += theme("main_fg") + "LogPath: ";
+		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
+		//? Build path text with cursor
+		string path_text;
+		if (config_modal_path.empty()) {
+			path_text = field_sel ? "_" + string(34, ' ') : string(35, '_');
+		} else {
+			if (field_sel) {
+				//? Insert cursor character at cursor position
+				path_text = config_modal_path.substr(0, static_cast<size_t>(config_modal_path_cursor))
+					+ "_" + config_modal_path.substr(static_cast<size_t>(config_modal_path_cursor));
+				path_text += string(max(0, 35 - static_cast<int>(path_text.length())), ' ');
+			} else {
+				path_text = config_modal_path + string(max(0, 35 - static_cast<int>(config_modal_path.length())), ' ');
+			}
+		}
+		out += "[" + path_text.substr(0, 36) + "]";
+		out += Fx::reset;
+		Input::mouse_mappings["config_field_1"] = {logpath_row, pad_x + 9, 1, 37};
+		row_y += 2;
+
+		//? Tagged checkbox
+		int tagged_row = row_y;
+		out += Mv::to(row_y, pad_x);
+		field_sel = (config_modal_field == 2);
+		out += theme("main_fg") + "Tagged:  ";
+		if (field_sel) out += theme("selected_bg") + theme("selected_fg");
+		out += "[" + string(config_modal_tagged ? "x" : " ") + "]";
+		out += Fx::reset + theme("inactive_fg") + " (highlight in list)";
+		Input::mouse_mappings["config_field_2"] = {tagged_row, pad_x + 9, 1, 3};
+		row_y += 2;
+
+		//? Color selection (only if tagged)
+		int color_row = row_y;
+		out += Mv::to(row_y, pad_x);
+		field_sel = (config_modal_field == 3);
+		out += theme("main_fg") + "Color:   ";
+		if (!config_modal_tagged) {
+			out += theme("inactive_fg") + "(enable Tagged first)";
+			//? Clear color mappings when disabled
+			for (int i = 0; i < 5; i++) {
+				Input::mouse_mappings.erase("config_color_" + to_string(i));
+			}
+		} else {
+			for (size_t i = 0; i < 5; i++) {
+				bool color_sel = field_sel && (static_cast<int>(i) == config_modal_color_idx);
+				if (color_sel) out += theme("selected_bg");
+				out += theme(TagColors::themes[i]) + "██" + Fx::reset + " ";
+				//? Mouse mapping for each color: 2 chars wide + 1 space
+				Input::mouse_mappings["config_color_" + to_string(i)] = {color_row, pad_x + 9 + static_cast<int>(i) * 3, 1, 2};
+			}
+			out += theme("inactive_fg") + "(1-5)";
+		}
+		row_y++;
+
+		//? Selection indicator (centered below selected color)
+		if (config_modal_tagged) {
+			//? Each color is "██ " (2 chars + space = 3 total), center triangle under the 2-char block
+			out += Mv::to(row_y, pad_x + 10 + config_modal_color_idx * 3);
+			out += theme("hi_fg") + "▲";
+		}
+		row_y += 2;
+
+		//? Buttons (with extra space below before instructions)
+		int btn_row = modal_y + modal_h - 5;
+		out += Mv::to(btn_row, pad_x + 1);
+		const array<string, 3> buttons = {"Save", "Remove", "Cancel"};
+		int btn_x = pad_x + 1;
+		for (size_t i = 0; i < 3; i++) {
+			bool btn_sel = (config_modal_field == 4 && config_modal_button == static_cast<int>(i));
+			if (btn_sel) {
+				out += theme("selected_bg") + theme("selected_fg") + Fx::b;
+			} else {
+				out += theme("main_fg");
+			}
+			out += "[" + buttons[i] + "]" + Fx::reset + "  ";
+			//? Mouse mapping for button: [text] + 2 spaces
+			int btn_width = static_cast<int>(buttons[i].length()) + 2;  // brackets
+			Input::mouse_mappings["config_btn_" + to_string(i)] = {btn_row, btn_x, 1, btn_width};
+			btn_x += btn_width + 2;  // button width + 2 spaces
+		}
+
+		//? Instructions
+		out += Mv::to(modal_y + modal_h - 2, pad_x);
+		out += theme("inactive_fg") + "Tab:Next  Enter:Select  Esc:Cancel  Click:Select";
+
+		return out;
+	}
+
 	string draw(bool force_redraw, bool data_same) {
 		if (Runner::stopping) return "";
 		if (force_redraw) redraw = true;
@@ -4700,6 +5419,15 @@ namespace Logs {
 			if (not buffer_modal_active) {
 				for (int i = 0; i < 7; i++) {
 					Input::mouse_mappings.erase("buffer_" + to_string(i));
+				}
+			}
+			if (not config_modal_active) {
+				for (int i = 0; i < 5; i++) {
+					Input::mouse_mappings.erase("config_field_" + to_string(i));
+					Input::mouse_mappings.erase("config_color_" + to_string(i));
+				}
+				for (int i = 0; i < 3; i++) {
+					Input::mouse_mappings.erase("config_btn_" + to_string(i));
 				}
 			}
 
@@ -4893,7 +5621,30 @@ namespace Logs {
 			string filter_display = compact ? filter_name.substr(0, 1) : filter_name;
 			out += filter_color + filter_display + fg + " ";
 			cur_x += static_cast<int>(filter_display.length()) + 1;
-			
+
+			//? Source indicator with availability dots (format: S:Sys ◉◉)
+			{
+				//? Color dots: Green for System active, Red for App active, gray for inactive
+				string sys_dot_color = (source == Source::System) ? theme("log_debug_plus") : theme("inactive_fg");
+				string app_dot_color = (source == Source::Application && app_log_available) 
+					? theme("log_fault") : theme("inactive_fg");
+
+				int src_start_x = cur_x;
+				if (compact) {
+					//? Compact: S:S or S:A with dots
+					out += hi + "S" + fg + ":" + (source == Source::System ? "S" : "A") + " ";
+					out += sys_dot_color + "●" + app_dot_color + (app_log_available ? "●" : "○") + fg + " ";
+					cur_x += 8;  //? "S:S ●○ " = 8 chars
+				} else {
+					//? Full: S:Sys or S:App with dots
+					out += hi + "S" + fg + ":" + (source == Source::System ? "Sys" : "App") + " ";
+					out += sys_dot_color + "●" + app_dot_color + (app_log_available ? "●" : "○") + fg + " ";
+					cur_x += 10;  //? "S:Sys ●○ " = 10 chars
+				}
+				//? Add mouse mapping for source toggle
+				Input::mouse_mappings["logs_source"] = {status_y, src_start_x, 1, compact ? 3 : 5};
+			}
+
 			//? Position counter (shorter format in compact)
 			string short_pos = compact ? to_string(total_entries) : pos_str;
 			out += short_pos + " ";
@@ -5079,6 +5830,9 @@ namespace Logs {
 				out += Mv::to(modal_y + modal_h - 2, modal_x + (modal_w - 18) / 2);
 				out += theme("inactive_fg") + "Press any key..." + Fx::reset;
 			}
+
+			//? Note: Color picker and config modals are now drawn in Proc::draw()
+			//? since they use Proc panel coordinates and should work even when Logs is hidden
 
 			redraw = false;
 			return out + Fx::reset;

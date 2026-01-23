@@ -61,6 +61,11 @@ namespace Theme {
 	//* Return escape code for color <name>
 	inline const string& c(const string& name) { return colors.at(name); }
 
+	//* Return escape code for color <name>, with fallback if not found
+	inline const string& c_safe(const string& name, const string& fallback = "main_fg") {
+		return colors.contains(name) ? colors.at(name) : colors.at(fallback);
+	}
+
 	//* Return array of escape codes for color gradient <name>
 	inline const array<string, 101>& g(const string& name) { return gradients.at(name); }
 

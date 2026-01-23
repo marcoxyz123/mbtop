@@ -96,3 +96,7 @@ dist/*.tar.gz
 
 # Wiki submodule
 wiki/
+
+# Misc application files
+config.json
+roon-tui.log

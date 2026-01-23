@@ -224,6 +224,24 @@ namespace Input {
 	void process(const std::string_view key) {
 		if (key.empty()) return;
 		try {
+			//? Handle Logs modals FIRST - they must capture ALL input before global handlers
+			if (Logs::config_modal_active) {
+				Logs::config_modal_input(key);
+				Runner::run("all", true, true);
+				return;
+			}
+			if (Logs::color_modal_active) {
+				if (Logs::color_modal_input(key)) {
+					Runner::run("all", true, true);
+					return;
+				}
+			}
+			if (Logs::error_modal_active) {
+				Logs::error_modal_input(key);
+				Runner::run("all", true, true);
+				return;
+			}
+
 			auto filtering = Config::getB("proc_filtering");
 			auto vim_keys = Config::getB("vim_keys");
 			auto help_key = (vim_keys ? "H" : "h");
@@ -556,12 +574,8 @@ namespace Input {
 				bool keep_going = false;
 				bool redraw = true;
 
-				//? Handle error modal input first - any key closes it
-				if (Logs::error_modal_active) {
-					Logs::error_modal_input(key);
-					Runner::run("all", true, true);
-					return;
-				}
+				//? Note: config_modal, color_modal, error_modal are now handled at the top of process()
+				//? to ensure they capture input before global handlers (like 'o' for Options menu)
 
 				//? Handle filter modal input if active
 				if (Logs::filter_modal_active) {
@@ -633,6 +647,18 @@ namespace Input {
 				else if (key == "logs_buffer") {
 					Logs::show_buffer_modal();
 				}
+				else if (key == "logs_source") {
+					Logs::toggle_source();
+				}
+				//? Color picker modal clicks
+				else if (key == "color_0" or key == "color_1" or key == "color_2" or key == "color_3" or key == "color_4") {
+					if (Logs::color_modal_active) {
+						Logs::color_modal_selected = key.back() - '0';
+						Logs::color_modal_input("enter");
+						Runner::run("all", true, true);
+						return;
+					}
+				}
 				//? Keyboard shortcuts ONLY when Logs panel is focused
 				else if (Logs::focused) {
 					if (key == "space") {
@@ -655,6 +681,10 @@ namespace Input {
 					else if (key == "R") {
 						//? Shift+R = Reverse sort order
 						Logs::toggle_sort_order();
+					}
+					else if (key == "S") {
+						//? Shift+S = Toggle log source (System/Application)
+						Logs::toggle_source();
 					}
 					else if (key == "B") {
 						//? Shift+B = Show buffer size modal
@@ -740,6 +770,40 @@ namespace Input {
 					Config::flip("proc_tree");
 					no_update = false;
 					Config::set("update_following", true);
+				}
+				else if (key == "a") {
+					//? Context-aware 'a' key:
+					//? - Detailed view (selected == 0): toggle tag for detailed process
+					//? - Process list (selected > 0): toggle tagged filter
+					if (Config::getB("show_detailed") and Config::getI("proc_selected") == 0) {
+						//? Toggle tag for detailed process
+						if (Proc::detailed.status != "Dead") {
+							auto cfg = Config::find_process_config(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+							if (cfg.has_value() && cfg->has_tagging()) {
+								//? Remove tagging
+								Config::ProcessLogConfig new_cfg = *cfg;
+								new_cfg.tagged = false;
+								new_cfg.tag_color.clear();
+								Config::save_process_config(new_cfg);
+							} else {
+								//? Enable tagging with default color (green)
+								Config::ProcessLogConfig new_cfg;
+								new_cfg.name = Proc::detailed.entry.name;
+								new_cfg.tagged = true;
+								new_cfg.tag_color = "log_debug_plus";  //? Green
+								if (cfg.has_value()) {
+									new_cfg.log_path = cfg->log_path;
+									new_cfg.display_name = cfg->display_name;
+									new_cfg.command_pattern = cfg->command_pattern;
+								}
+								Config::save_process_config(new_cfg);
+							}
+						}
+					} else {
+						//? Toggle tagged filter - show only processes with tag configs
+						Proc::filter_tagged = not Proc::filter_tagged;
+					}
+					no_update = false;
 				}
 				else if (is_in(key, "u")) {
 					Config::flip("pause_proc_list");
@@ -828,6 +892,14 @@ namespace Input {
 						if (in_proc_box) {
 							if (col < Proc::x + Proc::width - 2) {
 								const auto& current_selection = Config::getI("proc_selected");
+								
+								//? Track double-click timing
+								uint64_t now = time_ms();
+								bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
+								                       and (last_proc_click_line == line);
+								last_proc_click_time = now;
+								last_proc_click_line = line;
+								
 								if (current_selection == line - y - 1) {
 									redraw = true;
 									if (Config::getB("proc_tree")) {
@@ -838,7 +910,10 @@ namespace Input {
 											return;
 										}
 									}
-									process("enter");
+									//? Only open details on double-click
+									if (is_double_click) {
+										process("enter");
+									}
 									return;
 								}
 								else if (Config::getB("proc_banner_shown") and line == y + height - 2)
@@ -846,20 +921,12 @@ namespace Input {
 								else if (current_selection == 0 or line - y - 1 == 0)
 									redraw = true;
 
-								//? Only release follow mode on double-click (two clicks within 400ms)
-								if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
-									uint64_t now = time_ms();
-									bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
-									                       and (last_proc_click_line == line);
-									last_proc_click_time = now;
-									last_proc_click_line = line;
-									
-									if (is_double_click) {
-										Config::flip("follow_process");
-										Config::set("followed_pid", 0);
-										Config::set("proc_followed", 0);
-										redraw = true;
-									}
+								//? Only release follow mode on double-click
+								if (Config::getB("follow_process") and not Config::getB("pause_proc_list") and is_double_click) {
+									Config::flip("follow_process");
+									Config::set("followed_pid", 0);
+									Config::set("proc_followed", 0);
+									redraw = true;
 								}
 
 								Config::set("proc_selected", line - y - 1);
@@ -878,20 +945,6 @@ namespace Input {
 						}
 						else if (Config::getI("proc_selected") > 0){
 							Config::set("proc_selected", 0);
-							//? Only release follow mode on double-click
-							if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
-								uint64_t now = time_ms();
-								bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
-								                       and (last_proc_click_line == line);
-								last_proc_click_time = now;
-								last_proc_click_line = line;
-								
-								if (is_double_click) {
-									Config::flip("follow_process");
-									Config::set("followed_pid", 0);
-									Config::set("proc_followed", 0);
-								}
-							}
 							redraw = true;
 						}
 					}
@@ -984,6 +1037,47 @@ namespace Input {
 				    Menu::show(Menu::Menus::Renice);
 				    return;
 			    }
+				//? Open Log Config modal (L key)
+				else if (key == "L" and Config::getB("show_detailed") and Config::getI("proc_selected") == 0) {
+					if (Proc::detailed.status == "Dead") return;
+					Logs::show_config_modal(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+					Runner::run("all", true, true);
+					return;
+				}
+				//? Open Color Picker modal (c key when detailed view is showing)
+				else if (key == "proc_tag_color" or (key == "c" and Config::getB("show_detailed") and Config::getI("proc_selected") == 0)) {
+					if (Proc::detailed.status == "Dead") return;
+					Logs::show_color_modal(Proc::detailed.entry.name, Proc::detailed.entry.cmd);
+					Runner::run("all", true, true);
+					return;
+				}
+				//? Toggle tag on/off for selected/detailed process
+				else if (key == "proc_tag_toggle") {
+					string proc_name = Config::getI("proc_selected") > 0 ? Proc::selected_name : Proc::detailed.entry.name;
+					string proc_cmd = Config::getI("proc_selected") > 0 ? "" : Proc::detailed.entry.cmd;
+					auto cfg = Config::find_process_config(proc_name, proc_cmd);
+					if (cfg.has_value() && cfg->has_tagging()) {
+						//? Remove tagging
+						Config::ProcessLogConfig new_cfg = *cfg;
+						new_cfg.tagged = false;
+						new_cfg.tag_color.clear();
+						Config::save_process_config(new_cfg);
+					} else {
+						//? Enable tagging with default color (green)
+						Config::ProcessLogConfig new_cfg;
+						new_cfg.name = proc_name;
+						new_cfg.tagged = true;
+						new_cfg.tag_color = "log_debug_plus";  //? Green
+						if (cfg.has_value()) {
+							new_cfg.log_path = cfg->log_path;
+							new_cfg.display_name = cfg->display_name;
+							new_cfg.command_pattern = cfg->command_pattern;
+						}
+						Config::save_process_config(new_cfg);
+					}
+					Runner::run("proc", false, true);
+					return;
+				}
 				else if ((is_in(key, "up", "down", "page_up", "page_down", "home", "end") or (vim_keys and is_in(key, "j", "k", "g", "G")))
 					 and not (Config::getI("disk_selected") > 0 and Config::getB("show_disks"))
 					 and not (Config::getI("mem_selected") > 0)) {
