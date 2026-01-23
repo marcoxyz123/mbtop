@@ -892,6 +892,14 @@ namespace Input {
 						if (in_proc_box) {
 							if (col < Proc::x + Proc::width - 2) {
 								const auto& current_selection = Config::getI("proc_selected");
+								
+								//? Track double-click timing
+								uint64_t now = time_ms();
+								bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
+								                       and (last_proc_click_line == line);
+								last_proc_click_time = now;
+								last_proc_click_line = line;
+								
 								if (current_selection == line - y - 1) {
 									redraw = true;
 									if (Config::getB("proc_tree")) {
@@ -902,7 +910,10 @@ namespace Input {
 											return;
 										}
 									}
-									process("enter");
+									//? Only open details on double-click
+									if (is_double_click) {
+										process("enter");
+									}
 									return;
 								}
 								else if (Config::getB("proc_banner_shown") and line == y + height - 2)
@@ -910,20 +921,12 @@ namespace Input {
 								else if (current_selection == 0 or line - y - 1 == 0)
 									redraw = true;
 
-								//? Only release follow mode on double-click (two clicks within 400ms)
-								if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
-									uint64_t now = time_ms();
-									bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
-									                       and (last_proc_click_line == line);
-									last_proc_click_time = now;
-									last_proc_click_line = line;
-									
-									if (is_double_click) {
-										Config::flip("follow_process");
-										Config::set("followed_pid", 0);
-										Config::set("proc_followed", 0);
-										redraw = true;
-									}
+								//? Only release follow mode on double-click
+								if (Config::getB("follow_process") and not Config::getB("pause_proc_list") and is_double_click) {
+									Config::flip("follow_process");
+									Config::set("followed_pid", 0);
+									Config::set("proc_followed", 0);
+									redraw = true;
 								}
 
 								Config::set("proc_selected", line - y - 1);
@@ -942,20 +945,6 @@ namespace Input {
 						}
 						else if (Config::getI("proc_selected") > 0){
 							Config::set("proc_selected", 0);
-							//? Only release follow mode on double-click
-							if (Config::getB("follow_process") and not Config::getB("pause_proc_list")) {
-								uint64_t now = time_ms();
-								bool is_double_click = (now - last_proc_click_time < DOUBLE_CLICK_MS) 
-								                       and (last_proc_click_line == line);
-								last_proc_click_time = now;
-								last_proc_click_line = line;
-								
-								if (is_double_click) {
-									Config::flip("follow_process");
-									Config::set("followed_pid", 0);
-									Config::set("proc_followed", 0);
-								}
-							}
 							redraw = true;
 						}
 					}
