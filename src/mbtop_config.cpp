@@ -259,6 +259,8 @@ namespace Config {
 
 		{"log_buffer_size",		"#* Maximum number of log entries to keep in buffer. Default: 500. Higher values use more memory."},
 
+		{"log_default_source",	"#* Default log source when viewing process logs: \"system\" for macOS unified logs, \"application\" for app log files."},
+
 		{"stacked_layout",		"#* Force fully stacked vertical layout: MEM full width, NET full width below, PROC full width at bottom."},
 
 		{"zfs_arc_cached",		"#* Count ZFS ARC in cached and available memory."},
@@ -385,6 +387,7 @@ namespace Config {
 		{"base_10_bitrate", "Auto"},
 		{"log_level", "WARNING"},
 		{"log_export_path", ""},
+		{"log_default_source", "system"},
 		{"proc_filter", ""},
 		{"proc_command", ""},
 		{"selected_name", ""},
@@ -1513,7 +1516,7 @@ namespace Config {
 					logging.level = *val;
 				if (auto val = log_section["log_export_path"].value<string>())
 					logging.export_path = expand_path(*val);
-				if (auto val = log_section["default_source"].value<string>())
+				if (auto val = log_section["log_default_source"].value<string>())
 					logging.default_source = *val;
 				if (auto val = log_section["log_buffer_size"].value<int64_t>())
 					logging.buffer_size = static_cast<int>(*val);
@@ -1572,6 +1575,7 @@ namespace Config {
 			// Sync logging struct back to flat maps
 			strings.at("log_level") = logging.level;
 			strings.at("log_export_path") = logging.export_path;
+			strings.at("log_default_source") = logging.default_source;
 			bools.at("log_color_full_line") = logging.color_full_line;
 			bools.at("logs_below_proc") = logging.below_proc;
 			ints.at("log_buffer_size") = logging.buffer_size;
