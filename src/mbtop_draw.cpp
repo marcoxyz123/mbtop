@@ -5507,6 +5507,24 @@ namespace Logs {
 			string out;
 			const auto& theme = Theme::c;
 
+			//? Track previous position to clear old status line when layout changes
+			static int prev_y = 0;
+			static int prev_height = 0;
+			static int prev_width = 0;
+
+			//? If position/size changed, clear the OLD status line position
+			if (prev_y > 0 && prev_height > 0 && prev_width > 0) {
+				int old_status_y = prev_y + prev_height - 1;
+				int new_status_y = y + height - 1;
+				if (old_status_y != new_status_y && old_status_y > 0 && old_status_y <= Term::height) {
+					//? Clear the old status line row
+					out += Mv::to(old_status_y, prev_y) + string(static_cast<size_t>(prev_width), ' ');
+				}
+			}
+			prev_y = y;
+			prev_height = height;
+			prev_width = width;
+
 			//? Clean up modal mouse mappings when modals are not active
 			if (not filter_modal_active) {
 				for (int i = 0; i < 5; i++) {
@@ -5533,14 +5551,6 @@ namespace Logs {
 			//? DEBUG: Log dimensions to verify correct positioning
 			Logger::debug("Logs::draw: x={}, y={}, width={}, height={}, Proc::width={}", 
 				x, y, width, height, Proc::width);
-
-			//? When Logs is below Proc, clear the entire area from Logs::y to terminal bottom
-			//? This prevents stale content from previous positions/sizes persisting
-			if (Config::getB("logs_below_proc") && width > 0) {
-				for (int row = y; row <= Term::height; row++) {
-					out += Mv::to(row, x) + string(static_cast<size_t>(width), ' ');
-				}
-			}
 
 			out += box;
 
@@ -6808,12 +6818,13 @@ namespace Draw {
 			else {
 				//? Check minimum combined space requirement
 				int min_combined_height = Proc::min_height + Logs::min_height;
+				int available_height = Term::height - Proc::y + 1;
 
 				//? Check if below mode was requested but not enough height
-				if (logs_below and Proc::height < min_combined_height) {
+				if (logs_below and available_height < min_combined_height) {
 					//? Not enough vertical space - show error dialog and revert to beside
 					Menu::logs_min_height_required = min_combined_height;
-					Menu::logs_current_proc_height = Proc::height;
+					Menu::logs_current_proc_height = available_height;
 					Menu::logs_error_is_height = true;
 					Menu::show(Menu::Menus::LogsSizeError);
 					Config::set("logs_below_proc", false);
@@ -6822,7 +6833,8 @@ namespace Draw {
 
 				if (logs_below) {
 					//? Horizontal split: Logs below Proc - proportional 50/50 split
-					int total_height = Proc::height;
+					//? Calculate total available height from Proc::y to terminal bottom
+					int total_height = Term::height - Proc::y + 1;
 					int proc_height = total_height / 2;  //? Proc gets half (integer division)
 					int logs_height = total_height - proc_height;  //? Logs gets remainder (extra line if odd)
 
@@ -6834,12 +6846,6 @@ namespace Draw {
 					if (logs_height < Logs::min_height) {
 						logs_height = Logs::min_height;
 						proc_height = total_height - logs_height;
-					}
-
-					//? Ensure Logs height doesn't exceed terminal bounds
-					int max_logs_y = Proc::y + proc_height;
-					if (max_logs_y + logs_height > Term::height) {
-						logs_height = Term::height - max_logs_y;
 					}
 
 					if (logs_height >= Logs::min_height && proc_height >= Proc::min_height) {
