@@ -1749,6 +1749,48 @@ namespace Config {
 		return fs::exists(toml_path, error);
 	}
 
+	//? Helper: Check if pattern contains wildcards
+	bool has_wildcard(const string& pattern) {
+		return pattern.find('*') != string::npos;
+	}
+
+	//? Helper: Match command against pattern with wildcard support
+	//? Wildcards: * matches any sequence of characters
+	bool wildcard_match(const string& pattern, const string& text) {
+		if (pattern.empty()) return false;
+		if (!has_wildcard(pattern)) return pattern == text;
+
+		// Convert wildcard pattern to regex: escape special chars, replace * with .*
+		string regex_str;
+		regex_str.reserve(pattern.size() * 2);
+		for (char c : pattern) {
+			switch (c) {
+				case '*': regex_str += ".*"; break;
+				case '.': regex_str += "\\."; break;
+				case '?': regex_str += "\\?"; break;
+				case '+': regex_str += "\\+"; break;
+				case '[': regex_str += "\\["; break;
+				case ']': regex_str += "\\]"; break;
+				case '(': regex_str += "\\("; break;
+				case ')': regex_str += "\\)"; break;
+				case '{': regex_str += "\\{"; break;
+				case '}': regex_str += "\\}"; break;
+				case '^': regex_str += "\\^"; break;
+				case '$': regex_str += "\\$"; break;
+				case '|': regex_str += "\\|"; break;
+				case '\\': regex_str += "\\\\"; break;
+				default: regex_str += c; break;
+			}
+		}
+
+		try {
+			std::regex re(regex_str, std::regex::ECMAScript);
+			return std::regex_match(text, re);
+		} catch (const std::regex_error&) {
+			return false;
+		}
+	}
+
 	std::optional<ProcessLogConfig> find_process_config(const string& name, const string& cmdline) {
 		// First check complex process configs
 		for (const auto& cfg : logging.processes) {
@@ -1761,9 +1803,19 @@ namespace Config {
 					}
 					continue;  // Pattern didn't match, try next config
 				}
-				// Priority 2: Exact command match required (no name-only entries allowed)
-				if (!cfg.command.empty() && cfg.command == cmdline) {
-					return cfg;
+				// Priority 2: Command with wildcard matching
+				if (!cfg.command.empty()) {
+					if (has_wildcard(cfg.command)) {
+						// Wildcard match
+						if (wildcard_match(cfg.command, cmdline)) {
+							return cfg;
+						}
+					} else {
+						// Exact match
+						if (cfg.command == cmdline) {
+							return cfg;
+						}
+					}
 				}
 				// No match - command is required, skip entries without command
 			}
