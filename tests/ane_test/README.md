@@ -1,123 +1,119 @@
-# Apple Neural Engine (ANE) Test Programs
+# Apple Silicon Load Test Tools
 
-Test programs demonstrating how to utilize Apple's neural hardware accelerators.
+Test programs for simulating load on Apple Silicon hardware accelerators (AMX and ANE).
 
-## Apple Silicon Accelerators
-
-| Accelerator | Access Method | Best For |
-|-------------|---------------|----------|
-| **ANE** (Neural Engine) | Core ML | ML inference, CNN, transformers |
-| **AMX** (Matrix Coprocessor) | BNNS/vDSP/BLAS | Matrix ops, dense layers |
-| **GPU** | Metal/MPS | Parallel compute, rendering |
-
-## Files
-
-- `ane_bnns_test.cpp` - BNNS tests (matrix mult, convolution, fully connected)
-- `ane_coreml_test.mm` - Core ML example (Objective-C++)
-- `Makefile` - Build system
-
-## Build
+## Quick Start
 
 ```bash
-# Build all
-make
+cd tests/ane_test
 
-# Build individually
-make ane_bnns_test
-make ane_coreml_test
+# AMX/CPU load (works immediately)
+./ane_bnns_test --load
+
+# ANE load (requires model setup first)
+make setup              # Downloads and compiles MobileNetV2
+./ane_coreml_load --load
 ```
 
-## Run
+## Tools Overview
+
+| Tool | Hardware | Use Case |
+|------|----------|----------|
+| `ane_bnns_test` | **AMX** (Matrix Coprocessor) | CPU/AMX stress test |
+| `ane_coreml_load` | **ANE** (Neural Engine) | ANE stress test |
+
+## AMX Load Test (ane_bnns_test)
+
+Runs continuous matrix multiplication using Apple's BNNS framework, which leverages the AMX coprocessor.
 
 ```bash
-# Run BNNS test (recommended - works standalone)
-make run
-# or
+# Run continuous load (Ctrl+C to stop)
+./ane_bnns_test --load
+
+# Heavier load with larger matrices
+./ane_bnns_test --load --size 4096
+
+# Run benchmark once (no continuous load)
 ./ane_bnns_test
-
-# Run Core ML test (informational)
-make run-coreml
 ```
 
-## Sample Output (M1/M2/M3)
+**Options:**
+- `-l, --load` - Run continuous load simulation
+- `-s, --size N` - Matrix size (default: 2048)
+- `-h, --help` - Show help
 
+**Expected output:**
 ```
-========================================
-  Apple Neural Engine / AMX Test (BNNS)
-========================================
+[LOAD MODE] Simulating continuous load. Press Ctrl+C to stop.
+Matrix size: 2048x2048, Threads: 0
 
-Platform: Apple Silicon (arm64)
-Hardware accelerators available:
-  - AMX (Apple Matrix Coprocessor) - for BLAS/BNNS
-  - ANE (Apple Neural Engine) - via Core ML
-  - GPU (Metal Performance Shaders)
-
-=== BNNS Matrix Multiplication (1024x1024 * 1024x1024) ===
-  Time: 2.345 ms
-  Performance: 915.23 GFLOPS
-
-=== BNNS 2D Convolution ===
-  Input: 224x224x3
-  Kernel: 3x3, 64 filters
-  Time per inference: 1.234 ms
-  Performance: 89.45 GFLOPS
-...
+[     100] 6.0 ms | 2850 GFLOPS | Total: 0.6s
 ```
 
-## Using the Actual ANE (via Core ML)
+**Note:** AMX usage appears as CPU load in mbtop (Apple doesn't expose separate AMX metrics).
 
-The ANE is accessed through Core ML. To use it:
+## ANE Load Test (ane_coreml_load)
 
-1. **Get a model** (e.g., from Apple's model gallery or convert from PyTorch/TensorFlow):
-   ```bash
-   # Download MobileNet from Apple
-   curl -O https://ml-assets.apple.com/coreml/models/MobileNetV2.mlmodel
-   ```
+Runs continuous neural network inference using Core ML, which utilizes the Apple Neural Engine.
 
-2. **Compile the model**:
-   ```bash
-   xcrun coremlcompiler compile MobileNetV2.mlmodel .
-   ```
+### Setup (one-time)
 
-3. **Load with Core ML** and set compute units:
-   ```objc
-   MLModelConfiguration *config = [[MLModelConfiguration alloc] init];
-   config.computeUnits = MLComputeUnitsAll;  // Use ANE when beneficial
-   
-   MLModel *model = [MLModel modelWithContentsOfURL:modelURL
-                                      configuration:config
-                                              error:&error];
-   ```
+```bash
+# Download and compile MobileNetV2
+make setup
 
-## Understanding the Results
-
-### BNNS Performance
-- Uses **AMX** (Apple Matrix Coprocessor) internally
-- AMX is separate from ANE but also very fast
-- Great for: dense matrix ops, BLAS, signal processing
-
-### When ANE is Used
-Apple's Core ML automatically decides when to use ANE based on:
-- Model architecture (CNNs, transformers work well)
-- Operation types (some ops aren't ANE-compatible)
-- Batch size (ANE likes larger batches)
-- Data types (FP16/INT8 preferred on ANE)
-
-### Verifying ANE Usage
-Use Instruments.app with the "Core ML" template to see which accelerator is used.
-
-## Rust Alternative
-
-For Rust, use the `accelerate` crate:
-
-```rust
-// Cargo.toml
-[dependencies]
-accelerate = "0.1"
-
-// main.rs
-use accelerate::blas;
-// BLAS operations will use AMX on Apple Silicon
+# Or manually:
+curl -L -o MobileNetV2.mlmodel \
+  'https://ml-assets.apple.com/coreml/models/Image/ImageClassification/MobileNetV2/MobileNetV2.mlmodel'
+xcrun coremlcompiler compile MobileNetV2.mlmodel .
 ```
 
-Or use `metal` crate for GPU/MPS access.
+### Run
+
+```bash
+# Run continuous ANE load (Ctrl+C to stop)
+./ane_coreml_load --load
+
+# Run specific number of iterations
+./ane_coreml_load --load --iterations 1000
+```
+
+**Options:**
+- `-l, --load` - Run continuous load simulation
+- `-n, --iterations N` - Number of iterations (0 = infinite)
+- `-v, --verbose` - Verbose output
+- `-h, --help` - Show help
+
+**Expected output:**
+```
+[LOAD MODE] Running ANE inference. Press Ctrl+C to stop.
+
+[     100] 0.6 ms | Avg: 0.7 ms | 1500.0 FPS | Total: 0.1s
+```
+
+**Note:** ANE usage is visible in mbtop's ANE meter when running this test.
+
+## Building from Source
+
+```bash
+make                    # Build all
+make ane_bnns_test      # Build AMX test only
+make ane_coreml_load    # Build ANE test only
+make clean              # Remove binaries
+```
+
+## Hardware Comparison
+
+| Accelerator | Monitored by mbtop? | Access Method |
+|-------------|---------------------|---------------|
+| **CPU** | Yes (CPU %) | Direct code |
+| **AMX** | No (shows as CPU) | BNNS/vDSP/BLAS |
+| **ANE** | Yes (ANE %) | Core ML only |
+| **GPU** | Yes (GPU %) | Metal/MPS |
+
+## Typical Performance (M4 Pro)
+
+| Test | Performance |
+|------|-------------|
+| AMX (2048x2048 matmul) | ~2800-3000 GFLOPS |
+| ANE (MobileNetV2) | ~1500 FPS |
